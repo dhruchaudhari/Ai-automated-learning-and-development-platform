@@ -1,0 +1,407 @@
+const express = require('express');
+const router = express.Router();
+const { upload, handleUploadError } = require('../middleware/upload');
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+
+// JWT Auth - FIXED VERSION
+const authMiddleware = (req, res, next) => {
+  try {
+    console.log('=== AUTH MIDDLEWARE TRIGGERED ===');
+    console.log('Path:', req.path);
+    console.log('Authorization Header:', req.headers.authorization ? 'Present' : 'Missing');
+    
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      console.log('❌ No Authorization header found');
+      return res.status(401).json({ 
+        success: false, 
+        message: 'No token provided' 
+      });
+    }
+    
+    // Check if it's Bearer token
+    if (!authHeader.startsWith('Bearer ')) {
+      console.log('❌ Authorization header does not start with Bearer');
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid token format' 
+      });
+    }
+    
+    // Extract token
+    const token = authHeader.split(' ')[1];
+    
+    if (!token) {
+      console.log('❌ No token found after Bearer');
+      return res.status(401).json({ 
+        success: false, 
+        message: 'No token provided' 
+      });
+    }
+    
+    console.log('✅ Token extracted, verifying...');
+    
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-for-dev');
+    req.userId = decoded.userId;
+    req.user = decoded;
+    
+    console.log('✅ Token verified for user:', decoded.userId);
+    next();
+    
+  } catch (err) {
+    console.error('❌ JWT Error:', err.message);
+    
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token expired' 
+      });
+    } else if (err.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid token' 
+      });
+    }
+    
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Authentication failed' 
+    });
+  }
+};
+
+// Register - NO AUTH NEEDED
+router.post(
+  '/register',
+  upload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'document', maxCount: 1 }
+  ]),
+  handleUploadError,
+  async (req, res) => {
+    try {
+      const { fullName, dob, email, mobile } = req.body;
+      
+      // Check if user already exists
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'User already exists'
+        });
+      }
+
+      // Create new user
+      const newUser = new User({
+        fullName,
+        dob,
+        email,
+        mobile,
+        profileImage: req.files?.profileImage?.[0]?.path || null,
+        document: req.files?.document?.[0]?.path || null
+      });
+
+      await newUser.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'User registered successfully',
+        user: {
+          id: newUser._id,
+          fullName: newUser.fullName,
+          email: newUser.email
+        }
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Registration failed'
+      });
+    }
+  }
+);
+
+// ==================== NEW ROUTES ADDED ====================
+// These match your frontend routes
+
+// View user via /grid/view/:id - PROTECTED
+router.get('/grid/view/:id', authMiddleware, async (req, res) => {
+  try {
+    console.log('🔍 Fetching user via /grid/view/:id:', req.params.id);
+    
+    // Validate ID format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID format'
+      });
+    }
+
+    const user = await User.findById(req.params.id, '-password -__v');
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    console.log('✅ User found via /grid/view/:id');
+    res.json({
+      success: true,
+      data: user
+    });
+  } catch (err) {
+    console.error('Error fetching user via /grid/view/:id:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch user' 
+    });
+  }
+});
+
+// Edit user via /grid/edit/:id - PROTECTED
+router.put(
+  '/grid/edit/:id',
+  authMiddleware,
+  upload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'document', maxCount: 1 }
+  ]),
+  handleUploadError,
+  async (req, res) => {
+    try {
+      console.log('✏️ Updating user via /grid/edit/:id:', req.params.id);
+      
+      // Validate ID format
+      if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid user ID format'
+        });
+      }
+
+      const updateData = {
+        fullName: req.body.fullName,
+        dob: req.body.dob,
+        email: req.body.email,
+        mobile: req.body.mobile,
+        updatedAt: Date.now()
+      };
+
+      if (req.files?.profileImage) {
+        updateData.profileImage = req.files.profileImage[0].path;
+      }
+
+      if (req.files?.document) {
+        updateData.document = req.files.document[0].path;
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true }
+      ).select('-password -__v');
+
+      if (!updatedUser) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'User not found' 
+        });
+      }
+
+      console.log('✅ User updated via /grid/edit/:id');
+      res.json({
+        success: true,
+        message: 'User updated successfully',
+        data: updatedUser
+      });
+
+    } catch (err) {
+      console.error('Update error via /grid/edit/:id:', err);
+      res.status(500).json({ 
+        success: false,
+        message: 'User update failed' 
+      });
+    }
+  }
+);
+
+// ==================== EXISTING ROUTES ====================
+
+// Get all users - PROTECTED
+router.get('/all', authMiddleware, async (req, res) => {
+  try {
+    console.log('📋 Fetching all users for user ID:', req.userId);
+    
+    const users = await User.find({}, '-password -__v')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: users.length,
+      data: users
+    });
+  } catch (err) {
+    console.error('Error fetching users:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch users' 
+    });
+  }
+});
+
+// Get single user by ID - PROTECTED
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    console.log('🔍 Fetching user via /:id:', req.params.id);
+    
+    // Validate ID format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID format'
+      });
+    }
+
+    const user = await User.findById(req.params.id, '-password -__v');
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    console.log('✅ User found via /:id');
+    res.json({
+      success: true,
+      data: user
+    });
+  } catch (err) {
+    console.error('Error fetching user via /:id:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch user' 
+    });
+  }
+});
+
+// Update user - PROTECTED
+router.put(
+  '/:id',
+  authMiddleware,
+  upload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'document', maxCount: 1 }
+  ]),
+  handleUploadError,
+  async (req, res) => {
+    try {
+      console.log('✏️ Updating user via /:id:', req.params.id);
+      
+      // Validate ID format
+      if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid user ID format'
+        });
+      }
+
+      const updateData = {
+        fullName: req.body.fullName,
+        dob: req.body.dob,
+        email: req.body.email,
+        mobile: req.body.mobile,
+        updatedAt: Date.now()
+      };
+
+      if (req.files?.profileImage) {
+        updateData.profileImage = req.files.profileImage[0].path;
+      }
+
+      if (req.files?.document) {
+        updateData.document = req.files.document[0].path;
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true, runValidators: true }
+      ).select('-password -__v');
+
+      if (!updatedUser) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'User not found' 
+        });
+      }
+
+      console.log('✅ User updated via /:id');
+      res.json({
+        success: true,
+        message: 'User updated successfully',
+        data: updatedUser
+      });
+
+    } catch (err) {
+      console.error('Update error via /:id:', err);
+      res.status(500).json({ 
+        success: false,
+        message: 'User update failed' 
+      });
+    }
+  }
+);
+
+// Delete user - PROTECTED
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    console.log('🗑️ Deleting user:', req.params.id, 'by user:', req.userId);
+    
+    // Validate ID format
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID format'
+      });
+    }
+
+    const deletedUser = await User.findByIdAndDelete(req.params.id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User deleted successfully'
+    });
+
+  } catch (err) {
+    console.error('Delete error:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'User deletion failed' 
+    });
+  }
+});
+
+// Health check endpoint (no auth needed)
+router.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Users API is working',
+    timestamp: new Date().toISOString()
+  });
+});
+
+module.exports = router;
