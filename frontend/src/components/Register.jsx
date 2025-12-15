@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import { toast } from 'react-hot-toast';
@@ -11,7 +11,8 @@ import {
   validateDOB, 
   validateProfileImage, 
   validateDocument,
-  preventPasswordCopyPaste
+  preventPasswordCopyPaste,
+  parseDateInput
 } from '../utils/validations';
 import { MOBILE_COUNTRIES, APP_CONSTANTS } from '../utils/constants';
 import { 
@@ -26,10 +27,11 @@ import {
   FaEye,
   FaEyeSlash,
   FaCheck,
-  FaTimes
+  FaTimes,
+  FaInfoCircle
 } from 'react-icons/fa';
+import 'react-datepicker/dist/react-datepicker.css';
 
-// Debounce function for live validation
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -62,7 +64,6 @@ const Register = () => {
   const [selectedCountry, setSelectedCountry] = useState('+91');
   const [imagePreview, setImagePreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [isPasswordCopied, setIsPasswordCopied] = useState(false);
   const [fieldTouched, setFieldTouched] = useState({
     fullName: false,
     dob: false,
@@ -72,8 +73,10 @@ const Register = () => {
     profileImage: false,
     document: false,
   });
+  const [passwordStrength, setPasswordStrength] = useState(0);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const datePickerRef = useRef(null);
 
-  // Live validation for fields
   const validateField = useCallback(async (name, value, countryCode = '+91') => {
     switch (name) {
       case 'fullName':
@@ -81,14 +84,17 @@ const Register = () => {
       case 'email':
         return validateEmail(value);
       case 'password':
-        return validatePassword(value, true);
+        const error = validatePassword(value, true);
+        calculatePasswordStrength(value);
+        return error;
       case 'mobile':
-        return validateMobile(countryCode + value.replace(countryCode, ''), countryCode);
+        const fullNumber = countryCode + value.replace(countryCode, '');
+        return validateMobile(fullNumber, countryCode);
       case 'dob':
         if (value instanceof Date) {
           return validateDOB(value);
         }
-        return validateDOB(value);
+        return value ? validateDOB(value) : 'Date of birth is required';
       case 'profileImage':
         if (value instanceof File) {
           return validateProfileImage(value);
@@ -104,24 +110,22 @@ const Register = () => {
     }
   }, []);
 
-  // Debounced form data for validation
-  const debouncedFormData = useDebounce(formData, 300);
+  const debouncedFormData = useDebounce(formData, 500);
 
-  // Live validation effect
   useEffect(() => {
     const validateFormLive = async () => {
       const newErrors = {};
       
-      // Only validate fields that have been touched or have value
       for (const [field, value] of Object.entries(debouncedFormData)) {
         if (fieldTouched[field] || value) {
           if (field === 'mobile') {
-            newErrors[field] = await validateField(field, value.replace(selectedCountry, ''), selectedCountry);
+            newErrors[field] = await validateField(field, value, selectedCountry);
           } else if (field === 'dob') {
             newErrors[field] = await validateField(field, value);
           } else if (field === 'profileImage' || field === 'document') {
             if (value) {
-              newErrors[field] = await validateField(field, value);
+              const result = await validateField(field, value);
+              newErrors[field] = result;
             } else if (fieldTouched[field]) {
               newErrors[field] = `${field === 'profileImage' ? 'Profile image' : 'Document'} is required`;
             }
@@ -131,7 +135,6 @@ const Register = () => {
         }
       }
       
-      // Filter out empty errors
       const filteredErrors = Object.fromEntries(
         Object.entries(newErrors).filter(([_, error]) => error !== '')
       );
@@ -146,6 +149,58 @@ const Register = () => {
 
     validateFormLive();
   }, [debouncedFormData, fieldTouched, validateField, selectedCountry]);
+
+  const formatDateForInput = (date) => {
+    if (!date) return '';
+    if (typeof date === 'string') {
+      const parsed = parseDateInput(date);
+      if (parsed) {
+        const d = new Date(parsed);
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = d.toLocaleDateString('en-US', { month: 'short' });
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+      return date;
+    }
+    const d = new Date(date);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
+  const calculatePasswordStrength = (password) => {
+    if (!password) {
+      setPasswordStrength(0);
+      return;
+    }
+    
+    let strength = 0;
+    
+    if (password.length >= 8) strength += 20;
+    if (password.length >= 12) strength += 10;
+    
+    if (/[a-z]/.test(password)) strength += 15;
+    if (/[A-Z]/.test(password)) strength += 15;
+    if (/\d/.test(password)) strength += 15;
+    if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 15;
+    
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 5;
+    if (/\d/.test(password) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 5;
+    
+    if (/password|123456|qwerty/i.test(password)) strength = Math.max(0, strength - 30);
+    if (/(.)\1{3,}/.test(password)) strength = Math.max(0, strength - 20);
+    
+    setPasswordStrength(Math.min(100, strength));
+  };
+
+  const getPasswordStrengthColor = () => {
+    if (passwordStrength < 40) return 'bg-red-500';
+    if (passwordStrength < 70) return 'bg-yellow-500';
+    if (passwordStrength < 90) return 'bg-blue-500';
+    return 'bg-green-500';
+  };
 
   const handleTouch = (fieldName) => {
     setFieldTouched(prev => ({
@@ -174,33 +229,26 @@ const Register = () => {
           ...prev,
           [name]: null
         }));
+        if (name === 'profileImage') setImagePreview(null);
         return;
       }
       
       if (name === 'profileImage') {
-        // Validate before setting preview
         const error = await validateProfileImage(file);
         if (error) {
-          e.target.value = ''; // Clear file input
+          e.target.value = '';
           toast.error(error);
-          setFormData(prev => ({
-            ...prev,
-            profileImage: null
-          }));
+          setFormData(prev => ({ ...prev, profileImage: null }));
           setImagePreview(null);
           return;
         }
         setImagePreview(URL.createObjectURL(file));
       } else if (name === 'document') {
-        // Validate PDF
         const error = await validateDocument(file);
         if (error) {
-          e.target.value = ''; // Clear file input
+          e.target.value = '';
           toast.error(error);
-          setFormData(prev => ({
-            ...prev,
-            document: null
-          }));
+          setFormData(prev => ({ ...prev, document: null }));
           return;
         }
       }
@@ -213,22 +261,14 @@ const Register = () => {
       let newValue = value;
       
       if (name === 'mobile') {
-        // Only allow digits, limit to 10
-        const digitsOnly = value.replace(/\D/g, '').substring(0, 10);
-        newValue = digitsOnly;
-        
-        // If user tries to type more than 10 digits, show error immediately
-        if (value.replace(/\D/g, '').length > 10) {
-          toast.error('Mobile number cannot exceed 10 digits');
-        }
+        const digitsOnly = value.replace(/\D/g, '');
+        const countryInfo = getCountryInfo(selectedCountry);
+        const maxDigits = countryInfo.digits || 15;
+        newValue = digitsOnly.substring(0, maxDigits);
       } else if (name === 'fullName') {
-        // Only allow letters and spaces
-        newValue = value.replace(/[^a-zA-Z\s]/g, '');
-      } else if (name === 'password') {
-        // Check for copy/paste attempt
-        if (isPasswordCopied) {
-          setIsPasswordCopied(false);
-        }
+        newValue = value.replace(/[^a-zA-Z\s\-\']/g, '');
+      } else if (name === 'email') {
+        newValue = value.toLowerCase();
       }
       
       setFormData(prev => ({
@@ -238,56 +278,106 @@ const Register = () => {
     }
   };
 
-  const handleDateChange = (date) => {
+  // Handle DOB input change
+  const handleDobInputChange = (e) => {
+    const value = e.target.value;
     handleTouch('dob');
+    
+    // Parse the input
+    const parsedDate = parseDateInput(value);
+    
+    if (parsedDate) {
+      // Valid date format
+      setFormData(prev => ({
+        ...prev,
+        dob: parsedDate
+      }));
+      
+      // Clear error if valid
+      if (errors.dob) {
+        setErrors(prev => ({ ...prev, dob: '' }));
+      }
+    } else if (value.trim() === '') {
+      // Empty input
+      setFormData(prev => ({
+        ...prev,
+        dob: null
+      }));
+    } else {
+      // Invalid date, keep as string for validation
+      setFormData(prev => ({
+        ...prev,
+        dob: value
+      }));
+    }
+  };
+
+  // Handle calendar date selection
+  const handleCalendarChange = (date) => {
     setFormData(prev => ({
       ...prev,
       dob: date
     }));
+    
+    // Clear error if valid
+    if (errors.dob) {
+      setErrors(prev => ({ ...prev, dob: '' }));
+    }
+    
+    setIsCalendarOpen(false);
   };
+
+  // Toggle calendar
+  const toggleCalendar = () => {
+    setIsCalendarOpen(!isCalendarOpen);
+  };
+
+  // Close calendar when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
+        setIsCalendarOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleCountryChange = (e) => {
     const countryCode = e.target.value;
     setSelectedCountry(countryCode);
     
-    // Update mobile number with new country code
-    const currentNumber = formData.mobile.replace(/\D/g, '');
+    // Reset mobile number when country changes
     setFormData(prev => ({
       ...prev,
-      mobile: currentNumber
+      mobile: ''
     }));
   };
 
   const handlePasswordCopy = (e) => {
-    e.preventDefault();
-    setIsPasswordCopied(true);
-    toast.error('Copying password is not allowed!');
-    return false;
+    preventPasswordCopyPaste(e);
   };
 
   const handlePasswordPaste = (e) => {
-    e.preventDefault();
-    toast.error('Pasting into password field is not allowed!');
-    return false;
+    preventPasswordCopyPaste(e);
   };
 
   const handlePasswordCut = (e) => {
-    e.preventDefault();
-    toast.error('Cutting from password field is not allowed!');
-    return false;
+    preventPasswordCopyPaste(e);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Mark all fields as touched for final validation
     const allTouched = Object.keys(fieldTouched).reduce((acc, key) => {
       acc[key] = true;
       return acc;
     }, {});
     setFieldTouched(allTouched);
     
-    // Final validation
     const validationResults = await Promise.all([
       validateField('fullName', formData.fullName),
       validateField('email', formData.email),
@@ -316,12 +406,11 @@ const Register = () => {
     
     if (Object.keys(filteredErrors).length > 0) {
       toast.error('Please fix all validation errors');
-      // Scroll to first error
       const firstErrorField = Object.keys(filteredErrors)[0];
       const element = document.querySelector(`[name="${firstErrorField}"]`);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        element.focus();
+        setTimeout(() => element.focus(), 300);
       }
       return;
     }
@@ -332,13 +421,12 @@ const Register = () => {
       const submitData = new FormData();
       submitData.append('fullName', formData.fullName.trim());
       
-      // Format date properly
       let dobValue;
       if (formData.dob instanceof Date) {
         dobValue = formData.dob.toISOString();
       } else if (typeof formData.dob === 'string') {
-        // Parse string date
-        dobValue = new Date(formData.dob).toISOString();
+        const parsed = parseDateInput(formData.dob);
+        dobValue = parsed ? parsed.toISOString() : formData.dob;
       }
       submitData.append('dob', dobValue);
       
@@ -358,13 +446,21 @@ const Register = () => {
       }
     } catch (error) {
       console.error('Registration error:', error);
-      toast.error(error.response?.data?.message || 'Registration failed. Please try again.');
+      const errorMsg = error.response?.data?.message;
+      if (errorMsg?.includes('email') || errorMsg?.includes('Email')) {
+        setErrors(prev => ({ ...prev, email: 'Email already registered' }));
+        toast.error('Email already registered');
+      } else if (errorMsg?.includes('mobile') || errorMsg?.includes('phone')) {
+        setErrors(prev => ({ ...prev, mobile: 'Mobile number already registered' }));
+        toast.error('Mobile number already registered');
+      } else {
+        toast.error(errorMsg || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Calculate form completion percentage
   const calculateCompletion = () => {
     const fields = Object.values(formData);
     const filledFields = fields.filter(value => {
@@ -375,20 +471,48 @@ const Register = () => {
     return Math.round((filledFields.length / 7) * 100);
   };
 
-  // Check if field has valid content
   const isFieldValid = (fieldName) => {
     return fieldTouched[fieldName] && formData[fieldName] && !errors[fieldName];
   };
 
-  // Check if field has error
   const isFieldInvalid = (fieldName) => {
     return fieldTouched[fieldName] && errors[fieldName];
+  };
+
+  const getCountryInfo = (code) => {
+    const country = MOBILE_COUNTRIES.find(c => c.code === code);
+    return country || { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 };
+  };
+
+  const getCountryValidationMessage = (code) => {
+    const country = MOBILE_COUNTRIES.find(c => c.code === code);
+    if (!country) return 'Enter valid mobile number';
+    
+    switch (code) {
+      case '+1':
+        return 'US/Canada: 10 digits, area code 2-9 (e.g., 212-555-1234)';
+      case '+44':
+        return 'UK: 10 digits, starts with 7 (e.g., 7123 456789)';
+      case '+91':
+        return 'India: 10 digits, starts with 6, 7, 8, or 9 (e.g., 9876543210)';
+      case '+61':
+        return 'Australia: 9 digits (e.g., 412 345 678)';
+      case '+49':
+        return 'Germany: 10-11 digits (e.g., 1512 3456789)';
+      case '+33':
+        return 'France: 9 digits (e.g., 6 12 34 56 78)';
+      case '+81':
+        return 'Japan: 10-11 digits, starts with 7, 8, or 9 (e.g., 90-1234-5678)';
+      case '+86':
+        return 'China: 11 digits, starts with 13-19 (e.g., 138 0013 8000)';
+      default:
+        return `Enter ${country.digits || 'valid'} digit mobile number`;
+    }
   };
 
   return (
     <div className="min-h-screen py-8 px-4 animate-fade-in">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-10 animate-slide-down">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
             Create Your Account
@@ -413,7 +537,7 @@ const Register = () => {
                     onChange={handleChange}
                     onBlur={() => handleBlur('fullName')}
                     className={`form-input ${isFieldInvalid('fullName') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('fullName') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="Enter your full name (letters and spaces only)"
+                    placeholder="John Doe"
                     disabled={loading}
                     maxLength={100}
                   />
@@ -434,35 +558,65 @@ const Register = () => {
                 )}
               </div>
 
-              {/* Date of Birth */}
+              {/* Date of Birth - Combined Calendar and Manual Input */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
                   <FaCalendar className="mr-2 text-primary-600" />
                   Date of Birth *
                 </label>
-                <div className="relative">
-                  <DatePicker
-                    selected={formData.dob}
-                    onChange={handleDateChange}
-                    onBlur={() => handleBlur('dob')}
-                    dateFormat="dd-MMM-yyyy"
-                    placeholderText="DD/MMM/YYYY or DD-MMM-YYYY"
-                    className={`form-input w-full ${isFieldInvalid('dob') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('dob') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    showYearDropdown
-                    scrollableYearDropdown
-                    yearDropdownItemNumber={50}
-                    maxDate={new Date()}
-                    minDate={new Date(1900, 0, 1)}
-                    disabled={loading}
-                    peekNextMonth
-                    showMonthDropdown
-                    dropdownMode="select"
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                
+                <div className="relative" ref={datePickerRef}>
+                  <div className="flex">
+                    <input
+                      type="text"
+                      name="dob"
+                      value={formatDateForInput(formData.dob)}
+                      onChange={handleDobInputChange}
+                      onBlur={() => handleBlur('dob')}
+                      onClick={() => setIsCalendarOpen(true)}
+                      className={`form-input flex-1 ${isFieldInvalid('dob') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('dob') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                      placeholder="DD/MMM/YYYY or DD-MM-YYYY (e.g., 15/Jan/1990 or 15-12-1990)"
+                      disabled={loading}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      onClick={toggleCalendar}
+                      className={`ml-2 px-4 border ${isFieldInvalid('dob') ? 'border-red-500' : isFieldValid('dob') ? 'border-green-500' : 'border-gray-300'} rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center`}
+                      disabled={loading}
+                    >
+                      <FaCalendar className="text-gray-600" />
+                    </button>
+                  </div>
+                  
+                  {/* Calendar dropdown */}
+                  {isCalendarOpen && (
+                    <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl">
+                      <DatePicker
+                        selected={formData.dob instanceof Date ? formData.dob : null}
+                        onChange={handleCalendarChange}
+                        inline
+                        showYearDropdown
+                        scrollableYearDropdown
+                        yearDropdownItemNumber={100}
+                        maxDate={new Date()}
+                        minDate={new Date(1900, 0, 1)}
+                        disabled={loading}
+                        peekNextMonth
+                        showMonthDropdown
+                        dropdownMode="select"
+                        strictParsing
+                        allowSameDay={false}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="absolute right-16 top-1/2 transform -translate-y-1/2">
                     {isFieldValid('dob') && <FaCheck className="text-green-600" />}
                     {isFieldInvalid('dob') && <FaTimes className="text-red-600" />}
                   </div>
                 </div>
+                
                 {errors.dob && (
                   <p className="text-sm text-red-600 animate-slide-up flex items-center">
                     <FaTimes className="mr-1" /> {errors.dob}
@@ -474,7 +628,7 @@ const Register = () => {
                   </p>
                 )}
                 <p className="text-xs text-gray-500">
-                  Format: DD/MMM/YYYY (e.g., 15/Jan/1990) or DD-MMM-YYYY
+                  Type or click calendar. Accepts: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY or DD/MMM/YYYY, DD-MMM-YYYY
                 </p>
               </div>
 
@@ -492,7 +646,7 @@ const Register = () => {
                     onChange={handleChange}
                     onBlur={() => handleBlur('email')}
                     className={`form-input ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="example@domain.com"
+                    placeholder="john.doe@example.com"
                     disabled={loading}
                     maxLength={254}
                   />
@@ -518,11 +672,6 @@ const Register = () => {
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
                   <FaLock className="mr-2 text-primary-600" />
                   Password *
-                  {isPasswordCopied && (
-                    <span className="ml-2 text-xs text-red-600 animate-pulse flex items-center">
-                      <FaTimes className="mr-1" /> Copy not allowed!
-                    </span>
-                  )}
                 </label>
                 <div className="relative">
                   <input
@@ -535,9 +684,9 @@ const Register = () => {
                     onPaste={handlePasswordPaste}
                     onCut={handlePasswordCut}
                     className={`form-input pr-10 ${isFieldInvalid('password') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('password') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="Minimum 4 characters"
+                    placeholder="Minimum 8 characters with special chars"
                     disabled={loading}
-                    maxLength={100}
+                    maxLength={128}
                     autoComplete="new-password"
                   />
                   <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
@@ -553,6 +702,26 @@ const Register = () => {
                     {showPassword ? <FaEyeSlash /> : <FaEye />}
                   </button>
                 </div>
+                
+                {formData.password && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-600">Password Strength:</span>
+                      <span className="text-xs font-medium">
+                        {passwordStrength < 40 ? 'Weak' : 
+                         passwordStrength < 70 ? 'Fair' : 
+                         passwordStrength < 90 ? 'Good' : 'Strong'}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div 
+                        className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor()}`}
+                        style={{ width: `${passwordStrength}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+                
                 {errors.password && (
                   <p className="text-sm text-red-600 animate-slide-up flex items-center">
                     <FaTimes className="mr-1" /> {errors.password}
@@ -563,9 +732,6 @@ const Register = () => {
                     <FaCheck className="mr-1" /> Strong password
                   </p>
                 )}
-                <p className="text-xs text-gray-500">
-                  Password cannot be copied or pasted
-                </p>
               </div>
 
               {/* Mobile Number */}
@@ -573,6 +739,9 @@ const Register = () => {
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
                   <FaPhone className="mr-2 text-primary-600" />
                   Mobile Number *
+                  <span className="ml-2 text-xs font-normal text-gray-500">
+                    ({getCountryInfo(selectedCountry).name})
+                  </span>
                 </label>
                 <div className="flex space-x-2">
                   <select
@@ -583,7 +752,7 @@ const Register = () => {
                   >
                     {MOBILE_COUNTRIES.map((country) => (
                       <option key={country.code} value={country.code}>
-                        {country.flag} {country.code}
+                        {country.flag} {country.code} ({country.name})
                       </option>
                     ))}
                   </select>
@@ -595,10 +764,8 @@ const Register = () => {
                       onChange={handleChange}
                       onBlur={() => handleBlur('mobile')}
                       className={`form-input w-full ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                      placeholder="10-digit number"
+                      placeholder={`Enter ${getCountryInfo(selectedCountry).name} number`}
                       disabled={loading}
-                      maxLength={10}
-                      pattern="[0-9]*"
                       inputMode="numeric"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -614,22 +781,23 @@ const Register = () => {
                 )}
                 {isFieldValid('mobile') && (
                   <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid mobile number
+                    <FaCheck className="mr-1" /> Valid {getCountryInfo(selectedCountry).name} number
                   </p>
                 )}
-                <p className="text-xs text-gray-500">
-                  {selectedCountry === '+91' ? 'Indian numbers start with 6,7,8,9' : 'Enter 10 digits'}
-                </p>
+                <div className="text-xs text-gray-500">
+                  <FaInfoCircle className="inline mr-1" />
+                  {getCountryValidationMessage(selectedCountry)}
+                </div>
               </div>
 
               {/* Profile Image */}
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
                   <FaCamera className="mr-2 text-primary-600" />
-                  Profile Image (.jpeg only) *
+                  Profile Image *
                   {isFieldValid('profileImage') && (
                     <span className="ml-2 text-xs text-green-600 flex items-center">
-                      <FaCheck className="mr-1" /> Valid image
+                      <FaCheck className="mr-1" /> Valid
                     </span>
                   )}
                 </label>
@@ -686,10 +854,10 @@ const Register = () => {
               <div className="space-y-2 md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
                   <FaFilePdf className="mr-2 text-primary-600" />
-                  Document (.pdf only) *
+                  Document *
                   {isFieldValid('document') && (
                     <span className="ml-2 text-xs text-green-600 flex items-center">
-                      <FaCheck className="mr-1" /> Valid document
+                      <FaCheck className="mr-1" /> Valid
                     </span>
                   )}
                 </label>
@@ -730,8 +898,8 @@ const Register = () => {
             <div className="flex flex-col md:flex-row gap-4 pt-6 border-t border-gray-200">
               <button
                 type="submit"
-                disabled={loading || Object.keys(errors).length > 0}
-                className={`btn-primary flex-1 py-4 text-lg ${Object.keys(errors).length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={loading || Object.keys(errors).length > 0 || calculateCompletion() < 100}
+                className={`btn-primary flex-1 py-4 text-lg ${Object.keys(errors).length > 0 || calculateCompletion() < 100 ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {loading ? (
                   <span className="flex items-center justify-center">
@@ -778,7 +946,7 @@ const Register = () => {
                 </span>
               ) : calculateCompletion() === 100 ? (
                 <span className="text-green-600">
-                  All fields are valid! You can submit the form.
+                  ✓ All fields are valid! Ready to submit.
                 </span>
               ) : (
                 <span>
