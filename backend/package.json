@@ -1,6 +1,6 @@
 {
-  "name": "mern-registration-backend",
-  "version": "1.0.0",
+  "name": "Bisag1 Backend",
+  "version": "v1.0.0",
   "description": "Backend for MERN registration application with file upload and validation",
   "main": "server.js",
   "scripts": {

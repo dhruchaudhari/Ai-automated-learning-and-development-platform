@@ -16,11 +16,115 @@ import {
   FaImage,
   FaFilePdf,
   FaBug,
-  FaLock
+  FaLock,
+  FaTimesCircle,
+  FaDownload,
+  FaExpand
 } from "react-icons/fa";
 import ConfirmationModal from "./ConfirmationModal";
 
 const ROWS_PER_PAGE = 10;
+
+// Preview Modal Component
+const PreviewModal = ({ preview, onClose }) => {
+  const [loading, setLoading] = useState(true);
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4 animate-fade-in">
+      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-primary-600 to-secondary-600 text-white">
+          <div className="flex items-center gap-3">
+            {preview.type === "image" ? (
+              <FaImage className="w-5 h-5" />
+            ) : (
+              <FaFilePdf className="w-5 h-5" />
+            )}
+            <h3 className="text-lg font-semibold">
+              {preview.type === "image" ? "Profile Image Preview" : "Document Preview"}
+            </h3>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.open(preview.src, "_blank")}
+              className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all"
+              title="Open in new tab"
+            >
+              <FaExpand className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all"
+            >
+              <FaTimesCircle className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Content */}
+        <div className="p-4 bg-gray-50">
+          {preview.type === "image" ? (
+            <div className="flex items-center justify-center min-h-[60vh]">
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <FaSpinner className="w-8 h-8 text-primary-600 animate-spin" />
+                </div>
+              )}
+              <img
+                src={preview.src}
+                alt="Preview"
+                className={`max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg ${loading ? 'opacity-0' : 'opacity-100'}`}
+                onLoad={() => setLoading(false)}
+                onError={() => setLoading(false)}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <FaSpinner className="w-8 h-8 text-primary-600 animate-spin" />
+                </div>
+              )}
+              <iframe
+                src={`${preview.src}#view=fitH`}
+                title="PDF Preview"
+                className={`w-full h-[70vh] border-0 rounded-lg shadow-lg ${loading ? 'opacity-0' : 'opacity-100'}`}
+                onLoad={() => setLoading(false)}
+              />
+              <div className="mt-4 flex items-center gap-4">
+                <button
+                  onClick={() => window.open(preview.src, "_blank")}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                >
+                  <FaDownload />
+                  View PDF in Another Tab
+                </button>
+                <p className="text-sm text-gray-600">
+                  Note: Some PDFs may require download for full functionality
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-4 border-t border-gray-200 bg-white">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-gray-500">
+              {preview.type === "image" ? "JPEG Image" : "PDF Document"}
+            </p>
+            <button
+              onClick={onClose}
+              className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Close Preview
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const UserGrid = () => {
   const navigate = useNavigate();
@@ -32,6 +136,7 @@ const UserGrid = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteModal, setDeleteModal] = useState({ show: false, userId: null });
+  const [previewModal, setPreviewModal] = useState({ show: false, src: null, type: null });
 
   /* =========================
      FETCH USERS FROM BACKEND
@@ -39,9 +144,7 @@ const UserGrid = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      console.log("🔄 Fetching users...");
       const res = await userAPI.getAllUsers();
-      console.log("✅ Users fetched:", res.data.count || res.data.data?.length);
       setUsers(res.data.data);
       setFilteredUsers(res.data.data);
     } catch (err) {
@@ -103,14 +206,12 @@ const UserGrid = () => {
     const token = localStorage.getItem("token");
     console.log("Token exists:", !!token);
     console.log("Token length:", token?.length);
-    console.log("Token (first 50 chars):", token?.substring(0, 50) + "...");
     
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split(".")[1]));
         console.log("Token payload:", payload);
         console.log("Token expires:", new Date(payload.exp * 1000));
-        console.log("Current time:", new Date());
         console.log("Is token expired?", payload.exp * 1000 < Date.now());
       } catch (e) {
         console.error("Failed to decode token:", e);
@@ -130,7 +231,6 @@ const UserGrid = () => {
       toast.error("Please select the user first");
       return;
     }
-    console.log("📱 Clicked View for user:", userId);
     navigate(`/grid/view/${userId}`);
   };
 
@@ -139,7 +239,6 @@ const UserGrid = () => {
       toast.error("Please select the user first");
       return;
     }
-    console.log("✏️ Clicked Edit for user:", userId);
     navigate(`/grid/edit/${userId}`);
   };
 
@@ -165,6 +264,25 @@ const UserGrid = () => {
     } finally {
       setDeleteModal({ show: false, userId: null });
     }
+  };
+
+  /* =========================
+     PREVIEW HANDLERS
+  ========================= */
+  const openImagePreview = (imageUrl) => {
+    setPreviewModal({
+      show: true,
+      src: imageUrl,
+      type: "image"
+    });
+  };
+
+  const openDocumentPreview = (docUrl) => {
+    setPreviewModal({
+      show: true,
+      src: docUrl,
+      type: "pdf"
+    });
   };
 
   return (
@@ -319,15 +437,26 @@ const UserGrid = () => {
                         {/* Image Preview */}
                         <td className="py-4 px-6">
                           {user.profileImage ? (
-                            <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
-                              <img
-                                src={user.profileImage}
-                                alt="Profile"
-                                className={`w-full h-full object-cover transition-opacity ${
-                                  isSelected ? "cursor-pointer hover:opacity-90" : "opacity-70"
-                                }`}
-                                onClick={() => isSelected && window.open(user.profileImage, "_blank")}
-                              />
+                            <div className="relative">
+                              <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-gray-200">
+                                <img
+                                  src={user.profileImage}
+                                  alt="Profile"
+                                  className={`w-full h-full object-cover transition-all ${
+                                    isSelected ? "cursor-pointer hover:opacity-90 hover:scale-105" : "opacity-70"
+                                  }`}
+                                  onClick={() => isSelected && openImagePreview(user.profileImage)}
+                                />
+                              </div>
+                              {isSelected && (
+                                <button
+                                  onClick={() => openImagePreview(user.profileImage)}
+                                  className="absolute -top-1 -right-1 w-6 h-6 bg-primary-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-primary-600 transition-colors"
+                                  title="Preview Image"
+                                >
+                                  <FaEye />
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <div className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
@@ -339,21 +468,32 @@ const UserGrid = () => {
                         {/* Document Preview */}
                         <td className="py-4 px-6">
                           {user.document ? (
-                            <button
-                              onClick={() => isSelected && window.open(user.document, "_blank")}
-                              className={`w-16 h-16 rounded-lg border-2 flex flex-col items-center justify-center transition-colors ${
-                                isSelected 
-                                  ? "border-gray-200 bg-red-50 hover:bg-red-100 cursor-pointer"
-                                  : "border-gray-200 bg-gray-100 cursor-not-allowed opacity-70"
-                              }`}
-                              title={isSelected ? "View PDF" : "Select user to view PDF"}
-                              disabled={!isSelected}
-                            >
-                              <FaFilePdf className={`w-8 h-8 mb-1 ${isSelected ? 'text-red-600' : 'text-gray-400'}`} />
-                              <span className={`text-xs ${isSelected ? 'text-red-600' : 'text-gray-400'}`}>
-                                View PDF
-                              </span>
-                            </button>
+                            <div className="relative">
+                              <button
+                                onClick={() => isSelected && openDocumentPreview(user.document)}
+                                className={`w-16 h-16 rounded-lg border-2 flex flex-col items-center justify-center transition-all ${
+                                  isSelected 
+                                    ? "border-gray-200 bg-red-50 hover:bg-red-100 cursor-pointer hover:scale-105"
+                                    : "border-gray-200 bg-gray-100 cursor-not-allowed opacity-70"
+                                }`}
+                                title={isSelected ? "Preview PDF" : "Select user to preview PDF"}
+                                disabled={!isSelected}
+                              >
+                                <FaFilePdf className={`w-8 h-8 mb-1 ${isSelected ? 'text-red-600' : 'text-gray-400'}`} />
+                                <span className={`text-xs ${isSelected ? 'text-red-600' : 'text-gray-400'}`}>
+                                  View PDF
+                                </span>
+                              </button>
+                              {isSelected && (
+                                <button
+                                  onClick={() => openDocumentPreview(user.document)}
+                                  className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                                  title="Preview Document"
+                                >
+                                  <FaEye />
+                                </button>
+                              )}
+                            </div>
                           ) : (
                             <div className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
                               <FaFilePdf className="w-6 h-6 text-gray-400" />
@@ -478,6 +618,14 @@ const UserGrid = () => {
         cancelText="Cancel"
         type="danger"
       />
+
+      {/* Preview Modal */}
+      {previewModal.show && (
+        <PreviewModal
+          preview={previewModal}
+          onClose={() => setPreviewModal({ show: false, src: null, type: null })}
+        />
+      )}
     </div>
   );
 };
