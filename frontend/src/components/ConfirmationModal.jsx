@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaExclamationTriangle, FaTimes } from 'react-icons/fa';
+import { FaExclamationTriangle, FaTimes, FaSignOutAlt } from 'react-icons/fa';
 
 const ConfirmationModal = ({
   isOpen,
@@ -9,7 +9,8 @@ const ConfirmationModal = ({
   message,
   confirmText = "Confirm",
   cancelText = "Cancel",
-  type = "danger"
+  type = "danger",
+  icon = null  // ✅ ADDED: Custom icon prop
 }) => {
   if (!isOpen) return null;
 
@@ -45,11 +46,11 @@ const ConfirmationModal = ({
   const styles = getTypeStyles();
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-50 overflow-y-auto animate-fade-in">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         {/* Overlay */}
         <div 
-          className="fixed inset-0 transition-opacity bg-black bg-opacity-50" 
+          className="fixed inset-0 transition-opacity bg-black bg-opacity-70" 
           onClick={onClose}
         />
 
@@ -67,9 +68,17 @@ const ConfirmationModal = ({
             </div>
             
             <div className="flex flex-col items-center text-center py-4">
-              <div className={`${styles.iconColor} mb-4`}>
-                {styles.icon}
-              </div>
+              {/* ✅ ADDED: Custom icon support */}
+              {icon ? (
+                <div className="mb-4">
+                  {icon}
+                </div>
+              ) : (
+                <div className={`${styles.iconColor} mb-4`}>
+                  {styles.icon}
+                </div>
+              )}
+              
               <p className="text-gray-600 mb-6">{message}</p>
             </div>
           </div>
@@ -77,13 +86,13 @@ const ConfirmationModal = ({
           <div className="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row-reverse gap-3">
             <button
               onClick={onConfirm}
-              className={`${styles.buttonColor} text-white font-medium py-2.5 px-6 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-opacity-50`}
+              className={`${styles.buttonColor} text-white font-medium py-3 px-6 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2`}
             >
               {confirmText}
             </button>
             <button
               onClick={onClose}
-              className="bg-white border border-gray-300 text-gray-700 font-medium py-2.5 px-6 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
+              className="bg-white border border-gray-300 text-gray-700 font-medium py-3 px-6 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
             >
               {cancelText}
             </button>

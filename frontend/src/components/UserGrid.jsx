@@ -19,7 +19,10 @@ import {
   FaLock,
   FaTimesCircle,
   FaDownload,
-  FaExpand
+  FaExpand,
+  FaSignOutAlt,
+  FaRedo,
+  FaPowerOff
 } from "react-icons/fa";
 import ConfirmationModal from "./ConfirmationModal";
 
@@ -137,6 +140,7 @@ const UserGrid = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteModal, setDeleteModal] = useState({ show: false, userId: null });
   const [previewModal, setPreviewModal] = useState({ show: false, src: null, type: null });
+  const [logoutModal, setLogoutModal] = useState(false);
 
   /* =========================
      FETCH USERS FROM BACKEND
@@ -267,6 +271,34 @@ const UserGrid = () => {
   };
 
   /* =========================
+     LOGOUT HANDLER
+  ========================= */
+  const handleLogout = async () => {
+    try {
+      // Try to call logout API (if token is valid)
+      await userAPI.logout();
+    } catch (err) {
+      // If token is expired, we can still logout locally
+      console.log("Logout API failed (token might be expired), proceeding with local logout");
+    }
+    
+    // Always clear local storage and redirect
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    
+    toast.success("Logged out successfully");
+    navigate("/login");
+  };
+
+  /* =========================
+     REFRESH HANDLER
+  ========================= */
+  const handleRefresh = () => {
+    fetchUsers();
+    toast.success("User list refreshed");
+  };
+
+  /* =========================
      PREVIEW HANDLERS
   ========================= */
   const openImagePreview = (imageUrl) => {
@@ -337,11 +369,25 @@ const UserGrid = () => {
               <span className={`text-sm font-medium ${selectedUsers.length > 0 ? 'text-primary-600' : 'text-gray-600'}`}>
                 {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
               </span>
+              
+              {/* Refresh Button with Icon */}
               <button
-                onClick={fetchUsers}
+                onClick={handleRefresh}
                 className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                title="Refresh user list"
               >
+                <FaRedo className="text-primary-600" />
                 Refresh
+              </button>
+              
+              {/* Logout Button */}
+              <button
+                onClick={() => setLogoutModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                title="Logout from application"
+              >
+                <FaPowerOff />
+                Logout
               </button>
             </div>
           </div>
@@ -617,6 +663,19 @@ const UserGrid = () => {
         confirmText="Delete"
         cancelText="Cancel"
         type="danger"
+      />
+
+      {/* Logout Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={logoutModal}
+        onClose={() => setLogoutModal(false)}
+        onConfirm={handleLogout}
+        title="Confirm Logout"
+        message="Are you sure you want to logout? You will need to login again to access the dashboard."
+        confirmText="Logout"
+        cancelText="Cancel"
+        type="danger"
+        icon={<FaSignOutAlt className="text-red-600 mb-4" />}
       />
 
       {/* Preview Modal */}

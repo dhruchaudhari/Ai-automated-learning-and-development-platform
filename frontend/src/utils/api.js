@@ -114,6 +114,29 @@ export const userAPI = {
 
   deleteUser: (id) =>
     api.delete(`/users/${id}`),
+    
+  // ✅ ADDED: Logout function for user logout
+  logout: async () => {
+    try {
+      const response = await api.post(
+        '/users/logout',
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          }
+        }
+      );
+      return response;
+    } catch (error) {
+      // If token is expired, try public logout
+      if (error.response?.status === 401) {
+        console.log('Token expired, trying public logout...');
+        return await api.post('/users/public-logout');
+      }
+      throw error;
+    }
+  },
 };
 
 // Health check

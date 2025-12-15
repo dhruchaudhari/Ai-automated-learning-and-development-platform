@@ -17,7 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/registration_app', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/mernapp', {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })

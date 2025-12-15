@@ -74,6 +74,8 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
+// ==================== AUTH ROUTES ====================
+
 // Register - NO AUTH NEEDED
 router.post(
   '/register',
@@ -232,8 +234,6 @@ router.put(
   }
 );
 
-// ==================== EXISTING ROUTES ====================
-
 // Get all users - PROTECTED
 router.get('/all', authMiddleware, async (req, res) => {
   try {
@@ -310,8 +310,8 @@ router.put(
         return res.status(400).json({
           success: false,
           message: 'Invalid user ID format'
-        });
-      }
+      });
+    }
 
       const updateData = {
         fullName: req.body.fullName,
@@ -393,6 +393,45 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       message: 'User deletion failed' 
     });
   }
+});
+
+// ==================== LOGOUT ROUTE ====================
+// Logout user - CLEAR TOKEN ON SERVER SIDE
+router.post('/logout', authMiddleware, async (req, res) => {
+  try {
+    console.log('🚪 User logging out:', req.userId);
+    
+    // In a real application, you might:
+    // 1. Add token to blacklist
+    // 2. Clear session data
+    // 3. Update user's last logout time
+    
+    // For JWT (stateless), we just return success
+    // Client will remove token from localStorage
+    
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+    
+  } catch (err) {
+    console.error('Logout error:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Logout failed' 
+    });
+  }
+});
+
+// ==================== PUBLIC LOGOUT (for when token is expired) ====================
+router.post('/public-logout', (req, res) => {
+  // This route doesn't require auth - for cases where token is expired
+  console.log('🚪 Public logout endpoint hit');
+  
+  res.json({
+    success: true,
+    message: 'Ready for logout'
+  });
 });
 
 // Health check endpoint (no auth needed)
