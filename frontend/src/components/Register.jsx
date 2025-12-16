@@ -514,7 +514,27 @@ const Register = () => {
     setLoading(true);
     
     try {
+      // DEBUG: Log form data before creating FormData
+      console.log('=== FRONTEND FORM DATA DEBUG ===');
+      console.log('Full Name:', formData.fullName);
+      console.log('Email:', formData.email);
+      console.log('Password:', formData.password, 'Type:', typeof formData.password, 'Length:', formData.password?.length);
+      console.log('Confirm Password:', formData.confirmPassword);
+      console.log('Mobile:', formData.mobile);
+      console.log('Country Code:', selectedCountry);
+      console.log('Full Mobile:', selectedCountry + formData.mobile);
+      console.log('DOB:', formData.dob, 'Type:', typeof formData.dob);
+      console.log('Profile Image:', formData.profileImage ? 'File exists - ' + formData.profileImage.name : 'null');
+      console.log('Document:', formData.document ? 'File exists - ' + formData.document.name : 'null');
+      console.log('======================');
+      
+      if (!formData.password) {
+        throw new Error('Password is undefined! Check form data above.');
+      }
+      
       const submitData = new FormData();
+      
+      // Append all fields with debugging
       submitData.append('fullName', formData.fullName.trim());
       
       let dobValue;
@@ -523,15 +543,31 @@ const Register = () => {
       } else if (typeof formData.dob === 'string') {
         const parsed = parseDateInput(formData.dob);
         dobValue = parsed ? parsed.toISOString() : formData.dob;
+      } else {
+        dobValue = formData.dob;
       }
+      console.log('DOB to send:', dobValue);
       submitData.append('dob', dobValue);
       
-      submitData.append('email', formData.email.trim());
+      submitData.append('email', formData.email.trim().toLowerCase());
       submitData.append('password', formData.password);
       submitData.append('mobile', selectedCountry + formData.mobile);
-      submitData.append('profileImage', formData.profileImage);
-      submitData.append('document', formData.document);
-
+      
+      if (formData.profileImage) {
+        submitData.append('profileImage', formData.profileImage);
+      }
+      
+      if (formData.document) {
+        submitData.append('document', formData.document);
+      }
+      
+      // Debug: Log FormData contents
+      console.log('=== FORMDATA CONTENTS ===');
+      for (let pair of submitData.entries()) {
+        console.log(pair[0] + ':', pair[1]);
+      }
+      console.log('========================');
+      
       const response = await userAPI.register(submitData);
       
       if (response.data.success) {
@@ -541,14 +577,21 @@ const Register = () => {
         }, 2000);
       }
     } catch (error) {
-      console.error('Registration error:', error);
-      const errorMsg = error.response?.data?.message;
+      console.error('Registration error details:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error message:', error.message);
+      
+      const errorMsg = error.response?.data?.message || error.message;
+      
       if (errorMsg?.includes('email') || errorMsg?.includes('Email')) {
         setErrors(prev => ({ ...prev, email: 'Email already registered' }));
         toast.error('Email already registered');
       } else if (errorMsg?.includes('mobile') || errorMsg?.includes('phone')) {
         setErrors(prev => ({ ...prev, mobile: 'Mobile number already registered' }));
         toast.error('Mobile number already registered');
+      } else if (errorMsg?.includes('password')) {
+        setErrors(prev => ({ ...prev, password: 'Password validation failed' }));
+        toast.error('Password validation failed');
       } else {
         toast.error(errorMsg || 'Registration failed. Please try again.');
       }
@@ -806,6 +849,9 @@ const Register = () => {
                 <label className="block text-sm font-medium text-gray-700 flex items-center">
                   <FaEnvelope className="mr-2 text-primary-600" />
                   Email Address *
+                  <span className="ml-2 text-xs font-normal text-gray-500">
+                    (Max 254 chars)
+                  </span>
                 </label>
                 <div className="relative">
                   <input
@@ -814,10 +860,19 @@ const Register = () => {
                     value={formData.email}
                     onChange={handleChange}
                     onBlur={() => handleBlur('email')}
+                    onKeyDown={(e) => {
+                      // Prevent space key in email
+                      if (e.key === ' ') {
+                        e.preventDefault();
+                        toast.error('Email cannot contain spaces');
+                      }
+                    }}
                     className={`form-input ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
                     placeholder="vatsalraj@example.com"
                     disabled={loading}
                     maxLength={254}
+                    minLength={6}
+                    autoComplete="email"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                     {isFieldValid('email') && <FaCheck className="text-green-600" />}
@@ -834,6 +889,10 @@ const Register = () => {
                     <FaCheck className="mr-1" /> Valid email address
                   </p>
                 )}
+                <div className="text-xs text-gray-500">
+                  <FaInfoCircle className="inline mr-1" />
+                  Standard email format (no spaces, max 254 characters)
+                </div>
               </div>
 
               {/* Password */}
@@ -1009,6 +1068,7 @@ const Register = () => {
                       placeholder={PHONE_EXAMPLES[selectedCountry]?.example || "Enter phone number"}
                       disabled={loading}
                       inputMode="tel"
+                      maxLength={25}
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                       {isFieldValid('mobile') && <FaCheck className="text-green-600" />}

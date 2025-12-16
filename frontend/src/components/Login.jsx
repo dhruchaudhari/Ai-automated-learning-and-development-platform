@@ -1,9 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { validateEmail, validatePassword } from '../utils/validations';
+import { validateEmail, validatePassword, preventPasswordCopyPaste } from '../utils/validations';
 import { toast } from 'react-hot-toast';
-import { FaEye, FaEyeSlash, FaUser, FaLock, FaEnvelope } from 'react-icons/fa';
+import { FaEye, FaEyeSlash, FaUser, FaLock, FaEnvelope, FaCheck, FaTimes, FaInfoCircle } from 'react-icons/fa';
+
+// Custom hook for debouncing
+const useDebounce = (value, delay) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,66 +32,199 @@ const Login = () => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [fieldTouched, setFieldTouched] = useState({
+    email: false,
+    password: false,
+  });
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  const validateField = useCallback(async (name, value) => {
+    switch (name) {
+      case 'email':
+        return validateEmail(value);
+      case 'password':
+        const error = validatePassword(value, false); // false for login (no strict validation needed)
+        calculatePasswordStrength(value);
+        return error;
+      default:
+        return '';
+    }
+  }, []);
+
+  const debouncedFormData = useDebounce(formData, 500);
+
+  useEffect(() => {
+    const validateFormLive = async () => {
+      const newErrors = {};
+      
+      for (const [field, value] of Object.entries(debouncedFormData)) {
+        if (fieldTouched[field] || value) {
+          newErrors[field] = await validateField(field, value);
+        }
+      }
+      
+      const filteredErrors = Object.fromEntries(
+        Object.entries(newErrors).filter(([_, error]) => error !== '')
+      );
+      
+      setErrors(prevErrors => {
+        if (JSON.stringify(prevErrors) !== JSON.stringify(filteredErrors)) {
+          return filteredErrors;
+        }
+        return prevErrors;
+      });
+    };
+
+    validateFormLive();
+  }, [debouncedFormData, fieldTouched, validateField]);
+
+  const calculatePasswordStrength = (password) => {
+    if (!password) {
+      setPasswordStrength(0);
+      return;
+    }
+    
+    let strength = 0;
+    
+    if (password.length >= 8) strength += 20;
+    if (password.length >= 12) strength += 10;
+    
+    if (/[a-z]/.test(password)) strength += 15;
+    if (/[A-Z]/.test(password)) strength += 15;
+    if (/\d/.test(password)) strength += 15;
+    if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 15;
+    
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 5;
+    if (/\d/.test(password) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 5;
+    
+    if (/password|123456|qwerty/i.test(password)) strength = Math.max(0, strength - 30);
+    if (/(.)\1{3,}/.test(password)) strength = Math.max(0, strength - 20);
+    
+    setPasswordStrength(Math.min(100, strength));
+  };
+
+  const getPasswordStrengthColor = () => {
+    if (passwordStrength < 40) return 'bg-red-500';
+    if (passwordStrength < 70) return 'bg-yellow-500';
+    if (passwordStrength < 90) return 'bg-blue-500';
+    return 'bg-green-500';
+  };
+
+  const handleTouch = (fieldName) => {
+    setFieldTouched(prev => ({
+      ...prev,
+      [fieldName]: true
+    }));
+  };
+
+  const handleBlur = (fieldName) => {
+    setFieldTouched(prev => ({
+      ...prev,
+      [fieldName]: true
+    }));
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value,
-    });
     
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors({
-        ...errors,
-        [name]: '',
-      });
+    handleTouch(name);
+    
+    let newValue = value;
+    
+    if (name === 'email') {
+      newValue = value.toLowerCase();
     }
+    
+    setFormData(prev => ({
+      ...prev,
+      [name]: newValue
+    }));
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-    newErrors.email = validateEmail(formData.email);
-    newErrors.password = validatePassword(formData.password);
-    setErrors(newErrors);
-    
-    return !newErrors.email && !newErrors.password;
+  const isFieldValid = (fieldName) => {
+    return fieldTouched[fieldName] && formData[fieldName] && !errors[fieldName];
+  };
+
+  const isFieldInvalid = (fieldName) => {
+    return fieldTouched[fieldName] && errors[fieldName];
+  };
+
+  const handlePasswordCopy = (e) => {
+    preventPasswordCopyPaste(e);
+  };
+
+  const handlePasswordPaste = (e) => {
+    preventPasswordCopyPaste(e);
+  };
+
+  const handlePasswordCut = (e) => {
+    preventPasswordCopyPaste(e);
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!validateForm()) {
-    toast.error('Please fix validation errors');
-    return;
-  }
+    e.preventDefault();
+    
+    // Mark all fields as touched for validation
+    const allTouched = Object.keys(fieldTouched).reduce((acc, key) => {
+      acc[key] = true;
+      return acc;
+    }, {});
+    setFieldTouched(allTouched);
+    
+    // Validate all fields
+    const validationResults = await Promise.all([
+      validateField('email', formData.email),
+      validateField('password', formData.password)
+    ]);
+    
+    const finalErrors = {
+      email: validationResults[0],
+      password: validationResults[1]
+    };
+    
+    const filteredErrors = Object.fromEntries(
+      Object.entries(finalErrors).filter(([_, error]) => error !== '')
+    );
+    
+    setErrors(filteredErrors);
+    
+    if (Object.keys(filteredErrors).length > 0) {
+      toast.error('Please fix validation errors');
+      const firstErrorField = Object.keys(filteredErrors)[0];
+      const element = document.querySelector(`[name="${firstErrorField}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => element.focus(), 300);
+      }
+      return;
+    }
 
-  setLoading(true);
-  
-  console.log('=== LOGIN DEBUG START ===');
-  console.log('1. Before login - localStorage:', {
-    token: localStorage.getItem('token'),
-    user: localStorage.getItem('user')
-  });
-  
-  const result = await login(formData.email, formData.password);
-  
-  console.log('2. Login result:', result);
-  console.log('3. After login - localStorage:', {
-    token: localStorage.getItem('token'),
-    user: localStorage.getItem('user')
-  });
-  console.log('=== LOGIN DEBUG END ===');
-  
-  if (result && result.success) {
-    // Wait a moment to ensure token is saved
-    setTimeout(() => {
-      navigate('/grid');
-    }, 300);
-  }
-  
-  setLoading(false);
-};
+    setLoading(true);
+    
+    console.log('=== LOGIN DEBUG START ===');
+    console.log('1. Before login - localStorage:', {
+      token: localStorage.getItem('token'),
+      user: localStorage.getItem('user')
+    });
+    
+    const result = await login(formData.email, formData.password);
+    
+    console.log('2. Login result:', result);
+    console.log('3. After login - localStorage:', {
+      token: localStorage.getItem('token'),
+      user: localStorage.getItem('user')
+    });
+    console.log('=== LOGIN DEBUG END ===');
+    
+    if (result && result.success) {
+      // Wait a moment to ensure token is saved
+      setTimeout(() => {
+        navigate('/grid');
+      }, 300);
+    }
+    
+    setLoading(false);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 animate-fade-in">
@@ -95,36 +245,62 @@ const Login = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Email Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-                <FaEnvelope className="mr-2 text-primary-600" />
-                Email Address
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className={`form-input pl-12 ${errors.email ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : ''}`}
-                  placeholder="Enter your email"
-                  disabled={loading}
-                />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaUser className="text-gray-400" />
-                </div>
-              </div>
-              {errors.email && (
-                <p className="mt-2 text-sm text-red-600 animate-slide-up">{errors.email}</p>
-              )}
-            </div>
+           {/* Email Input */}
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+    <FaEnvelope className="mr-2 text-primary-600" />
+    Email Address *
+  </label>
+  <div className="relative">
+    <input
+      type="email"
+      name="email"
+      value={formData.email}
+      onChange={handleChange}
+      onBlur={() => handleBlur('email')}
+      onKeyDown={(e) => {
+        // Prevent space key in email
+        if (e.key === ' ') {
+          e.preventDefault();
+          toast.error('Email cannot contain spaces');
+        }
+      }}
+      className={`form-input pl-12 ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+      placeholder="vatsalraj@example.com"
+      disabled={loading}
+      maxLength={254} // Standard RFC 5321 limit for email
+      minLength={6} // Minimum reasonable email: a@b.co
+      pattern="^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
+      autoComplete="email"
+    />
+    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+      <FaUser className="text-gray-400" />
+    </div>
+    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+      {isFieldValid('email') && <FaCheck className="text-green-600" />}
+      {isFieldInvalid('email') && <FaTimes className="text-red-600" />}
+    </div>
+  </div>
+  {errors.email && (
+    <p className="mt-2 text-sm text-red-600 animate-slide-up flex items-center">
+      <FaTimes className="mr-1" /> {errors.email}
+    </p>
+  )}
+  {isFieldValid('email') && (
+    <p className="mt-2 text-sm text-green-600 animate-slide-up flex items-center">
+      <FaCheck className="mr-1" /> Valid email address
+    </p>
+  )}
+  <p className="text-xs text-gray-500 mt-1">
+    Format: user@domain.com (max 254 characters, no spaces)
+  </p>
+</div>
 
             {/* Password Input */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                 <FaLock className="mr-2 text-primary-600" />
-                Password
+                Password *
               </label>
               <div className="relative">
                 <input
@@ -132,17 +308,28 @@ const Login = () => {
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
-                  className={`form-input pl-12 pr-12 ${errors.password ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : ''}`}
+                  onBlur={() => handleBlur('password')}
+                  onCopy={handlePasswordCopy}
+                  onPaste={handlePasswordPaste}
+                  onCut={handlePasswordCut}
+                  className={`form-input pl-12 pr-12 ${isFieldInvalid('password') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('password') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
                   placeholder="Enter your password"
                   disabled={loading}
+                  maxLength={128}
+                  autoComplete="current-password"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <FaLock className="text-gray-400" />
+                </div>
+                <div className="absolute inset-y-0 right-10 flex items-center">
+                  {isFieldValid('password') && <FaCheck className="text-green-600" />}
+                  {isFieldInvalid('password') && <FaTimes className="text-red-600" />}
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  disabled={loading}
                 >
                   {showPassword ? (
                     <FaEyeSlash className="text-gray-400 hover:text-gray-600" />
@@ -151,16 +338,75 @@ const Login = () => {
                   )}
                 </button>
               </div>
-              {errors.password && (
-                <p className="mt-2 text-sm text-red-600 animate-slide-up">{errors.password}</p>
+              
+              {formData.password && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-600">Password Strength:</span>
+                    <span className="text-xs font-medium">
+                      {passwordStrength < 40 ? 'Weak' : 
+                       passwordStrength < 70 ? 'Fair' : 
+                       passwordStrength < 90 ? 'Good' : 'Strong'}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div 
+                      className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor()}`}
+                      style={{ width: `${passwordStrength}%` }}
+                    ></div>
+                  </div>
+                </div>
               )}
+              
+              {errors.password && (
+                <p className="mt-2 text-sm text-red-600 animate-slide-up flex items-center">
+                  <FaTimes className="mr-1" /> {errors.password}
+                </p>
+              )}
+              {isFieldValid('password') && (
+                <p className="mt-2 text-sm text-green-600 animate-slide-up flex items-center">
+                  <FaCheck className="mr-1" /> Valid password
+                </p>
+              )}
+            </div>
+
+            {/* Password Requirements Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <FaInfoCircle className="text-blue-500 mt-0.5 mr-2 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-blue-800 mb-1">Password Requirements</p>
+                  <ul className="text-xs text-blue-700 space-y-1">
+                    <li className={`flex items-center ${formData.password?.length >= 8 ? 'text-green-600' : ''}`}>
+                      {formData.password?.length >= 8 ? <FaCheck className="mr-1" /> : <span className="mr-1">•</span>}
+                      Minimum 8 characters
+                    </li>
+                    <li className={`flex items-center ${/[a-z]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                      {/[a-z]/.test(formData.password) ? <FaCheck className="mr-1" /> : <span className="mr-1">•</span>}
+                      At least one lowercase letter
+                    </li>
+                    <li className={`flex items-center ${/[A-Z]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                      {/[A-Z]/.test(formData.password) ? <FaCheck className="mr-1" /> : <span className="mr-1">•</span>}
+                      At least one uppercase letter
+                    </li>
+                    <li className={`flex items-center ${/\d/.test(formData.password) ? 'text-green-600' : ''}`}>
+                      {/\d/.test(formData.password) ? <FaCheck className="mr-1" /> : <span className="mr-1">•</span>}
+                      At least one number
+                    </li>
+                    <li className={`flex items-center ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                      {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? <FaCheck className="mr-1" /> : <span className="mr-1">•</span>}
+                      At least one special character
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
-              className="btn-primary w-full py-4 text-lg"
+              disabled={loading || Object.keys(errors).length > 0 || !formData.email || !formData.password}
+              className={`btn-primary w-full py-4 text-lg ${Object.keys(errors).length > 0 || !formData.email || !formData.password ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {loading ? (
                 <span className="flex items-center justify-center">

@@ -86,7 +86,30 @@ router.post(
   handleUploadError,
   async (req, res) => {
     try {
-      const { fullName, dob, email, mobile } = req.body;
+      // 🔍 DEBUG: Log what's coming in
+      console.log('=== BACKEND REGISTER REQUEST ===');
+      console.log('Request body:', req.body);
+      console.log('Request files:', req.files);
+      console.log('Password in body:', req.body.password ? 'PRESENT' : 'MISSING');
+      console.log('Password value:', req.body.password ? req.body.password.substring(0, 5) + '...' : 'undefined');
+      
+      // Extract ALL fields from request body
+      const { 
+        fullName, 
+        dob, 
+        email, 
+        password,  // ← THIS WAS MISSING!
+        mobile 
+      } = req.body;
+      
+      // Validate required fields
+      if (!password) {
+        console.error('❌ ERROR: Password is missing from request body');
+        return res.status(400).json({
+          success: false,
+          message: 'Password is required'
+        });
+      }
       
       // Check if user already exists
       const existingUser = await User.findOne({ email });
@@ -97,14 +120,23 @@ router.post(
         });
       }
 
-      // Create new user
+      // Create new user WITH PASSWORD
       const newUser = new User({
         fullName,
         dob,
         email,
+        password,  // ← ADD THIS LINE!
         mobile,
         profileImage: req.files?.profileImage?.[0]?.path || null,
         document: req.files?.document?.[0]?.path || null
+      });
+
+      console.log('✅ Creating user with data:', {
+        fullName: newUser.fullName,
+        email: newUser.email,
+        password: '[HIDDEN]',
+        mobile: newUser.mobile,
+        dob: newUser.dob
       });
 
       await newUser.save();
@@ -120,9 +152,28 @@ router.post(
       });
     } catch (error) {
       console.error('Registration error:', error);
+      
+      // More detailed error handling
+      if (error.name === 'ValidationError') {
+        const messages = Object.values(error.errors).map(val => val.message);
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: messages
+        });
+      }
+      
+      if (error.code === 11000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Email already exists'
+        });
+      }
+      
       res.status(500).json({
         success: false,
-        message: 'Registration failed'
+        message: 'Registration failed',
+        error: error.message
       });
     }
   }
@@ -440,6 +491,21 @@ router.get('/health', (req, res) => {
     success: true,
     message: 'Users API is working',
     timestamp: new Date().toISOString()
+  });
+});
+
+// ==================== TEST ENDPOINT ====================
+// Add this test endpoint to debug FormData
+router.post('/test-formdata', upload.none(), (req, res) => {
+  console.log('=== TEST FORMDATA RECEIVED ===');
+  console.log('Body:', req.body);
+  console.log('Headers:', req.headers);
+  console.log('==============================');
+  
+  res.json({
+    success: true,
+    message: 'FormData test successful',
+    received: req.body
   });
 });
 

@@ -73,6 +73,19 @@ api.interceptors.response.use(
   }
 );
 
+// Helper function to log FormData contents
+const logFormData = (formData, endpoint) => {
+  console.log(`=== FORMDATA DEBUG for ${endpoint} ===`);
+  for (let pair of formData.entries()) {
+    console.log(`${pair[0]}:`, 
+      typeof pair[1] === 'string' ? 
+      pair[1] : 
+      `${pair[1].constructor.name} - ${pair[1].name || 'No name'}`
+    );
+  }
+  console.log('==================================');
+};
+
 // Auth API calls
 export const authAPI = {
   login: (email, password) => 
@@ -87,12 +100,42 @@ export const authAPI = {
 
 // User API calls - UPDATED TO MATCH BACKEND ROUTES
 export const userAPI = {
-  register: (formData) => 
-    api.post('/users/register', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
+  register: async (formData) => {
+    try {
+      // Log FormData contents for debugging
+      logFormData(formData, 'register');
+      
+      const response = await api.post('/users/register', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        // Add timeout to prevent hanging
+        timeout: 30000,
+        // Add onUploadProgress for debugging
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.lengthComputable) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            console.log(`Upload Progress: ${percentCompleted}%`);
+          }
+        }
+      });
+      
+      console.log('✅ Register API Success:', response.data);
+      return response;
+    } catch (error) {
+      console.error('❌ Register API Error:');
+      console.error('  Error:', error.message);
+      console.error('  Response data:', error.response?.data);
+      console.error('  Response status:', error.response?.status);
+      
+      // Enhanced error handling
+      if (error.response?.data?.message?.includes('password')) {
+        throw new Error('Password field issue: ' + error.response.data.message);
+      }
+      
+      throw error;
+    }
+  },
   
   getAllUsers: () => 
     api.get('/users/all'),
@@ -105,12 +148,24 @@ export const userAPI = {
     api.get(`/users/grid/view/${id}`),  // Changed from /users/:id
     
   // ✅ CHANGED: Now using /users/grid/edit/:id to match backend  
-  updateUser: (id, formData) =>
-    api.put(`/users/grid/edit/${id}`, formData, {  // Changed from /users/:id
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
+  updateUser: async (id, formData) => {
+    try {
+      logFormData(formData, `updateUser-${id}`);
+      
+      const response = await api.put(`/users/grid/edit/${id}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000,
+      });
+      
+      console.log('✅ Update User API Success:', response.data);
+      return response;
+    } catch (error) {
+      console.error('❌ Update User API Error:', error);
+      throw error;
+    }
+  },
 
   deleteUser: (id) =>
     api.delete(`/users/${id}`),
@@ -137,10 +192,47 @@ export const userAPI = {
       throw error;
     }
   },
+  
+  // ✅ ADDED: Test endpoint to debug FormData sending
+  testFormData: async (testData) => {
+    try {
+      const testFormData = new FormData();
+      testFormData.append('testField1', 'Test Value 1');
+      testFormData.append('testField2', 'Test Value 2');
+      testFormData.append('password', 'TestPassword123');
+      
+      console.log('🧪 Testing FormData sending...');
+      logFormData(testFormData, 'testFormData');
+      
+      const response = await api.post('/users/test-formdata', testFormData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('❌ FormData Test Error:', error);
+      throw error;
+    }
+  },
 };
 
 // Health check
 export const checkHealth = () => 
   api.get('/health');
+
+// ✅ ADDED: Direct test function for backend communication
+export const testBackendConnection = async () => {
+  try {
+    console.log('🧪 Testing backend connection...');
+    const response = await api.get('/health');
+    console.log('✅ Backend connection successful:', response.data);
+    return true;
+  } catch (error) {
+    console.error('❌ Backend connection failed:', error.message);
+    return false;
+  }
+};
 
 export default api;
