@@ -56,6 +56,7 @@ const Register = () => {
     dob: null,
     email: '',
     password: '',
+    confirmPassword: '',
     mobile: '',
     profileImage: null,
     document: null,
@@ -63,22 +64,26 @@ const Register = () => {
   const [errors, setErrors] = useState({});
   const [selectedCountry, setSelectedCountry] = useState('+91');
   const [imagePreview, setImagePreview] = useState(null);
+  const [documentPreview, setDocumentPreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldTouched, setFieldTouched] = useState({
     fullName: false,
     dob: false,
     email: false,
     password: false,
+    confirmPassword: false,
     mobile: false,
     profileImage: false,
     document: false,
   });
   const [passwordStrength, setPasswordStrength] = useState(0);
+  const [confirmPasswordStrength, setConfirmPasswordStrength] = useState(0);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const datePickerRef = useRef(null);
   const mobileInputRef = useRef(null);
 
-  const validateField = useCallback(async (name, value, countryCode = '+91') => {
+  const validateField = useCallback(async (name, value, countryCode = '+91', passwordToCompare = '') => {
     switch (name) {
       case 'fullName':
         return validateFullName(value);
@@ -88,6 +93,17 @@ const Register = () => {
         const error = validatePassword(value, true);
         calculatePasswordStrength(value);
         return error;
+      case 'confirmPassword':
+        // First validate password requirements
+        const passwordError = validatePassword(value, true);
+        if (passwordError) {
+          return passwordError;
+        }
+        // Then check if passwords match
+        if (value && passwordToCompare && value !== passwordToCompare) {
+          return 'Passwords do not match';
+        }
+        return '';
       case 'mobile':
         // Pass the country code for proper validation
         return validateMobile(value, countryCode);
@@ -123,6 +139,9 @@ const Register = () => {
             newErrors[field] = await validateField(field, value, selectedCountry);
           } else if (field === 'dob') {
             newErrors[field] = await validateField(field, value);
+          } else if (field === 'confirmPassword') {
+            // For confirm password, we need to pass the original password for comparison
+            newErrors[field] = await validateField(field, value, '+91', formData.password);
           } else if (field === 'profileImage' || field === 'document') {
             if (value) {
               const result = await validateField(field, value);
@@ -149,7 +168,7 @@ const Register = () => {
     };
 
     validateFormLive();
-  }, [debouncedFormData, fieldTouched, validateField, selectedCountry]);
+  }, [debouncedFormData, fieldTouched, validateField, selectedCountry, formData.password]);
 
   const formatDateForInput = (date) => {
     if (!date) return '';
@@ -196,10 +215,40 @@ const Register = () => {
     setPasswordStrength(Math.min(100, strength));
   };
 
-  const getPasswordStrengthColor = () => {
-    if (passwordStrength < 40) return 'bg-red-500';
-    if (passwordStrength < 70) return 'bg-yellow-500';
-    if (passwordStrength < 90) return 'bg-blue-500';
+  const calculateConfirmPasswordStrength = (password) => {
+    if (!password) {
+      setConfirmPasswordStrength(0);
+      return;
+    }
+    
+    let strength = 0;
+    
+    if (password.length >= 8) strength += 20;
+    if (password.length >= 12) strength += 10;
+    
+    if (/[a-z]/.test(password)) strength += 15;
+    if (/[A-Z]/.test(password)) strength += 15;
+    if (/\d/.test(password)) strength += 15;
+    if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 15;
+    
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 5;
+    if (/\d/.test(password) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 5;
+    
+    if (/password|123456|qwerty/i.test(password)) strength = Math.max(0, strength - 30);
+    if (/(.)\1{3,}/.test(password)) strength = Math.max(0, strength - 20);
+    
+    // Bonus for matching passwords
+    if (formData.password && password === formData.password) {
+      strength = Math.min(100, strength + 10);
+    }
+    
+    setConfirmPasswordStrength(Math.min(100, strength));
+  };
+
+  const getPasswordStrengthColor = (strength) => {
+    if (strength < 40) return 'bg-red-500';
+    if (strength < 70) return 'bg-yellow-500';
+    if (strength < 90) return 'bg-blue-500';
     return 'bg-green-500';
   };
 
@@ -231,6 +280,7 @@ const Register = () => {
           [name]: null
         }));
         if (name === 'profileImage') setImagePreview(null);
+        if (name === 'document') setDocumentPreview(null);
         return;
       }
       
@@ -250,8 +300,11 @@ const Register = () => {
           e.target.value = '';
           toast.error(error);
           setFormData(prev => ({ ...prev, document: null }));
+          setDocumentPreview(null);
           return;
         }
+        // Create document preview URL
+        setDocumentPreview(URL.createObjectURL(file));
       }
       
       setFormData(prev => ({
@@ -294,6 +347,15 @@ const Register = () => {
         newValue = value.replace(/[^a-zA-Z\s\-\']/g, '');
       } else if (name === 'email') {
         newValue = value.toLowerCase();
+      } else if (name === 'password') {
+        // When password changes, recalculate strength for both passwords
+        calculatePasswordStrength(value);
+        if (formData.confirmPassword) {
+          calculateConfirmPasswordStrength(formData.confirmPassword);
+        }
+      } else if (name === 'confirmPassword') {
+        // When confirm password changes, calculate its strength
+        calculateConfirmPasswordStrength(value);
       }
       
       setFormData(prev => ({
@@ -414,6 +476,7 @@ const Register = () => {
       validateField('fullName', formData.fullName),
       validateField('email', formData.email),
       validateField('password', formData.password),
+      validateField('confirmPassword', formData.confirmPassword, '+91', formData.password),
       validateField('mobile', formData.mobile, selectedCountry),
       validateField('dob', formData.dob),
       validateField('profileImage', formData.profileImage),
@@ -424,10 +487,11 @@ const Register = () => {
       fullName: validationResults[0],
       email: validationResults[1],
       password: validationResults[2],
-      mobile: validationResults[3],
-      dob: validationResults[4],
-      profileImage: validationResults[5],
-      document: validationResults[6]
+      confirmPassword: validationResults[3],
+      mobile: validationResults[4],
+      dob: validationResults[5],
+      profileImage: validationResults[6],
+      document: validationResults[7]
     };
     
     const filteredErrors = Object.fromEntries(
@@ -500,7 +564,7 @@ const Register = () => {
       if (typeof value === 'string' && value.trim() === '') return false;
       return true;
     });
-    return Math.round((filledFields.length / 7) * 100);
+    return Math.round((filledFields.length / 8) * 100);
   };
 
   const isFieldValid = (fieldName) => {
@@ -607,6 +671,12 @@ const Register = () => {
       ...prev,
       mobile: digitsOnly
     }));
+  };
+
+  // Check if passwords match
+  const doPasswordsMatch = () => {
+    return formData.password && formData.confirmPassword && 
+           formData.password === formData.confirmPassword;
   };
 
   return (
@@ -814,7 +884,7 @@ const Register = () => {
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-1.5">
                       <div 
-                        className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor()}`}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(passwordStrength)}`}
                         style={{ width: `${passwordStrength}%` }}
                       ></div>
                     </div>
@@ -829,6 +899,75 @@ const Register = () => {
                 {isFieldValid('password') && (
                   <p className="text-sm text-green-600 animate-slide-up flex items-center">
                     <FaCheck className="mr-1" /> Strong password
+                  </p>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 flex items-center">
+                  <FaLock className="mr-2 text-primary-600" />
+                  Confirm Password *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('confirmPassword')}
+                    onCopy={handlePasswordCopy}
+                    onPaste={handlePasswordPaste}
+                    onCut={handlePasswordCut}
+                    className={`form-input pr-10 ${isFieldInvalid('confirmPassword') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('confirmPassword') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                    placeholder="Re-enter your password"
+                    disabled={loading}
+                    maxLength={128}
+                    autoComplete="new-password"
+                  />
+                  <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                    {isFieldValid('confirmPassword') && doPasswordsMatch() && <FaCheck className="text-green-600" />}
+                    {isFieldInvalid('confirmPassword') && <FaTimes className="text-red-600" />}
+                  </div>
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary-600"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    disabled={loading}
+                  >
+                    {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+                  </button>
+                </div>
+                
+                {formData.confirmPassword && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-600">Password Match:</span>
+                      <span className="text-xs font-medium">
+                        {doPasswordsMatch() ? (
+                          <span className="text-green-600">✓ Passwords match</span>
+                        ) : formData.password && formData.confirmPassword ? (
+                          <span className="text-red-600">✗ Passwords don't match</span>
+                        ) : 'Enter password to check'}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div 
+                        className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(confirmPasswordStrength)}`}
+                        style={{ width: `${confirmPasswordStrength}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+                
+                {errors.confirmPassword && (
+                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                    <FaTimes className="mr-1" /> {errors.confirmPassword}
+                  </p>
+                )}
+                {isFieldValid('confirmPassword') && doPasswordsMatch() && (
+                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                    <FaCheck className="mr-1" /> Passwords match
                   </p>
                 )}
               </div>
@@ -964,26 +1103,45 @@ const Register = () => {
                     </span>
                   )}
                 </label>
-                <label className={`cursor-pointer block ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  <input
-                    type="file"
-                    name="document"
-                    onChange={handleChange}
-                    onBlur={() => handleBlur('document')}
-                    accept=".pdf,application/pdf"
-                    className="hidden"
-                    disabled={loading}
-                  />
-                  <div className={`card flex items-center justify-center p-8 border-2 border-dashed ${isFieldInvalid('document') ? 'border-red-500' : isFieldValid('document') ? 'border-green-500' : 'border-gray-300'} hover:border-primary-500 transition-all duration-300`}>
-                    <div className="text-center">
-                      <FaFilePdf className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                      <p className="text-gray-600">
-                        {formData.document ? formData.document.name : 'Click to upload PDF document'}
-                      </p>
-                      <p className="text-sm text-gray-500 mt-1">Max 5MB, PDF only (.pdf)</p>
+                <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
+                  <label className={`cursor-pointer flex-1 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <input
+                      type="file"
+                      name="document"
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('document')}
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      disabled={loading}
+                    />
+                    <div className={`card flex items-center justify-center p-8 border-2 border-dashed ${isFieldInvalid('document') ? 'border-red-500' : isFieldValid('document') ? 'border-green-500' : 'border-gray-300'} hover:border-primary-500 transition-all duration-300`}>
+                      <div className="text-center">
+                        <FaUpload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                        <p className="text-gray-600">
+                          {formData.document ? formData.document.name : 'Click to upload PDF document'}
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">Max 5MB, PDF only (.pdf)</p>
+                      </div>
                     </div>
-                  </div>
-                </label>
+                  </label>
+                  
+                  {documentPreview && (
+                    <div className="relative">
+                      <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-red-50 flex items-center justify-center">
+                        <div className="text-center">
+                          <FaFilePdf className="w-12 h-12 text-red-500 mx-auto mb-2" />
+                          <p className="text-xs text-gray-700 font-medium truncate max-w-[100px]">
+                            {formData.document?.name}
+                          </p>
+                          <p className="text-xs text-gray-500">PDF Document</p>
+                        </div>
+                      </div>
+                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center">
+                        <FaFilePdf className="w-4 h-4" />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {errors.document && (
                   <p className="text-sm text-red-600 animate-slide-up flex items-center">
                     <FaTimes className="mr-1" /> {errors.document}
