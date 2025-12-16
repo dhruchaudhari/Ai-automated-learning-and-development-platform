@@ -25,7 +25,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇺🇸', 
     digits: 10,
     pattern: 'NXX-NXX-XXXX (N=2-9, X=0-9)',
-    example: '212-555-1234'
+    example: '212-555-1234',
+    isoCode: 'US'
   },
   { 
     code: '+44', 
@@ -33,7 +34,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇬🇧', 
     digits: 10,
     pattern: '7XXX XXX XXX',
-    example: '7123 456789'
+    example: '7123 456789',
+    isoCode: 'GB'
   },
   { 
     code: '+91', 
@@ -41,7 +43,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇮🇳', 
     digits: 10,
     pattern: '6-9XX-XXX-XXXX',
-    example: '9876543210'
+    example: '9876543210',
+    isoCode: 'IN'
   },
   { 
     code: '+61', 
@@ -49,7 +52,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇦🇺', 
     digits: 9,
     pattern: 'X XXX XXX XXX',
-    example: '412 345 678'
+    example: '412 345 678',
+    isoCode: 'AU'
   },
   { 
     code: '+49', 
@@ -57,7 +61,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇩🇪', 
     digits: '10-11',
     pattern: '15XX XXXXXXX',
-    example: '1512 3456789'
+    example: '1512 3456789',
+    isoCode: 'DE'
   },
   { 
     code: '+33', 
@@ -65,7 +70,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇫🇷', 
     digits: 9,
     pattern: '6 XX XX XX XX',
-    example: '6 12 34 56 78'
+    example: '6 12 34 56 78',
+    isoCode: 'FR'
   },
   { 
     code: '+81', 
@@ -73,7 +79,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇯🇵', 
     digits: '10-11',
     pattern: '90-XXXX-XXXX',
-    example: '90-1234-5678'
+    example: '90-1234-5678',
+    isoCode: 'JP'
   },
   { 
     code: '+86', 
@@ -81,7 +88,8 @@ export const MOBILE_COUNTRIES = [
     flag: '🇨🇳', 
     digits: 11,
     pattern: '13X XXXX XXXX',
-    example: '138 0013 8000'
+    example: '138 0013 8000',
+    isoCode: 'CN'
   },
 ];
 
@@ -162,5 +170,49 @@ export const COUNTRY_VALIDATION_RULES = {
       '18': 'China Mobile',
       '19': 'China Unicom'
     }
+  }
+};
+
+// Phone number formatting examples by country
+export const PHONE_EXAMPLES = {
+  '+1': {
+    format: '(XXX) XXX-XXXX',
+    example: '(212) 555-1234',
+    note: 'Area code cannot start with 0 or 1'
+  },
+  '+44': {
+    format: '7XXX XXX XXX',
+    example: '7123 456789',
+    note: 'Must start with 7 followed by 1-9'
+  },
+  '+91': {
+    format: 'XXXXX-XXXXX',
+    example: '98765-43210',
+    note: 'Must start with 6, 7, 8, or 9'
+  },
+  '+61': {
+    format: 'X XXX XXX XXX',
+    example: '4 12 345 678',
+    note: '9 digits, cannot start with 0'
+  },
+  '+49': {
+    format: 'XXX XXXXXXXX',
+    example: '151 23456789',
+    note: '10-11 digits, cannot start with 0'
+  },
+  '+33': {
+    format: 'X XX XX XX XX',
+    example: '6 12 34 56 78',
+    note: '9 digits, cannot start with 0'
+  },
+  '+81': {
+    format: 'XX-XXXX-XXXX',
+    example: '90-1234-5678',
+    note: '10-11 digits, starts with 7-9'
+  },
+  '+86': {
+    format: 'XXX XXXX XXXX',
+    example: '138 0013 8000',
+    note: '11 digits, starts with 13-19'
   }
 };

@@ -14,7 +14,7 @@ import {
   preventPasswordCopyPaste,
   parseDateInput
 } from '../utils/validations';
-import { MOBILE_COUNTRIES, APP_CONSTANTS } from '../utils/constants';
+import { MOBILE_COUNTRIES, APP_CONSTANTS, PHONE_EXAMPLES } from '../utils/constants';
 import { 
   FaUser, 
   FaCalendar, 
@@ -76,6 +76,7 @@ const Register = () => {
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const datePickerRef = useRef(null);
+  const mobileInputRef = useRef(null);
 
   const validateField = useCallback(async (name, value, countryCode = '+91') => {
     switch (name) {
@@ -88,8 +89,8 @@ const Register = () => {
         calculatePasswordStrength(value);
         return error;
       case 'mobile':
-        const fullNumber = countryCode + value.replace(countryCode, '');
-        return validateMobile(fullNumber, countryCode);
+        // Pass the country code for proper validation
+        return validateMobile(value, countryCode);
       case 'dob':
         if (value instanceof Date) {
           return validateDOB(value);
@@ -261,10 +262,34 @@ const Register = () => {
       let newValue = value;
       
       if (name === 'mobile') {
-        const digitsOnly = value.replace(/\D/g, '');
+        // Only allow digits and plus sign
+        const digitsOnly = value.replace(/[^\d+]/g, '');
+        
+        // If user included country code, extract just the national number
+        if (digitsOnly.startsWith('+')) {
+          const dialCodeMatch = digitsOnly.match(/^\+\d{1,3}/);
+          if (dialCodeMatch && dialCodeMatch[0] !== selectedCountry) {
+            toast.error(`Country code mismatch. Please use ${selectedCountry} or change country selection.`);
+            return;
+          }
+          // Remove country code for storage
+          newValue = digitsOnly.replace(/^\+\d{1,3}/, '');
+        } else {
+          newValue = digitsOnly;
+        }
+        
+        // Get max digits for selected country
         const countryInfo = getCountryInfo(selectedCountry);
         const maxDigits = countryInfo.digits || 15;
-        newValue = digitsOnly.substring(0, maxDigits);
+        
+        // Limit length based on country
+        if (typeof maxDigits === 'number') {
+          newValue = newValue.substring(0, maxDigits);
+        } else if (typeof maxDigits === 'string' && maxDigits.includes('-')) {
+          const [min, max] = maxDigits.split('-').map(Number);
+          newValue = newValue.substring(0, max);
+        }
+        
       } else if (name === 'fullName') {
         newValue = value.replace(/[^a-zA-Z\s\-\']/g, '');
       } else if (name === 'email') {
@@ -355,6 +380,13 @@ const Register = () => {
       ...prev,
       mobile: ''
     }));
+    
+    // Focus on mobile input after country change
+    setTimeout(() => {
+      if (mobileInputRef.current) {
+        mobileInputRef.current.focus();
+      }
+    }, 100);
   };
 
   const handlePasswordCopy = (e) => {
@@ -484,30 +516,97 @@ const Register = () => {
     return country || { code: '+91', name: 'India', flag: '🇮🇳', digits: 10 };
   };
 
-  const getCountryValidationMessage = (code) => {
-    const country = MOBILE_COUNTRIES.find(c => c.code === code);
-    if (!country) return 'Enter valid mobile number';
+  const formatPhoneExample = () => {
+    const example = PHONE_EXAMPLES[selectedCountry];
+    if (!example) return 'Enter valid phone number';
     
-    switch (code) {
-      case '+1':
-        return 'US/Canada: 10 digits, area code 2-9 (e.g., 212-555-1234)';
-      case '+44':
-        return 'UK: 10 digits, starts with 7 (e.g., 7123 456789)';
-      case '+91':
-        return 'India: 10 digits, starts with 6, 7, 8, or 9 (e.g., 9876543210)';
-      case '+61':
-        return 'Australia: 9 digits (e.g., 412 345 678)';
-      case '+49':
-        return 'Germany: 10-11 digits (e.g., 1512 3456789)';
-      case '+33':
-        return 'France: 9 digits (e.g., 6 12 34 56 78)';
-      case '+81':
-        return 'Japan: 10-11 digits, starts with 7, 8, or 9 (e.g., 90-1234-5678)';
-      case '+86':
-        return 'China: 11 digits, starts with 13-19 (e.g., 138 0013 8000)';
-      default:
-        return `Enter ${country.digits || 'valid'} digit mobile number`;
+    return `Format: ${example.format} (e.g., ${example.example})`;
+  };
+
+  const getCountryValidationMessage = (code) => {
+    const country = getCountryInfo(code);
+    const example = PHONE_EXAMPLES[code];
+    
+    if (!example) {
+      return `Enter a valid ${country.name} phone number`;
     }
+    
+    return `${country.name}: ${example.format} ${example.note ? `(${example.note})` : ''}`;
+  };
+
+  // Format phone number for display
+  const formatPhoneNumber = (number) => {
+    if (!number) return '';
+    
+    const country = getCountryInfo(selectedCountry);
+    const digits = number.replace(/\D/g, '');
+    
+    switch (selectedCountry) {
+      case '+1': // US/Canada
+        if (digits.length <= 3) return digits;
+        if (digits.length <= 6) return `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+        return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6,10)}`;
+      
+      case '+44': // UK
+        if (digits.length <= 5) return digits;
+        if (digits.length <= 8) return `${digits.slice(0,5)} ${digits.slice(5)}`;
+        return `${digits.slice(0,5)} ${digits.slice(5,8)} ${digits.slice(8,10)}`;
+      
+      case '+91': // India
+        if (digits.length <= 5) return digits;
+        return `${digits.slice(0,5)}-${digits.slice(5,10)}`;
+      
+      case '+61': // Australia
+        if (digits.length <= 1) return digits;
+        if (digits.length <= 4) return `${digits.slice(0,1)} ${digits.slice(1)}`;
+        if (digits.length <= 7) return `${digits.slice(0,1)} ${digits.slice(1,4)} ${digits.slice(4)}`;
+        return `${digits.slice(0,1)} ${digits.slice(1,4)} ${digits.slice(4,7)} ${digits.slice(7,9)}`;
+      
+      case '+49': // Germany
+        if (digits.length <= 3) return digits;
+        return `${digits.slice(0,3)} ${digits.slice(3)}`;
+      
+      case '+33': // France
+        if (digits.length <= 1) return digits;
+        if (digits.length <= 3) return `${digits.slice(0,1)} ${digits.slice(1)}`;
+        if (digits.length <= 5) return `${digits.slice(0,1)} ${digits.slice(1,3)} ${digits.slice(3)}`;
+        if (digits.length <= 7) return `${digits.slice(0,1)} ${digits.slice(1,3)} ${digits.slice(3,5)} ${digits.slice(5)}`;
+        return `${digits.slice(0,1)} ${digits.slice(1,3)} ${digits.slice(3,5)} ${digits.slice(5,7)} ${digits.slice(7,9)}`;
+      
+      case '+81': // Japan
+        if (digits.length <= 2) return digits;
+        if (digits.length <= 6) return `${digits.slice(0,2)}-${digits.slice(2)}`;
+        return `${digits.slice(0,2)}-${digits.slice(2,6)}-${digits.slice(6,10)}`;
+      
+      case '+86': // China
+        if (digits.length <= 3) return digits;
+        if (digits.length <= 7) return `${digits.slice(0,3)} ${digits.slice(3)}`;
+        return `${digits.slice(0,3)} ${digits.slice(3,7)} ${digits.slice(7,11)}`;
+      
+      default:
+        return digits;
+    }
+  };
+
+  // Handle phone input with formatting
+  const handlePhoneChange = (e) => {
+    const value = e.target.value;
+    handleTouch('mobile');
+    
+    // Extract digits only for storage
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    // Format for display
+    const formatted = formatPhoneNumber(digitsOnly);
+    
+    // Update input value with formatting
+    e.target.value = formatted;
+    
+    // Store digits only in form data
+    setFormData(prev => ({
+      ...prev,
+      mobile: digitsOnly
+    }));
   };
 
   return (
@@ -537,7 +636,7 @@ const Register = () => {
                     onChange={handleChange}
                     onBlur={() => handleBlur('fullName')}
                     className={`form-input ${isFieldInvalid('fullName') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('fullName') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="John Doe"
+                    placeholder="Vatsalraj Solanki"
                     disabled={loading}
                     maxLength={100}
                   />
@@ -646,7 +745,7 @@ const Register = () => {
                     onChange={handleChange}
                     onBlur={() => handleBlur('email')}
                     className={`form-input ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="john.doe@example.com"
+                    placeholder="vatsalraj@example.com"
                     disabled={loading}
                     maxLength={254}
                   />
@@ -752,21 +851,25 @@ const Register = () => {
                   >
                     {MOBILE_COUNTRIES.map((country) => (
                       <option key={country.code} value={country.code}>
-                        {country.flag} {country.code} ({country.name})
+                        {country.flag} {country.code}
                       </option>
                     ))}
                   </select>
                   <div className="relative flex-1">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                      {selectedCountry}
+                    </div>
                     <input
+                      ref={mobileInputRef}
                       type="tel"
                       name="mobile"
-                      value={formData.mobile}
-                      onChange={handleChange}
+                      value={formatPhoneNumber(formData.mobile)}
+                      onChange={handlePhoneChange}
                       onBlur={() => handleBlur('mobile')}
-                      className={`form-input w-full ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                      placeholder={`Enter ${getCountryInfo(selectedCountry).name} number`}
+                      className={`form-input w-full pl-14 ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                      placeholder={PHONE_EXAMPLES[selectedCountry]?.example || "Enter phone number"}
                       disabled={loading}
-                      inputMode="numeric"
+                      inputMode="tel"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                       {isFieldValid('mobile') && <FaCheck className="text-green-600" />}

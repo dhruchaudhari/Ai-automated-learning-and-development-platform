@@ -1,5 +1,6 @@
 // Enhanced validation utilities with realistic validations
 import { toast } from 'react-hot-toast';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export const validateFullName = (name) => {
   if (!name || name.trim().length === 0) {
@@ -211,212 +212,130 @@ export const validatePassword = (password, isRegistration = true) => {
   return '';
 };
 
+// Helper to map dial codes to ISO country codes
+const getIsoCountryCodeFromDialCode = (dialCode) => {
+  const dialCodeToCountry = {
+    '+1': 'US',
+    '+44': 'GB',
+    '+91': 'IN',
+    '+61': 'AU',
+    '+49': 'DE',
+    '+33': 'FR',
+    '+81': 'JP',
+    '+86': 'CN',
+  };
+  return dialCodeToCountry[dialCode] || null;
+};
+
+// Helper to get country name for error messages
+const getCountryNameFromCode = (isoCode) => {
+  const countryNames = {
+    'US': 'United States/Canada',
+    'GB': 'United Kingdom',
+    'IN': 'India',
+    'AU': 'Australia',
+    'DE': 'Germany',
+    'FR': 'France',
+    'JP': 'Japan',
+    'CN': 'China',
+  };
+  return countryNames[isoCode] || isoCode;
+};
+
 export const validateMobile = (mobile, countryCode = '+91') => {
   if (!mobile) {
     return 'Mobile number is required';
   }
   
-  // Ensure we have country code
-  let mobileNumber = mobile;
-  if (!mobile.startsWith('+')) {
-    mobileNumber = countryCode + mobile.replace(/^\+\d{1,3}/, '');
-  }
+  // Clean the input - remove all non-digit characters except plus
+  let mobileNumber = mobile.replace(/[^\d+]/g, '');
   
-  // Remove any non-digit characters except leading +
-  const cleanedNumber = mobileNumber.replace(/[^\d+]/g, '');
-  
-  // Validate country code format
-  const countryCodeRegex = /^\+\d{1,3}$/;
-  const code = cleanedNumber.match(/^\+\d{1,3}/)?.[0] || '';
-  
-  if (!countryCodeRegex.test(code)) {
-    return 'Invalid country code format';
-  }
-  
-  // Get just the number part
-  const numberPart = cleanedNumber.replace(code, '');
-  
-  // Check length
-  if (numberPart.length === 0) {
-    return 'Mobile number is required';
-  }
-  
-  // Check only digits
-  if (!/^\d+$/.test(numberPart)) {
-    return 'Mobile number can only contain digits';
-  }
-  
-  // Country-specific validations based on real-world requirements
-  const countryValidations = {
-    '+1': { // USA/Canada
-      minLength: 10,
-      maxLength: 10,
-      pattern: /^[2-9]\d{2}[2-9]\d{6}$/,
-      message: 'US/Canada: 10 digits, format: NXX-NXX-XXXX (N=2-9, X=0-9)',
-      areaCodes: [
-        '201','202','203','205','206','207','208','209','210','212','213','214','215','216','217','218',
-        '219','224','225','228','229','231','234','239','240','248','251','252','253','254','256','260',
-        '262','267','269','270','272','274','276','279','281','283','301','302','303','304','305','307',
-        '308','309','310','312','313','314','315','316','317','318','319','320','321','323','325','326',
-        '327','330','331','332','334','336','337','339','340','341','346','347','351','352','360','361',
-        '364','380','385','386','401','402','404','405','406','407','408','409','410','412','413','414',
-        '415','417','419','423','424','425','430','432','434','435','440','442','443','445','447','448',
-        '458','463','469','470','475','478','479','480','484','501','502','503','504','505','507','508',
-        '509','510','512','513','515','516','517','518','520','530','531','534','539','540','541','551',
-        '557','559','561','562','563','564','567','570','571','573','574','575','580','585','586','601',
-        '602','603','605','606','607','608','609','610','612','614','615','616','617','618','619','620',
-        '623','626','628','629','630','631','636','640','641','646','650','651','657','659','660','661',
-        '662','667','669','670','671','678','679','680','681','682','684','689','701','702','703','704',
-        '706','707','708','712','713','714','715','716','717','718','719','720','724','725','726','727',
-        '728','730','731','732','734','737','740','743','747','754','757','760','762','763','765','769',
-        '770','772','773','774','775','779','781','785','786','787','801','802','803','804','805','806',
-        '808','810','812','813','814','815','816','817','818','820','826','828','830','831','832','838',
-        '839','840','843','845','847','848','850','854','856','857','858','859','860','862','863','864',
-        '865','870','872','878','901','903','904','906','907','908','909','910','912','913','914','915',
-        '916','917','918','919','920','925','927','928','929','930','931','934','936','937','938','939',
-        '940','941','947','949','951','952','954','956','959','970','971','972','973','975','978','979',
-        '980','984','985','986','989'
-      ]
-    },
-    '+44': { // UK
-      minLength: 10,
-      maxLength: 10,
-      pattern: /^7[1-9]\d{8}$/,
-      message: 'UK: 10 digits, must start with 7 followed by 1-9',
-      areaCodes: [
-        '20','23','24','28','29','113','114','115','116','117','118','121','131','141','151','161',
-        '191','203','207','208','209','300','303','306','309','330','333','336','339','350','353',
-        '356','359','370','373','376','379','380','383','386','389','400','403','406','409','430',
-        '433','436','439','450','453','456','459','470','473','476','479','500','503','506','509',
-        '530','533','536','539','560','563','566','569','580','583','586','589'
-      ]
-    },
-    '+91': { // India
-      minLength: 10,
-      maxLength: 10,
-      pattern: /^[6-9]\d{9}$/,
-      message: 'India: 10 digits, must start with 6, 7, 8, or 9',
-      telecomOperators: {
-        '6': ['Airtel', 'Vodafone Idea', 'Reliance Jio'],
-        '7': ['Airtel', 'Vodafone Idea', 'Reliance Jio', 'BSNL'],
-        '8': ['Airtel', 'Vodafone Idea', 'Reliance Jio'],
-        '9': ['Airtel', 'Vodafone Idea', 'Reliance Jio', 'BSNL']
-      }
-    },
-    '+61': { // Australia
-      minLength: 9,
-      maxLength: 9,
-      pattern: /^[1-9]\d{8}$/,
-      message: 'Australia: 9 digits, cannot start with 0',
-      areaCodes: ['2','3','7','8']
-    },
-    '+49': { // Germany
-      minLength: 10,
-      maxLength: 11,
-      pattern: /^[1-9]\d{9,10}$/,
-      message: 'Germany: 10-11 digits, cannot start with 0',
-      areaCodes: [
-        '30','40','69','89','211','221','231','241','251','261','271','281','291','341','351','361',
-        '371','381','391','421','431','441','451','461','471','481','491','511','521','531','541',
-        '551','561','571','581','591','611','621','631','641','651','661','671','681','691','711',
-        '721','731','741','751','761','771','781','791','800','811','821','831','841','851','861',
-        '871','881','891','911','921','931','941','951','961','971','981','991'
-      ]
-    },
-    '+33': { // France
-      minLength: 9,
-      maxLength: 9,
-      pattern: /^[1-9]\d{8}$/,
-      message: 'France: 9 digits, cannot start with 0',
-      areaCodes: ['1','2','3','4','5']
-    },
-    '+81': { // Japan
-      minLength: 10,
-      maxLength: 11,
-      pattern: /^[7-9]\d{9,10}$/,
-      message: 'Japan: 10-11 digits, must start with 7, 8, or 9',
-      areaCodes: ['3','6','11','45','52','75','78','92','98']
-    },
-    '+86': { // China
-      minLength: 11,
-      maxLength: 11,
-      pattern: /^1[3-9]\d{9}$/,
-      message: 'China: 11 digits, must start with 13-19',
-      operators: {
-        '13': 'China Mobile',
-        '14': 'China Unicom',
-        '15': 'China Telecom',
-        '16': 'China Unicom',
-        '17': 'China Telecom',
-        '18': 'China Mobile',
-        '19': 'China Unicom'
-      }
+  // If user typed with country code, extract just the national number
+  if (mobileNumber.startsWith('+')) {
+    // Remove country code for parsing
+    const dialCodeMatch = mobileNumber.match(/^\+\d{1,3}/);
+    if (dialCodeMatch) {
+      mobileNumber = mobileNumber.substring(dialCodeMatch[0].length);
     }
-  };
+  }
   
-  const validation = countryValidations[code];
+  // If no digits left after cleaning, return error
+  if (!mobileNumber || mobileNumber.length === 0) {
+    return 'Please enter a valid phone number';
+  }
   
-  if (!validation) {
-    // Generic validation for other countries
-    if (numberPart.length < 7 || numberPart.length > 15) {
-      return 'Mobile number must be between 7-15 digits';
-    }
-    if (!/^[1-9]\d+$/.test(numberPart)) {
-      return 'Mobile number cannot start with 0';
-    }
-  } else {
-    // Country-specific validation
-    if (numberPart.length < validation.minLength || numberPart.length > validation.maxLength) {
-      return `Mobile number must be ${validation.minLength} digits for ${code}`;
+  // Construct full international number for validation
+  const fullNumber = countryCode + mobileNumber;
+  
+  try {
+    // Parse the phone number using libphonenumber-js
+    const phoneNumber = parsePhoneNumberFromString(fullNumber);
+    
+    if (!phoneNumber) {
+      return 'Invalid phone number format';
     }
     
-    if (validation.pattern && !validation.pattern.test(numberPart)) {
-      return validation.message;
+    // Check if the number is valid
+    if (!phoneNumber.isValid()) {
+      const expectedCountry = getIsoCountryCodeFromDialCode(countryCode);
+      const countryName = expectedCountry ? getCountryNameFromCode(expectedCountry) : 'selected country';
+      return `Invalid ${countryName} phone number`;
     }
     
-    // Additional country-specific validations
-    if (code === '+1' && validation.areaCodes) {
-      const areaCode = numberPart.substring(0, 3);
-      if (!validation.areaCodes.includes(areaCode)) {
-        return 'Invalid area code for US/Canada';
+    // Verify the number belongs to the selected country
+    const expectedCountry = getIsoCountryCodeFromDialCode(countryCode);
+    if (expectedCountry && phoneNumber.country && phoneNumber.country !== expectedCountry) {
+      const selectedCountryName = getCountryNameFromCode(expectedCountry);
+      const detectedCountryName = getCountryNameFromCode(phoneNumber.country);
+      return `This number belongs to ${detectedCountryName}, not ${selectedCountryName}. Please select the correct country code.`;
+    }
+    
+    // Additional validation for specific countries
+    const numberStr = phoneNumber.nationalNumber.toString();
+    
+    // US/Canada validation (NXX-NXX-XXXX where N=2-9)
+    if (countryCode === '+1') {
+      if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(numberStr)) {
+        return 'Invalid US/Canada number format. Must follow NXX-NXX-XXXX (N=2-9)';
       }
     }
     
-    if (code === '+44' && validation.areaCodes) {
-      const areaCode = numberPart.substring(0, 2);
-      if (!validation.areaCodes.includes(areaCode) && 
-          !validation.areaCodes.includes(numberPart.substring(0, 3)) &&
-          !validation.areaCodes.includes(numberPart.substring(0, 4))) {
-        return 'Invalid area code for UK';
+    // UK validation (starts with 7)
+    if (countryCode === '+44') {
+      if (!/^7[1-9]\d{8}$/.test(numberStr)) {
+        return 'Invalid UK number. Must start with 7 followed by 1-9';
       }
     }
     
-    if (code === '+86' && validation.operators) {
-      const prefix = numberPart.substring(0, 2);
-      if (!validation.operators.hasOwnProperty(prefix)) {
-        return 'Invalid mobile operator prefix for China';
+    // India validation (starts with 6-9)
+    if (countryCode === '+91') {
+      if (!/^[6-9]\d{9}$/.test(numberStr)) {
+        return 'Invalid India number. Must start with 6, 7, 8, or 9';
       }
     }
+    
+    // China validation (11 digits, starts with 1[3-9])
+    if (countryCode === '+86') {
+      if (!/^1[3-9]\d{9}$/.test(numberStr)) {
+        return 'Invalid China number. Must be 11 digits starting with 13-19';
+      }
+    }
+    
+    // Japan validation (starts with 7-9)
+    if (countryCode === '+81') {
+      if (!/^[7-9]\d{8,9}$/.test(numberStr)) {
+        return 'Invalid Japan number. Must start with 7, 8, or 9';
+      }
+    }
+    
+    return ''; // Validation passed
+    
+  } catch (error) {
+    console.error('Phone validation error:', error);
+    const expectedCountry = getIsoCountryCodeFromDialCode(countryCode);
+    const countryName = expectedCountry ? getCountryNameFromCode(expectedCountry) : 'selected country';
+    return `Invalid ${countryName} phone number format`;
   }
-  
-  // Check for unrealistic patterns
-  if (/^(\d)\1{5,}$/.test(numberPart)) {
-    return 'Invalid mobile number pattern (too many repeated digits)';
-  }
-  
-  // Check for sequential numbers
-  const sequentialPatterns = [
-    '0123456789', '1234567890', '9876543210', '0987654321',
-    '123456789', '234567890', '345678901', '456789012',
-    '567890123', '678901234', '789012345', '890123456',
-    '901234567'
-  ];
-  
-  if (sequentialPatterns.some(pattern => numberPart.includes(pattern))) {
-    return 'Invalid mobile number pattern (sequential digits)';
-  }
-  
-  return '';
 };
 
 export const validateDOB = (date) => {
