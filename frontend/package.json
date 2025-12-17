@@ -11,6 +11,11 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
+    "@nivo/bar": "^0.99.0",
+    "@nivo/core": "^0.99.0",
+    "@nivo/line": "^0.99.0",
+    "@nivo/pie": "^0.99.0",
+    "@nivo/radar": "^0.99.0",
     "axios": "^1.13.2",
     "date-fns": "^4.1.0",
     "libphonenumber-js": "^1.12.31",
