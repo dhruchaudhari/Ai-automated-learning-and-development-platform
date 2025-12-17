@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { userAPI } from "../utils/api";
 import { toast } from "react-hot-toast";
@@ -44,14 +44,47 @@ import {
   FaSortNumericUp,
   FaChevronDown,
   FaChevronUp,
-  FaTrashAlt
+  FaTrashAlt,
+  FaChartBar,
+  FaChartPie,
+  FaChartLine,
+  FaUsers
 } from "react-icons/fa";
-import { format, parseISO, differenceInDays, differenceInHours, formatDistanceToNow } from "date-fns";
+import { 
+  format, 
+  parseISO, 
+  differenceInDays, 
+  differenceInHours, 
+  formatDistanceToNow,
+  startOfDay,
+  endOfDay,
+  subDays,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+  isWithinInterval
+} from "date-fns";
 import ConfirmationModal from "./ConfirmationModal";
 import ViewUser from "./ViewUser";
 import EditUser from "./EditUser";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from "recharts";
 
-const ROWS_PER_PAGE = 5; // Changed from 10 to 5
+const ROWS_PER_PAGE = 5;
 
 // Format date for display
 const formatDateTime = (dateString) => {
@@ -397,6 +430,344 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems }) => {
   );
 };
 
+// Analytics Charts Component
+const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => {
+  const [registrationTimeRange, setRegistrationTimeRange] = useState('all');
+  const [genderTimeRange, setGenderTimeRange] = useState('all');
+  const [activationTimeRange, setActivationTimeRange] = useState('all');
+
+  // Filter users based on selection
+  const targetUsers = showSelectedOnly 
+    ? users.filter(user => selectedUsers.includes(user._id))
+    : users;
+
+  // Prepare registration data
+  const prepareRegistrationData = () => {
+    const now = new Date();
+    let filteredUsers = [...targetUsers];
+    
+    // Apply time range filter
+    if (registrationTimeRange !== 'all') {
+      filteredUsers = filteredUsers.filter(user => {
+        const userDate = new Date(user.createdAt);
+        switch(registrationTimeRange) {
+          case 'today':
+            return isWithinInterval(userDate, {
+              start: startOfDay(now),
+              end: endOfDay(now)
+            });
+          case 'yesterday':
+            const yesterday = subDays(now, 1);
+            return isWithinInterval(userDate, {
+              start: startOfDay(yesterday),
+              end: endOfDay(yesterday)
+            });
+          case 'last7days':
+            return isWithinInterval(userDate, {
+              start: subDays(now, 7),
+              end: endOfDay(now)
+            });
+          case 'last30days':
+            return isWithinInterval(userDate, {
+              start: subDays(now, 30),
+              end: endOfDay(now)
+            });
+          case 'thisMonth':
+            return isWithinInterval(userDate, {
+              start: startOfMonth(now),
+              end: endOfMonth(now)
+            });
+          case 'thisYear':
+            return isWithinInterval(userDate, {
+              start: startOfYear(now),
+              end: endOfYear(now)
+            });
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Group by date
+    const grouped = filteredUsers.reduce((acc, user) => {
+      const date = format(new Date(user.createdAt), 'yyyy-MM-dd');
+      acc[date] = (acc[date] || 0) + 1;
+      return acc;
+    }, {});
+    
+    // Convert to array and sort by date
+    return Object.entries(grouped)
+      .map(([date, count]) => ({
+        date: format(new Date(date), 'MMM dd'),
+        users: count
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-15); // Show last 15 days
+  };
+
+  // Prepare gender data
+  const prepareGenderData = () => {
+    let filteredUsers = [...targetUsers];
+    
+    // Apply time range filter
+    if (genderTimeRange !== 'all') {
+      const now = new Date();
+      filteredUsers = filteredUsers.filter(user => {
+        const userDate = new Date(user.createdAt);
+        switch(genderTimeRange) {
+          case 'today':
+            return isWithinInterval(userDate, {
+              start: startOfDay(now),
+              end: endOfDay(now)
+            });
+          case 'last7days':
+            return isWithinInterval(userDate, {
+              start: subDays(now, 7),
+              end: endOfDay(now)
+            });
+          case 'thisMonth':
+            return isWithinInterval(userDate, {
+              start: startOfMonth(now),
+              end: endOfMonth(now)
+            });
+          case 'thisYear':
+            return isWithinInterval(userDate, {
+              start: startOfYear(now),
+              end: endOfYear(now)
+            });
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Group by gender
+    const genderCount = {
+      Male: 0,
+      Female: 0,
+      Other: 0,
+      'Not specified': 0
+    };
+    
+    filteredUsers.forEach(user => {
+      const gender = user.gender || 'Not specified';
+      genderCount[gender] = (genderCount[gender] || 0) + 1;
+    });
+    
+    return Object.entries(genderCount)
+      .filter(([_, count]) => count > 0)
+      .map(([name, value]) => ({ name, value }));
+  };
+
+  // Prepare activation data
+  const prepareActivationData = () => {
+    let filteredUsers = [...targetUsers];
+    
+    // Apply time range filter
+    if (activationTimeRange !== 'all') {
+      const now = new Date();
+      filteredUsers = filteredUsers.filter(user => {
+        const userDate = new Date(user.createdAt);
+        switch(activationTimeRange) {
+          case 'today':
+            return isWithinInterval(userDate, {
+              start: startOfDay(now),
+              end: endOfDay(now)
+            });
+          case 'last7days':
+            return isWithinInterval(userDate, {
+              start: subDays(now, 7),
+              end: endOfDay(now)
+            });
+          case 'thisMonth':
+            return isWithinInterval(userDate, {
+              start: startOfMonth(now),
+              end: endOfMonth(now)
+            });
+          case 'thisYear':
+            return isWithinInterval(userDate, {
+              start: startOfYear(now),
+              end: endOfYear(now)
+            });
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Count activation status
+    const activeCount = filteredUsers.filter(user => 
+      calculateActivationDuration(user.activationHistory || []).active
+    ).length;
+    
+    const inactiveCount = filteredUsers.length - activeCount;
+    
+    return [
+      { name: 'Active', value: activeCount },
+      { name: 'Inactive', value: inactiveCount }
+    ];
+  };
+
+  const registrationData = prepareRegistrationData();
+  const genderData = prepareGenderData();
+  const activationData = prepareActivationData();
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <FaChartBar className="text-primary-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Analytics Dashboard</h3>
+          <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm">
+            {showSelectedOnly ? `${selectedUsers.length} Selected Users` : `${users.length} Total Users`}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Registration Trends Chart */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FaCalendar className="text-blue-500" />
+              <h4 className="font-medium text-gray-800">Registration Trends</h4>
+            </div>
+            <select
+              value={registrationTimeRange}
+              onChange={(e) => setRegistrationTimeRange(e.target.value)}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="thisMonth">This Month</option>
+              <option value="thisYear">This Year</option>
+            </select>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={registrationData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" stroke="#666" fontSize={12} />
+                <YAxis stroke="#666" fontSize={12} />
+                <Tooltip 
+                  formatter={(value) => [`${value} users`, 'Count']}
+                  labelFormatter={(label) => `Date: ${label}`}
+                />
+                <Legend />
+                <Bar 
+                  dataKey="users" 
+                  name="Registered Users" 
+                  fill="#3B82F6" 
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 text-sm text-gray-500 text-center">
+            Total registrations: {registrationData.reduce((sum, item) => sum + item.users, 0)}
+          </div>
+        </div>
+
+        {/* Gender Distribution Chart */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FaUsers className="text-purple-500" />
+              <h4 className="font-medium text-gray-800">Gender Distribution</h4>
+            </div>
+            <select
+              value={genderTimeRange}
+              onChange={(e) => setGenderTimeRange(e.target.value)}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="thisMonth">This Month</option>
+              <option value="thisYear">This Year</option>
+            </select>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={genderData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {genderData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => [`${value} users`, 'Count']} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 text-sm text-gray-500 text-center">
+            Total: {genderData.reduce((sum, item) => sum + item.value, 0)} users
+          </div>
+        </div>
+
+        {/* Activation Status Chart */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FaToggleOn className="text-green-500" />
+              <h4 className="font-medium text-gray-800">Activation Status</h4>
+            </div>
+            <select
+              value={activationTimeRange}
+              onChange={(e) => setActivationTimeRange(e.target.value)}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="thisMonth">This Month</option>
+              <option value="thisYear">This Year</option>
+            </select>
+          </div>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={activationData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  <Cell fill="#10B981" />
+                  <Cell fill="#6B7280" />
+                </Pie>
+                <Tooltip formatter={(value) => [`${value} users`, 'Count']} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-2 text-sm text-gray-500 text-center">
+            Active: {activationData[0]?.value || 0} | Inactive: {activationData[1]?.value || 0}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Filter Component
 const FilterPanel = ({ 
   filters, 
@@ -440,29 +811,37 @@ const FilterPanel = ({
 
   const handleDateRangeChange = (value) => {
     let startDate = null;
+    let endDate = null;
     const today = new Date();
     
     switch(value) {
       case 'today':
-        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        startDate = startOfDay(today);
+        endDate = endOfDay(today);
         break;
       case 'yesterday':
-        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+        const yesterday = subDays(today, 1);
+        startDate = startOfDay(yesterday);
+        endDate = endOfDay(yesterday);
         break;
       case 'last7days':
-        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
+        startDate = subDays(today, 7);
+        endDate = endOfDay(today);
         break;
       case 'last30days':
-        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
+        startDate = subDays(today, 30);
+        endDate = endOfDay(today);
         break;
       case 'last90days':
-        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90);
+        startDate = subDays(today, 90);
+        endDate = endOfDay(today);
         break;
       default:
         startDate = null;
+        endDate = null;
     }
     
-    onFilterChange('dateRange', { value, startDate });
+    onFilterChange('dateRange', { value, startDate, endDate });
   };
 
   return (
@@ -628,7 +1007,7 @@ const FilterPanel = ({
                 <FaCalendar className="text-purple-500" />
                 Date: {dateRangeOptions.find(d => d.value === filters.dateRange.value)?.label}
                 <button 
-                  onClick={() => onFilterChange('dateRange', { value: '', startDate: null })}
+                  onClick={() => onFilterChange('dateRange', { value: '', startDate: null, endDate: null })}
                   className="ml-1 text-purple-500 hover:text-purple-700"
                 >
                   ×
@@ -667,6 +1046,7 @@ const UserGrid = () => {
   const [previewModal, setPreviewModal] = useState({ show: false, src: null, type: null });
   const [logoutModal, setLogoutModal] = useState(false);
   const [activationModal, setActivationModal] = useState({ show: false, userId: null, currentStatus: false });
+  const [showSelectedAnalytics, setShowSelectedAnalytics] = useState(false);
   
   // New state for modals
   const [viewModal, setViewModal] = useState({ show: false, userId: null });
@@ -677,7 +1057,7 @@ const UserGrid = () => {
   const [filters, setFilters] = useState({
     gender: '',
     activationStatus: '',
-    dateRange: { value: '', startDate: null }
+    dateRange: { value: '', startDate: null, endDate: null }
   });
   const [sortBy, setSortBy] = useState('latest');
 
@@ -735,11 +1115,14 @@ const UserGrid = () => {
       });
     }
 
-    // Apply date range filter
-    if (filters.dateRange.startDate) {
+    // Apply date range filter - FIXED
+    if (filters.dateRange.startDate && filters.dateRange.endDate) {
       result = result.filter(user => {
         const userDate = new Date(user.createdAt);
-        return userDate >= filters.dateRange.startDate;
+        return isWithinInterval(userDate, {
+          start: filters.dateRange.startDate,
+          end: filters.dateRange.endDate
+        });
       });
     }
 
@@ -814,7 +1197,7 @@ const UserGrid = () => {
     setFilters({
       gender: '',
       activationStatus: '',
-      dateRange: { value: '', startDate: null }
+      dateRange: { value: '', startDate: null, endDate: null }
     });
     setSortBy('latest');
     setSearchTerm('');
@@ -885,7 +1268,7 @@ const UserGrid = () => {
       toast.error("Please select the user first");
       return;
     }
-    setDeleteModal({ show: true, userId });
+    setDeleteModal({ show: false, userId });
   };
 
   const handleDeleteConfirm = async () => {
@@ -1063,6 +1446,13 @@ const UserGrid = () => {
         </div>
 
         <div className="card backdrop-blur-xl shadow-2xl">
+          {/* Analytics Charts */}
+          <AnalyticsCharts 
+            users={users} 
+            selectedUsers={selectedUsers}
+            showSelectedOnly={showSelectedAnalytics}
+          />
+
           {/* Action Bar */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
             <div className="flex items-center gap-4">
@@ -1099,6 +1489,21 @@ const UserGrid = () => {
               <span className={`text-sm font-medium ${selectedUsers.length > 0 ? 'text-primary-600' : 'text-gray-600'}`}>
                 {selectedUsers.length} selected
               </span>
+              
+              {selectedUsers.length > 0 && (
+                <button
+                  onClick={() => setShowSelectedAnalytics(!showSelectedAnalytics)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                    showSelectedAnalytics
+                      ? 'bg-primary-600 text-white hover:bg-primary-700'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                  title="Toggle selected users analytics"
+                >
+                  <FaChartPie />
+                  {showSelectedAnalytics ? 'Show All Analytics' : 'Show Selected Analytics'}
+                </button>
+              )}
               
               <button
                 onClick={handleRefresh}
