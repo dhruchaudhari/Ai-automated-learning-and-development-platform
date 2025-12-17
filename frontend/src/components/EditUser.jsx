@@ -46,6 +46,41 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
+// Function to extract country code from mobile number
+const extractCountryCode = (mobileNumber) => {
+  if (!mobileNumber) return { countryCode: '+91', number: '' };
+  
+  // Check for common country codes
+  const countryCodes = ['+1', '+44', '+91', '+61', '+81', '+86'];
+  
+  for (const code of countryCodes) {
+    if (mobileNumber.startsWith(code)) {
+      return {
+        countryCode: code,
+        number: mobileNumber.replace(code, '')
+      };
+    }
+  }
+  
+  // Default to India if no country code found
+  return { countryCode: '+91', number: mobileNumber };
+};
+
+// Function to format Indian mobile number with dashes
+const formatIndianMobile = (number) => {
+  if (!number) return '';
+  
+  const digits = number.replace(/\D/g, '');
+  
+  if (digits.length <= 5) {
+    return digits;
+  } else if (digits.length <= 10) {
+    return `${digits.slice(0, 5)}-${digits.slice(5, 10)}`;
+  }
+  
+  return `${digits.slice(0, 5)}-${digits.slice(5, 10)}`;
+};
+
 const EditUser = ({ user, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -96,23 +131,15 @@ const EditUser = ({ user, onClose, onSuccess }) => {
       }
     }
     
-    // Format mobile number
+    // Extract country code and mobile number
     let mobileNumber = user.mobile || "";
-    let countryCode = "+91";
-    if (mobileNumber) {
-      // Extract country code
-      const match = mobileNumber.match(/^\+\d{1,3}/);
-      if (match) {
-        countryCode = match[0];
-        mobileNumber = mobileNumber.replace(countryCode, '');
-      }
-    }
+    const { countryCode, number } = extractCountryCode(mobileNumber);
     
     setFormData({
       fullName: user.fullName || "",
       dob: dobDate,
       email: user.email || "",
-      mobile: mobileNumber,
+      mobile: number, // Store only the number without country code
       profileImage: null,
       document: null,
     });
@@ -259,13 +286,19 @@ const EditUser = ({ user, onClose, onSuccess }) => {
   const formatPhoneNumber = (number) => {
     if (!number) return '';
     
-    const country = getCountryInfo(selectedCountry);
     const digits = number.replace(/\D/g, '');
     
     switch (selectedCountry) {
       case '+91': // India
+        return formatIndianMobile(digits);
+      case '+1': // US/Canada
+        if (digits.length <= 3) return digits;
+        if (digits.length <= 6) return `(${digits.slice(0,3)}) ${digits.slice(3)}`;
+        return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6,10)}`;
+      case '+44': // UK
         if (digits.length <= 5) return digits;
-        return `${digits.slice(0,5)}-${digits.slice(5,10)}`;
+        if (digits.length <= 8) return `${digits.slice(0,5)} ${digits.slice(5)}`;
+        return `${digits.slice(0,5)} ${digits.slice(5,8)} ${digits.slice(8,10)}`;
       default:
         return digits;
     }
@@ -278,7 +311,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     // Extract digits only for storage
     const digitsOnly = value.replace(/\D/g, '');
     
-    // Format for display
+    // Format for display based on selected country
     const formatted = formatPhoneNumber(digitsOnly);
     
     // Update input value with formatting
@@ -347,10 +380,9 @@ const EditUser = ({ user, onClose, onSuccess }) => {
         const digitsOnly = value.replace(/\D/g, '');
         newValue = digitsOnly;
         
-        // Limit length for India
-        if (selectedCountry === '+91') {
-          newValue = newValue.substring(0, 10);
-        }
+        // Limit length based on country
+        const countryInfo = getCountryInfo(selectedCountry);
+        newValue = newValue.substring(0, countryInfo.digits);
         
       } else if (name === 'fullName') {
         newValue = value.replace(/[^a-zA-Z\s\-\']/g, '');
@@ -443,6 +475,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     const countryCode = e.target.value;
     setSelectedCountry(countryCode);
     
+    // Reset mobile number when country changes
     setFormData(prev => ({
       ...prev,
       mobile: ''
@@ -553,7 +586,10 @@ const EditUser = ({ user, onClose, onSuccess }) => {
       
       submitData.append('dob', dobValue);
       submitData.append('email', formData.email.trim().toLowerCase());
-      submitData.append('mobile', selectedCountry + formData.mobile);
+      
+      // Combine country code with mobile number
+      const fullMobileNumber = selectedCountry + formData.mobile;
+      submitData.append('mobile', fullMobileNumber);
       
       // Handle profile image
       if (formData.profileImage instanceof File) {
@@ -607,6 +643,12 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     }).length;
     
     return Math.round((filledFields / 4) * 100);
+  };
+
+  // Get formatted phone number for display
+  const getDisplayPhoneNumber = () => {
+    if (!formData.mobile) return '';
+    return formatPhoneNumber(formData.mobile);
   };
 
   return (
@@ -760,7 +802,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
             )}
           </div>
 
-          {/* Mobile Number */}
+          {/* Mobile Number - FIXED SECTION */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700 flex items-center">
               <FaPhone className="mr-2 text-primary-600" />
@@ -790,7 +832,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
                   ref={mobileInputRef}
                   type="tel"
                   name="mobile"
-                  value={formatPhoneNumber(formData.mobile)}
+                  value={getDisplayPhoneNumber()}
                   onChange={handlePhoneChange}
                   onBlur={() => handleBlur('mobile')}
                   className={`form-input w-full pl-14 py-3 ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
@@ -815,6 +857,10 @@ const EditUser = ({ user, onClose, onSuccess }) => {
                 <FaCheck className="mr-1" /> Valid {getCountryInfo(selectedCountry).name} number
               </p>
             )}
+            <div className="text-xs text-gray-500">
+              <FaInfoCircle className="inline mr-1" />
+              {selectedCountry === '+91' ? 'Format: XXXXX-XXXXX (e.g., 98765-43210)' : getCountryValidationMessage(selectedCountry)}
+            </div>
           </div>
 
           {/* Profile Image */}
