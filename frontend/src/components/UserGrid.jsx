@@ -22,18 +22,21 @@ import {
   FaExpand,
   FaSignOutAlt,
   FaRedo,
-  FaPowerOff
+  FaPowerOff,
+  FaArrowLeft
 } from "react-icons/fa";
 import ConfirmationModal from "./ConfirmationModal";
+import ViewUser from "./ViewUser";
+import EditUser from "./EditUser";
 
-const ROWS_PER_PAGE = 10;
+const ROWS_PER_PAGE = 5; // Changed from 10 to 5
 
 // Preview Modal Component
 const PreviewModal = ({ preview, onClose }) => {
   const [loading, setLoading] = useState(true);
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[100] p-4 animate-fade-in">
       <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 bg-gradient-to-r from-primary-600 to-secondary-600 text-white">
@@ -129,6 +132,164 @@ const PreviewModal = ({ preview, onClose }) => {
   );
 };
 
+// Modal Container for View/Edit
+const ModalContainer = ({ isOpen, onClose, title, children, size = "large" }) => {
+  if (!isOpen) return null;
+
+  const sizeClasses = {
+    large: "max-w-6xl max-h-[90vh]",
+    medium: "max-w-4xl max-h-[85vh]",
+    small: "max-w-2xl max-h-[80vh]"
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[90] p-4 animate-fade-in">
+      <div className={`relative w-full ${sizeClasses[size]} bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col`}>
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-4 bg-gradient-to-r from-primary-600 to-secondary-600 text-white sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold">{title}</h3>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="p-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-all"
+              title="Close"
+            >
+              <FaTimes className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Content */}
+        <div className="flex-1 overflow-y-auto">
+          {children}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="p-4 border-t border-gray-200 bg-white sticky bottom-0">
+          <div className="flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Pagination Component
+const Pagination = ({ currentPage, totalPages, onPageChange, totalItems }) => {
+  const getVisiblePages = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (totalPages <= maxVisiblePages) {
+      // Show all pages
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show limited pages with ellipsis
+      if (currentPage <= 3) {
+        // Near the beginning
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        // Near the end
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        // In the middle
+        pages.push(1);
+        pages.push('...');
+        pages.push(currentPage - 1);
+        pages.push(currentPage);
+        pages.push(currentPage + 1);
+        pages.push('...');
+        pages.push(totalPages);
+      }
+    }
+    
+    return pages;
+  };
+
+  const visiblePages = getVisiblePages();
+
+  return (
+    <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
+      {/* Page Info */}
+      <div className="text-sm text-gray-600">
+        Showing <span className="font-semibold">{(currentPage - 1) * ROWS_PER_PAGE + 1}</span> to{' '}
+        <span className="font-semibold">{Math.min(currentPage * ROWS_PER_PAGE, totalItems)}</span> of{' '}
+        <span className="font-semibold">{totalItems}</span> users
+      </div>
+      
+      {/* Page Navigation */}
+      <div className="flex items-center gap-2">
+        {/* Previous Button */}
+        <button
+          disabled={currentPage === 1}
+          onClick={() => onPageChange(currentPage - 1)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <FaChevronLeft />
+          Previous
+        </button>
+        
+        {/* Page Numbers */}
+        <div className="flex items-center gap-1">
+          {visiblePages.map((pageNum, index) => (
+            pageNum === '...' ? (
+              <span key={`ellipsis-${index}`} className="px-2 text-gray-400">
+                ...
+              </span>
+            ) : (
+              <button
+                key={pageNum}
+                onClick={() => onPageChange(pageNum)}
+                className={`w-10 h-10 rounded-lg transition-colors flex items-center justify-center ${
+                  currentPage === pageNum
+                    ? "bg-primary-600 text-white shadow-md"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {pageNum}
+              </button>
+            )
+          ))}
+        </div>
+        
+        {/* Next Button */}
+        <button
+          disabled={currentPage === totalPages || totalPages === 0}
+          onClick={() => onPageChange(currentPage + 1)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Next
+          <FaChevronRight />
+        </button>
+      </div>
+      
+      {/* Page Indicator */}
+      <div className="text-sm text-gray-600">
+        Page <span className="font-semibold text-primary-600">{currentPage}</span> of{' '}
+        <span className="font-semibold">{totalPages || 1}</span>
+      </div>
+    </div>
+  );
+};
+
 const UserGrid = () => {
   const navigate = useNavigate();
 
@@ -141,6 +302,11 @@ const UserGrid = () => {
   const [deleteModal, setDeleteModal] = useState({ show: false, userId: null });
   const [previewModal, setPreviewModal] = useState({ show: false, src: null, type: null });
   const [logoutModal, setLogoutModal] = useState(false);
+  
+  // New state for modals
+  const [viewModal, setViewModal] = useState({ show: false, userId: null });
+  const [editModal, setEditModal] = useState({ show: false, userId: null });
+  const [selectedUserData, setSelectedUserData] = useState(null);
 
   /* =========================
      FETCH USERS FROM BACKEND
@@ -174,7 +340,7 @@ const UserGrid = () => {
         user.mobile?.includes(searchTerm)
       );
       setFilteredUsers(filtered);
-      setPage(1);
+      setPage(1); // Reset to first page when searching
     }
   }, [searchTerm, users]);
 
@@ -230,20 +396,38 @@ const UserGrid = () => {
   /* =========================
      ACTION HANDLERS
   ========================= */
-  const handleViewUser = (userId) => {
+  const handleViewUser = async (userId) => {
     if (!isUserSelected(userId)) {
       toast.error("Please select the user first");
       return;
     }
-    navigate(`/grid/view/${userId}`);
+    
+    try {
+      // Fetch user data for the modal
+      const response = await userAPI.getUserById(userId);
+      setSelectedUserData(response.data.data);
+      setViewModal({ show: true, userId });
+    } catch (error) {
+      console.error("Error fetching user for view:", error);
+      toast.error("Failed to load user details");
+    }
   };
 
-  const handleEditUser = (userId) => {
+  const handleEditUser = async (userId) => {
     if (!isUserSelected(userId)) {
       toast.error("Please select the user first");
       return;
     }
-    navigate(`/grid/edit/${userId}`);
+    
+    try {
+      // Fetch user data for the modal
+      const response = await userAPI.getUserById(userId);
+      setSelectedUserData(response.data.data);
+      setEditModal({ show: true, userId });
+    } catch (error) {
+      console.error("Error fetching user for edit:", error);
+      toast.error("Failed to load user details");
+    }
   };
 
   const handleDeleteUser = (userId) => {
@@ -262,6 +446,14 @@ const UserGrid = () => {
       toast.success("User deleted successfully");
       fetchUsers();
       setSelectedUsers(prev => prev.filter(id => id !== deleteModal.userId));
+      
+      // Close modals if they were open for this user
+      if (viewModal.userId === deleteModal.userId) {
+        setViewModal({ show: false, userId: null });
+      }
+      if (editModal.userId === deleteModal.userId) {
+        setEditModal({ show: false, userId: null });
+      }
     } catch (err) {
       console.error(err);
       toast.error("Failed to delete user");
@@ -315,6 +507,39 @@ const UserGrid = () => {
       src: docUrl,
       type: "pdf"
     });
+  };
+
+  /* =========================
+     MODAL HANDLERS
+  ========================= */
+  const handleViewModalClose = () => {
+    setViewModal({ show: false, userId: null });
+    setSelectedUserData(null);
+  };
+
+  const handleEditModalClose = () => {
+    setEditModal({ show: false, userId: null });
+    setSelectedUserData(null);
+  };
+
+  const handleEditSuccess = () => {
+    fetchUsers(); // Refresh the user list
+    setEditModal({ show: false, userId: null });
+    setSelectedUserData(null);
+  };
+
+  /* =========================
+     PAGE CHANGE HANDLER
+  ========================= */
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setPage(newPage);
+      // Scroll to top of table when changing pages
+      const tableElement = document.querySelector('.overflow-x-auto');
+      if (tableElement) {
+        tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
   };
 
   return (
@@ -604,52 +829,13 @@ const UserGrid = () => {
             </table>
           </div>
 
-          {/* Pagination */}
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 mt-8 p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
-            <div className="text-sm text-gray-600">
-              Showing {((page - 1) * ROWS_PER_PAGE) + 1} to {Math.min(page * ROWS_PER_PAGE, filteredUsers.length)} of {filteredUsers.length} users
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page === 1}
-                onClick={() => setPage(page - 1)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <FaChevronLeft />
-                Previous
-              </button>
-              
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                  <button
-                    key={pageNum}
-                    onClick={() => setPage(pageNum)}
-                    className={`w-10 h-10 rounded-lg transition-colors ${
-                      page === pageNum
-                        ? "bg-primary-600 text-white"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                ))}
-              </div>
-              
-              <button
-                disabled={page === totalPages || totalPages === 0}
-                onClick={() => setPage(page + 1)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-                <FaChevronRight />
-              </button>
-            </div>
-            
-            <div className="text-sm text-gray-600">
-              Page {page} of {totalPages || 1}
-            </div>
-          </div>
+          {/* Pagination Component */}
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+            totalItems={filteredUsers.length}
+          />
         </div>
       </div>
 
@@ -685,6 +871,34 @@ const UserGrid = () => {
           onClose={() => setPreviewModal({ show: false, src: null, type: null })}
         />
       )}
+
+      {/* View User Modal */}
+      <ModalContainer
+        isOpen={viewModal.show}
+        onClose={handleViewModalClose}
+        title="User Details"
+        size="large"
+      >
+        {selectedUserData && (
+          <ViewUser user={selectedUserData} onClose={handleViewModalClose} />
+        )}
+      </ModalContainer>
+
+      {/* Edit User Modal */}
+      <ModalContainer
+        isOpen={editModal.show}
+        onClose={handleEditModalClose}
+        title="Edit User"
+        size="large"
+      >
+        {selectedUserData && (
+          <EditUser 
+            user={selectedUserData} 
+            onClose={handleEditModalClose}
+            onSuccess={handleEditSuccess}
+          />
+        )}
+      </ModalContainer>
     </div>
   );
 };
