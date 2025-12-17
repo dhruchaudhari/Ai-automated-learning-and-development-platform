@@ -23,13 +23,120 @@ import {
   FaSignOutAlt,
   FaRedo,
   FaPowerOff,
-  FaArrowLeft
+  FaCalendarAlt,
+  FaMars,
+  FaVenus,
+  FaTransgender,
+  FaFilter,
+  FaSortAlphaDown,
+  FaSortAlphaUp,
+  FaSortAmountDown,
+  FaSortAmountUp,
+  FaToggleOn,
+  FaToggleOff,
+  FaHistory,
+  FaCalendar,
+  FaClock,
+  FaCalendarCheck,
+  FaCalendarTimes,
+  FaGenderless,
+  FaSortNumericDown,
+  FaSortNumericUp,
+  FaChevronDown,
+  FaChevronUp,
+  FaTrashAlt
 } from "react-icons/fa";
+import { format, parseISO, differenceInDays, differenceInHours, formatDistanceToNow } from "date-fns";
 import ConfirmationModal from "./ConfirmationModal";
 import ViewUser from "./ViewUser";
 import EditUser from "./EditUser";
 
 const ROWS_PER_PAGE = 5; // Changed from 10 to 5
+
+// Format date for display
+const formatDateTime = (dateString) => {
+  if (!dateString) return "N/A";
+  try {
+    const date = parseISO(dateString);
+    return {
+      date: format(date, "dd/MMM/yyyy"),
+      time: format(date, "hh:mm a"),
+      fullDate: date
+    };
+  } catch {
+    return { date: "Invalid Date", time: "", fullDate: null };
+  }
+};
+
+// Get gender icon with color
+const getGenderIcon = (gender) => {
+  switch (gender) {
+    case 'Male':
+      return <FaMars className="text-blue-500" />;
+    case 'Female':
+      return <FaVenus className="text-pink-500" />;
+    case 'Other':
+      return <FaTransgender className="text-purple-500" />;
+    default:
+      return <FaGenderless className="text-gray-400" />;
+  }
+};
+
+// Get gender display text with color
+const getGenderDisplay = (gender) => {
+  switch (gender) {
+    case 'Male':
+      return <span className="text-blue-600 font-medium">Male</span>;
+    case 'Female':
+      return <span className="text-pink-600 font-medium">Female</span>;
+    case 'Other':
+      return <span className="text-purple-600 font-medium">Other</span>;
+    default:
+      return <span className="text-gray-500">Not specified</span>;
+  }
+};
+
+// Calculate activation duration
+const calculateActivationDuration = (activationHistory) => {
+  if (!activationHistory || activationHistory.length === 0) return { totalDays: 0, totalHours: 0, active: false };
+  
+  let totalDuration = 0; // in milliseconds
+  let isCurrentlyActive = false;
+  
+  // Sort history by date
+  const sortedHistory = [...activationHistory].sort((a, b) => 
+    new Date(a.timestamp) - new Date(b.timestamp)
+  );
+  
+  // Calculate total active time
+  for (let i = 0; i < sortedHistory.length; i += 2) {
+    const start = sortedHistory[i];
+    const end = sortedHistory[i + 1] || { status: 'inactive', timestamp: new Date().toISOString() };
+    
+    if (start.status === 'active') {
+      const startTime = new Date(start.timestamp);
+      const endTime = new Date(end.timestamp);
+      totalDuration += (endTime - startTime);
+      
+      // If last status is active, user is currently active
+      if (i === sortedHistory.length - 2 && end.status === 'inactive') {
+        isCurrentlyActive = false;
+      } else if (i === sortedHistory.length - 1) {
+        isCurrentlyActive = start.status === 'active';
+      }
+    }
+  }
+  
+  const totalDays = Math.floor(totalDuration / (1000 * 60 * 60 * 24));
+  const totalHours = Math.floor((totalDuration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  
+  return {
+    totalDays,
+    totalHours,
+    active: isCurrentlyActive,
+    totalDuration
+  };
+};
 
 // Preview Modal Component
 const PreviewModal = ({ preview, onClose }) => {
@@ -290,6 +397,263 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems }) => {
   );
 };
 
+// Filter Component
+const FilterPanel = ({ 
+  filters, 
+  onFilterChange, 
+  onClearFilters,
+  onSortChange,
+  sortBy 
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const genderOptions = [
+    { value: '', label: 'All Genders' },
+    { value: 'Male', label: 'Male' },
+    { value: 'Female', label: 'Female' },
+    { value: 'Other', label: 'Other' }
+  ];
+
+  const activationOptions = [
+    { value: '', label: 'All Status' },
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' }
+  ];
+
+  const dateRangeOptions = [
+    { value: '', label: 'All Time' },
+    { value: 'today', label: 'Today' },
+    { value: 'yesterday', label: 'Yesterday' },
+    { value: 'last7days', label: 'Last 7 Days' },
+    { value: 'last30days', label: 'Last 30 Days' },
+    { value: 'last90days', label: 'Last 90 Days' }
+  ];
+
+  const sortOptions = [
+    { value: 'latest', label: 'Latest First', icon: <FaSortAmountDown /> },
+    { value: 'oldest', label: 'Oldest First', icon: <FaSortAmountUp /> },
+    { value: 'name-asc', label: 'Name A-Z', icon: <FaSortAlphaDown /> },
+    { value: 'name-desc', label: 'Name Z-A', icon: <FaSortAlphaUp /> },
+    { value: 'recent-active', label: 'Recently Active', icon: <FaClock /> },
+    { value: 'longest-active', label: 'Longest Active', icon: <FaHistory /> }
+  ];
+
+  const handleDateRangeChange = (value) => {
+    let startDate = null;
+    const today = new Date();
+    
+    switch(value) {
+      case 'today':
+        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        break;
+      case 'yesterday':
+        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+        break;
+      case 'last7days':
+        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
+        break;
+      case 'last30days':
+        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30);
+        break;
+      case 'last90days':
+        startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 90);
+        break;
+      default:
+        startDate = null;
+    }
+    
+    onFilterChange('dateRange', { value, startDate });
+  };
+
+  return (
+    <div className="mb-6">
+      {/* Filter Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <FaFilter className="text-primary-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Filters & Sorting</h3>
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            {isOpen ? <FaChevronUp /> : <FaChevronDown />}
+            {isOpen ? 'Hide Filters' : 'Show Filters'}
+          </button>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onClearFilters}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+          >
+            <FaTrashAlt />
+            Clear All
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Content */}
+      {isOpen && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200">
+          {/* Gender Filter */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              <FaMars className="inline mr-2 text-blue-500" />
+              Gender
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {genderOptions.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => onFilterChange('gender', option.value)}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    filters.gender === option.value
+                      ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Activation Status Filter */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              <FaToggleOn className="inline mr-2 text-green-500" />
+              Activation Status
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {activationOptions.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => onFilterChange('activationStatus', option.value)}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    filters.activationStatus === option.value
+                      ? option.value === 'active'
+                        ? 'bg-green-100 text-green-700 border border-green-300'
+                        : 'bg-red-100 text-red-700 border border-red-300'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              <FaCalendar className="inline mr-2 text-purple-500" />
+              Registration Date
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {dateRangeOptions.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => handleDateRangeChange(option.value)}
+                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    filters.dateRange?.value === option.value
+                      ? 'bg-purple-100 text-purple-700 border border-purple-300'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Sorting Options */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              <FaSortAmountDown className="inline mr-2 text-orange-500" />
+              Sort By
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {sortOptions.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => onSortChange(option.value)}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                    sortBy === option.value
+                      ? 'bg-orange-100 text-orange-700 border border-orange-300'
+                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {option.icon}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Filters Display */}
+      {(filters.gender || filters.activationStatus || filters.dateRange?.value || sortBy !== 'latest') && (
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center gap-2 mb-2">
+            <FaFilter className="text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">Active Filters:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {filters.gender && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 text-sm rounded-full">
+                <FaMars className="text-blue-500" />
+                Gender: {filters.gender}
+                <button 
+                  onClick={() => onFilterChange('gender', '')}
+                  className="ml-1 text-blue-500 hover:text-blue-700"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {filters.activationStatus && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 text-sm rounded-full">
+                <FaToggleOn className="text-green-500" />
+                Status: {filters.activationStatus}
+                <button 
+                  onClick={() => onFilterChange('activationStatus', '')}
+                  className="ml-1 text-green-500 hover:text-green-700"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {filters.dateRange?.value && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 text-sm rounded-full">
+                <FaCalendar className="text-purple-500" />
+                Date: {dateRangeOptions.find(d => d.value === filters.dateRange.value)?.label}
+                <button 
+                  onClick={() => onFilterChange('dateRange', { value: '', startDate: null })}
+                  className="ml-1 text-purple-500 hover:text-purple-700"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            {sortBy !== 'latest' && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 text-sm rounded-full">
+                <FaSortAmountDown className="text-orange-500" />
+                Sort: {sortOptions.find(s => s.value === sortBy)?.label}
+                <button 
+                  onClick={() => onSortChange('latest')}
+                  className="ml-1 text-orange-500 hover:text-orange-700"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const UserGrid = () => {
   const navigate = useNavigate();
 
@@ -302,11 +666,20 @@ const UserGrid = () => {
   const [deleteModal, setDeleteModal] = useState({ show: false, userId: null });
   const [previewModal, setPreviewModal] = useState({ show: false, src: null, type: null });
   const [logoutModal, setLogoutModal] = useState(false);
+  const [activationModal, setActivationModal] = useState({ show: false, userId: null, currentStatus: false });
   
   // New state for modals
   const [viewModal, setViewModal] = useState({ show: false, userId: null });
   const [editModal, setEditModal] = useState({ show: false, userId: null });
   const [selectedUserData, setSelectedUserData] = useState(null);
+
+  // Filter and Sort state
+  const [filters, setFilters] = useState({
+    gender: '',
+    activationStatus: '',
+    dateRange: { value: '', startDate: null }
+  });
+  const [sortBy, setSortBy] = useState('latest');
 
   /* =========================
      FETCH USERS FROM BACKEND
@@ -315,8 +688,13 @@ const UserGrid = () => {
     try {
       setLoading(true);
       const res = await userAPI.getAllUsers();
-      setUsers(res.data.data);
-      setFilteredUsers(res.data.data);
+      // Ensure each user has activationHistory
+      const usersWithActivation = res.data.data.map(user => ({
+        ...user,
+        activationHistory: user.activationHistory || []
+      }));
+      setUsers(usersWithActivation);
+      setFilteredUsers(usersWithActivation);
     } catch (err) {
       console.error("❌ Error fetching users:", err);
       toast.error("Failed to load users");
@@ -329,20 +707,70 @@ const UserGrid = () => {
     fetchUsers();
   }, []);
 
-  // Filter users based on search term
+  // Apply filters and sorting to ALL users (not just paginated)
   useEffect(() => {
-    if (searchTerm.trim() === "") {
-      setFilteredUsers(users);
-    } else {
-      const filtered = users.filter(user =>
+    let result = [...users];
+
+    // Apply search filter
+    if (searchTerm.trim() !== "") {
+      result = result.filter(user =>
         user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.mobile?.includes(searchTerm)
+        user.mobile?.includes(searchTerm) ||
+        user.gender?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        formatDateTime(user.createdAt).date.toLowerCase().includes(searchTerm.toLowerCase())
       );
-      setFilteredUsers(filtered);
-      setPage(1); // Reset to first page when searching
     }
-  }, [searchTerm, users]);
+
+    // Apply gender filter
+    if (filters.gender) {
+      result = result.filter(user => user.gender === filters.gender);
+    }
+
+    // Apply activation status filter
+    if (filters.activationStatus) {
+      result = result.filter(user => {
+        const activation = calculateActivationDuration(user.activationHistory);
+        return filters.activationStatus === 'active' ? activation.active : !activation.active;
+      });
+    }
+
+    // Apply date range filter
+    if (filters.dateRange.startDate) {
+      result = result.filter(user => {
+        const userDate = new Date(user.createdAt);
+        return userDate >= filters.dateRange.startDate;
+      });
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      const activationA = calculateActivationDuration(a.activationHistory);
+      const activationB = calculateActivationDuration(b.activationHistory);
+      
+      switch(sortBy) {
+        case 'latest':
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'oldest':
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case 'name-asc':
+          return (a.fullName || '').localeCompare(b.fullName || '');
+        case 'name-desc':
+          return (b.fullName || '').localeCompare(a.fullName || '');
+        case 'recent-active':
+          if (activationA.active && !activationB.active) return -1;
+          if (!activationA.active && activationB.active) return 1;
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'longest-active':
+          return activationB.totalDuration - activationA.totalDuration;
+        default:
+          return new Date(b.createdAt) - new Date(a.createdAt);
+      }
+    });
+
+    setFilteredUsers(result);
+    setPage(1); // Reset to first page when filters change
+  }, [users, searchTerm, filters, sortBy]);
 
   const totalPages = Math.ceil(filteredUsers.length / ROWS_PER_PAGE);
   const paginatedUsers = filteredUsers.slice(
@@ -367,6 +795,30 @@ const UserGrid = () => {
   };
 
   const isUserSelected = (userId) => selectedUsers.includes(userId);
+
+  /* =========================
+     FILTER HANDLERS
+  ========================= */
+  const handleFilterChange = (filterType, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+  };
+
+  const handleSortChange = (newSortBy) => {
+    setSortBy(newSortBy);
+  };
+
+  const handleClearFilters = () => {
+    setFilters({
+      gender: '',
+      activationStatus: '',
+      dateRange: { value: '', startDate: null }
+    });
+    setSortBy('latest');
+    setSearchTerm('');
+  };
 
   /* =========================
      DEBUG TOKEN STATUS
@@ -403,7 +855,6 @@ const UserGrid = () => {
     }
     
     try {
-      // Fetch user data for the modal
       const response = await userAPI.getUserById(userId);
       setSelectedUserData(response.data.data);
       setViewModal({ show: true, userId });
@@ -420,7 +871,6 @@ const UserGrid = () => {
     }
     
     try {
-      // Fetch user data for the modal
       const response = await userAPI.getUserById(userId);
       setSelectedUserData(response.data.data);
       setEditModal({ show: true, userId });
@@ -447,7 +897,6 @@ const UserGrid = () => {
       fetchUsers();
       setSelectedUsers(prev => prev.filter(id => id !== deleteModal.userId));
       
-      // Close modals if they were open for this user
       if (viewModal.userId === deleteModal.userId) {
         setViewModal({ show: false, userId: null });
       }
@@ -463,18 +912,75 @@ const UserGrid = () => {
   };
 
   /* =========================
+     ACTIVATION STATUS HANDLERS
+  ========================= */
+  const handleActivationToggle = (userId) => {
+    if (!isUserSelected(userId)) {
+      toast.error("Please select the user first");
+      return;
+    }
+    
+    const user = users.find(u => u._id === userId);
+    if (!user) return;
+    
+    const activation = calculateActivationDuration(user.activationHistory || []);
+    setActivationModal({
+      show: true,
+      userId,
+      currentStatus: activation.active,
+      userName: user.fullName
+    });
+  };
+
+  const handleActivationConfirm = async () => {
+    if (!activationModal.userId) return;
+
+    try {
+      const newStatus = !activationModal.currentStatus;
+      const timestamp = new Date().toISOString();
+      
+      // In a real app, you would make an API call here
+      // For now, we'll update locally
+      const updatedUsers = users.map(user => {
+        if (user._id === activationModal.userId) {
+          const updatedHistory = [
+            ...(user.activationHistory || []),
+            {
+              status: newStatus ? 'active' : 'inactive',
+              timestamp
+            }
+          ];
+          return { ...user, activationHistory: updatedHistory };
+        }
+        return user;
+      });
+      
+      setUsers(updatedUsers);
+      toast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`);
+      
+      // Update selected user data if modal is open
+      if (selectedUserData && selectedUserData._id === activationModal.userId) {
+        const user = updatedUsers.find(u => u._id === activationModal.userId);
+        setSelectedUserData(user);
+      }
+    } catch (error) {
+      console.error("Error updating activation status:", error);
+      toast.error("Failed to update activation status");
+    } finally {
+      setActivationModal({ show: false, userId: null, currentStatus: false });
+    }
+  };
+
+  /* =========================
      LOGOUT HANDLER
   ========================= */
   const handleLogout = async () => {
     try {
-      // Try to call logout API (if token is valid)
       await userAPI.logout();
     } catch (err) {
-      // If token is expired, we can still logout locally
-      console.log("Logout API failed (token might be expired), proceeding with local logout");
+      console.log("Logout API failed, proceeding with local logout");
     }
     
-    // Always clear local storage and redirect
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     
@@ -523,7 +1029,7 @@ const UserGrid = () => {
   };
 
   const handleEditSuccess = () => {
-    fetchUsers(); // Refresh the user list
+    fetchUsers();
     setEditModal({ show: false, userId: null });
     setSelectedUserData(null);
   };
@@ -534,7 +1040,6 @@ const UserGrid = () => {
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
       setPage(newPage);
-      // Scroll to top of table when changing pages
       const tableElement = document.querySelector('.overflow-x-auto');
       if (tableElement) {
         tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -548,12 +1053,12 @@ const UserGrid = () => {
         {/* Header */}
         <div className="text-center mb-10 animate-slide-down">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
-            User Management
+            Advanced User Management
           </h1>
-          <p className="text-gray-600 text-lg">Manage and view all registered users</p>
+          <p className="text-gray-600 text-lg">Comprehensive user management with advanced filtering</p>
           <div className="mt-4 text-sm text-gray-500 bg-yellow-50 inline-block px-4 py-2 rounded-lg">
             <FaLock className="inline mr-2 text-yellow-500" />
-            Select users to enable actions (View, Edit, Delete)
+            Select users to enable actions
           </div>
         </div>
 
@@ -565,7 +1070,7 @@ const UserGrid = () => {
                 <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search users by name, email, or mobile..."
+                  placeholder="Search across all users..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64 md:w-80"
@@ -592,10 +1097,9 @@ const UserGrid = () => {
 
             <div className="flex items-center gap-4">
               <span className={`text-sm font-medium ${selectedUsers.length > 0 ? 'text-primary-600' : 'text-gray-600'}`}>
-                {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
+                {selectedUsers.length} selected
               </span>
               
-              {/* Refresh Button with Icon */}
               <button
                 onClick={handleRefresh}
                 className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -605,7 +1109,6 @@ const UserGrid = () => {
                 Refresh
               </button>
               
-              {/* Logout Button */}
               <button
                 onClick={() => setLogoutModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
@@ -616,6 +1119,15 @@ const UserGrid = () => {
               </button>
             </div>
           </div>
+
+          {/* Filter Panel */}
+          <FilterPanel
+            filters={filters}
+            onFilterChange={handleFilterChange}
+            onClearFilters={handleClearFilters}
+            onSortChange={handleSortChange}
+            sortBy={sortBy}
+          />
 
           {/* Users Table */}
           <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -632,17 +1144,20 @@ const UserGrid = () => {
                       />
                     </label>
                   </th>
-                  <th className="py-4 px-6 text-left">Name</th>
-                  <th className="py-4 px-6 text-left w-32">Image</th>
+                  <th className="py-4 px-6 text-left">Name & Details</th>
+                  <th className="py-4 px-6 text-left w-48">Registration Date</th>
+                  <th className="py-4 px-6 text-left w-32">Gender</th>
+                  <th className="py-4 px-6 text-left w-32">Profile Image</th>
                   <th className="py-4 px-6 text-left w-32">Document</th>
-                  <th className="py-4 px-6 text-left w-48">Actions</th>
+                  <th className="py-4 px-6 text-left w-64">Actions</th>
+                  <th className="py-4 px-6 text-left w-48">Activation Status</th>
                 </tr>
               </thead>
 
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="py-12 text-center">
+                    <td colSpan="8" className="py-12 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <FaSpinner className="w-8 h-8 text-primary-600 animate-spin mb-4" />
                         <p className="text-gray-600">Loading users...</p>
@@ -651,12 +1166,14 @@ const UserGrid = () => {
                   </tr>
                 ) : paginatedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="py-12 text-center">
+                    <td colSpan="8" className="py-12 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <FaUser className="w-12 h-12 text-gray-400 mb-4" />
                         <p className="text-gray-600 text-lg mb-2">No users found</p>
                         <p className="text-gray-500">
-                          {searchTerm ? "Try adjusting your search" : "No users registered yet"}
+                          {searchTerm || Object.values(filters).some(f => f) ? 
+                            "Try adjusting your search or filters" : 
+                            "No users registered yet"}
                         </p>
                       </div>
                     </td>
@@ -664,6 +1181,9 @@ const UserGrid = () => {
                 ) : (
                   paginatedUsers.map((user) => {
                     const isSelected = isUserSelected(user._id);
+                    const registrationDate = formatDateTime(user.createdAt);
+                    const activation = calculateActivationDuration(user.activationHistory || []);
+                    
                     return (
                       <tr
                         key={user._id}
@@ -686,7 +1206,7 @@ const UserGrid = () => {
                           </label>
                         </td>
 
-                        {/* Name */}
+                        {/* Name & Details */}
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-3">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
@@ -701,6 +1221,41 @@ const UserGrid = () => {
                                 {user.fullName}
                               </p>
                               <p className="text-sm text-gray-500">{user.email}</p>
+                              <p className="text-xs text-gray-400 mt-1">{user.mobile}</p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Registration Date */}
+                        <td className="py-4 px-6">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2 text-gray-700">
+                              <FaCalendarAlt className="text-primary-500" />
+                              <span className="font-medium">{registrationDate.date}</span>
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {registrationDate.time}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              Account Created
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Gender */}
+                        <td className="py-4 px-6">
+                          <div className="flex flex-col items-start">
+                            <div className="flex items-center gap-2 mb-1">
+                              {getGenderIcon(user.gender)}
+                              {getGenderDisplay(user.gender)}
+                            </div>
+                            <div className={`text-xs px-2 py-1 rounded-full ${
+                              user.gender === 'Male' ? 'bg-blue-100 text-blue-600' :
+                              user.gender === 'Female' ? 'bg-pink-100 text-pink-600' :
+                              user.gender === 'Other' ? 'bg-purple-100 text-purple-600' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {user.gender || 'Unknown'}
                             </div>
                           </div>
                         </td>
@@ -774,51 +1329,100 @@ const UserGrid = () => {
 
                         {/* Actions */}
                         <td className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            {/* View Button */}
-                            <button
-                              onClick={() => handleViewUser(user._id)}
-                              disabled={!isSelected}
-                              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                                isSelected
-                                  ? "bg-green-50 text-green-600 hover:bg-green-100"
-                                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              }`}
-                              title={isSelected ? "View user details" : "Select user to enable"}
-                            >
-                              <FaEye />
-                              View
-                            </button>
-                            
-                            {/* Edit Button */}
-                            <button
-                              onClick={() => handleEditUser(user._id)}
-                              disabled={!isSelected}
-                              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                                isSelected
-                                  ? "bg-yellow-50 text-yellow-600 hover:bg-yellow-100"
-                                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              }`}
-                              title={isSelected ? "Edit user" : "Select user to enable"}
-                            >
-                              <FaEdit />
-                              Edit
-                            </button>
-                            
-                            {/* Delete Button */}
-                            <button
-                              onClick={() => handleDeleteUser(user._id)}
-                              disabled={!isSelected}
-                              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                                isSelected
-                                  ? "bg-red-50 text-red-600 hover:bg-red-100"
-                                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              }`}
-                              title={isSelected ? "Delete user" : "Select user to enable"}
-                            >
-                              <FaTrash />
-                              Delete
-                            </button>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                              {/* View Button */}
+                              <button
+                                onClick={() => handleViewUser(user._id)}
+                                disabled={!isSelected}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors flex-1 ${
+                                  isSelected
+                                    ? "bg-green-50 text-green-600 hover:bg-green-100"
+                                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                }`}
+                                title={isSelected ? "View user details" : "Select user to enable"}
+                              >
+                                <FaEye />
+                                View
+                              </button>
+                              
+                              {/* Edit Button */}
+                              <button
+                                onClick={() => handleEditUser(user._id)}
+                                disabled={!isSelected}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors flex-1 ${
+                                  isSelected
+                                    ? "bg-yellow-50 text-yellow-600 hover:bg-yellow-100"
+                                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                }`}
+                                title={isSelected ? "Edit user" : "Select user to enable"}
+                              >
+                                <FaEdit />
+                                Edit
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {/* Delete Button */}
+                              <button
+                                onClick={() => handleDeleteUser(user._id)}
+                                disabled={!isSelected}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors flex-1 ${
+                                  isSelected
+                                    ? "bg-red-50 text-red-600 hover:bg-red-100"
+                                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                }`}
+                                title={isSelected ? "Delete user" : "Select user to enable"}
+                              >
+                                <FaTrash />
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Activation Status (Now the last column) */}
+                        <td className="py-4 px-6">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2 mb-2">
+                              <button
+                                onClick={() => handleActivationToggle(user._id)}
+                                disabled={!isSelected}
+                                className={`relative inline-flex items-center h-6 w-12 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                                  activation.active 
+                                    ? 'bg-green-500 focus:ring-green-500' 
+                                    : 'bg-gray-300 focus:ring-gray-400'
+                                } ${!isSelected ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                title={isSelected ? 
+                                  (activation.active ? 'Deactivate user' : 'Activate user') : 
+                                  'Select user to enable'}
+                              >
+                                <span className={`inline-block w-5 h-5 transform bg-white rounded-full transition-transform ${
+                                  activation.active ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                              </button>
+                              <span className={`font-medium text-sm ${
+                                activation.active ? 'text-green-600' : 'text-gray-600'
+                              }`}>
+                                {activation.active ? 'Active' : 'Inactive'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {activation.active ? (
+                                <span className="flex items-center gap-1 text-green-600">
+                                  <FaClock className="w-3 h-3" />
+                                  Active now
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-gray-500">
+                                  <FaCalendarTimes className="w-3 h-3" />
+                                  Not active
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {activation.totalDays > 0 ? `${activation.totalDays}d ${activation.totalHours}h` : 
+                               activation.totalHours > 0 ? `${activation.totalHours}h` : 'Not activated'}
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -836,10 +1440,59 @@ const UserGrid = () => {
             onPageChange={handlePageChange}
             totalItems={filteredUsers.length}
           />
+
+          {/* Summary Statistics */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Total Users</p>
+                  <p className="text-2xl font-bold text-blue-600">{users.length}</p>
+                </div>
+                <FaUser className="w-8 h-8 text-blue-500" />
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Active Users</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {users.filter(u => calculateActivationDuration(u.activationHistory || []).active).length}
+                  </p>
+                </div>
+                <FaToggleOn className="w-8 h-8 text-green-500" />
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Male Users</p>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {users.filter(u => u.gender === 'Male').length}
+                  </p>
+                </div>
+                <FaMars className="w-8 h-8 text-purple-500" />
+              </div>
+            </div>
+            
+            <div className="bg-gradient-to-r from-pink-50 to-pink-100 rounded-xl p-4 border border-pink-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Female Users</p>
+                  <p className="text-2xl font-bold text-pink-600">
+                    {users.filter(u => u.gender === 'Female').length}
+                  </p>
+                </div>
+                <FaVenus className="w-8 h-8 text-pink-500" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Modals */}
       <ConfirmationModal
         isOpen={deleteModal.show}
         onClose={() => setDeleteModal({ show: false, userId: null })}
@@ -851,7 +1504,20 @@ const UserGrid = () => {
         type="danger"
       />
 
-      {/* Logout Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={activationModal.show}
+        onClose={() => setActivationModal({ show: false, userId: null, currentStatus: false })}
+        onConfirm={handleActivationConfirm}
+        title={activationModal.currentStatus ? "Deactivate User" : "Activate User"}
+        message={`Are you sure you want to ${activationModal.currentStatus ? 'deactivate' : 'activate'} ${activationModal.userName || 'this user'}? This will track their activation time.`}
+        confirmText={activationModal.currentStatus ? "Deactivate" : "Activate"}
+        cancelText="Cancel"
+        type={activationModal.currentStatus ? "warning" : "primary"}
+        icon={activationModal.currentStatus ? 
+          <FaToggleOff className="text-orange-600 mb-4 w-8 h-8" /> : 
+          <FaToggleOn className="text-blue-600 mb-4 w-8 h-8" />}
+      />
+
       <ConfirmationModal
         isOpen={logoutModal}
         onClose={() => setLogoutModal(false)}
@@ -861,7 +1527,7 @@ const UserGrid = () => {
         confirmText="Logout"
         cancelText="Cancel"
         type="danger"
-        icon={<FaSignOutAlt className="text-red-600 mb-4" />}
+        icon={<FaSignOutAlt className="text-red-600 mb-4 w-8 h-8" />}
       />
 
       {/* Preview Modal */}
