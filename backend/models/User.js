@@ -25,6 +25,15 @@ const userSchema = new mongoose.Schema({
             message: 'Date of birth cannot be in the future'
         }
     },
+    gender: {
+        type: String,
+        required: [true, 'Gender is required'],
+        enum: {
+            values: ['Male', 'Female', 'Other'],
+            message: 'Gender must be either Male, Female, or Other'
+        },
+        trim: true
+    },
     email: {
         type: String,
         required: [true, 'Email is required'],

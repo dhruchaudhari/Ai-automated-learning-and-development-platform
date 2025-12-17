@@ -26,7 +26,10 @@ import {
   FaEye,
   FaCheck,
   FaTimes,
-  FaInfoCircle
+  FaInfoCircle,
+  FaMars,
+  FaVenus,
+  FaTransgender
 } from "react-icons/fa";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -81,11 +84,22 @@ const formatIndianMobile = (number) => {
   return `${digits.slice(0, 5)}-${digits.slice(5, 10)}`;
 };
 
+// Get gender icon
+const getGenderIcon = (gender) => {
+  switch (gender) {
+    case 'Male': return <FaMars className="text-blue-500" />;
+    case 'Female': return <FaVenus className="text-pink-500" />;
+    case 'Other': return <FaTransgender className="text-purple-500" />;
+    default: return <FaTransgender className="text-gray-500" />;
+  }
+};
+
 const EditUser = ({ user, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: '',
     dob: null,
+    gender: '',
     email: '',
     mobile: '',
     profileImage: null,
@@ -100,6 +114,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
   const [fieldTouched, setFieldTouched] = useState({
     fullName: false,
     dob: false,
+    gender: false,
     email: false,
     mobile: false,
     profileImage: false,
@@ -138,6 +153,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     setFormData({
       fullName: user.fullName || "",
       dob: dobDate,
+      gender: user.gender || "",
       email: user.email || "",
       mobile: number, // Store only the number without country code
       profileImage: null,
@@ -164,6 +180,12 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     switch (name) {
       case 'fullName':
         return validateFullName(value);
+      case 'gender':
+        if (!value) return 'Gender is required';
+        if (!['Male', 'Female', 'Other'].includes(value)) {
+          return 'Please select a valid gender';
+        }
+        return '';
       case 'email':
         return validateEmail(value);
       case 'mobile':
@@ -323,6 +345,24 @@ const EditUser = ({ user, onClose, onSuccess }) => {
       mobile: digitsOnly
     }));
     setIsDirty(true);
+  };
+
+  const handleGenderChange = (e) => {
+    const value = e.target.value;
+    setFormData(prev => ({
+      ...prev,
+      gender: value
+    }));
+    handleTouch('gender');
+    setIsDirty(true);
+    
+    // Clear error when user selects gender
+    if (errors.gender) {
+      setErrors(prev => ({
+        ...prev,
+        gender: '',
+      }));
+    }
   };
 
   const handleChange = async (e) => {
@@ -530,6 +570,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     // Validate required fields
     const validationResults = await Promise.all([
       validateField('fullName', formData.fullName),
+      validateField('gender', formData.gender),
       validateField('email', formData.email),
       validateField('mobile', formData.mobile, selectedCountry),
       validateField('dob', formData.dob),
@@ -537,9 +578,10 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     
     const finalErrors = {
       fullName: validationResults[0],
-      email: validationResults[1],
-      mobile: validationResults[2],
-      dob: validationResults[3],
+      gender: validationResults[1],
+      email: validationResults[2],
+      mobile: validationResults[3],
+      dob: validationResults[4],
     };
     
     // Validate files if they exist
@@ -573,6 +615,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
     try {
       const submitData = new FormData();
       submitData.append('fullName', formData.fullName.trim());
+      submitData.append('gender', formData.gender);
       
       let dobValue;
       if (formData.dob instanceof Date) {
@@ -624,6 +667,9 @@ const EditUser = ({ user, onClose, onSuccess }) => {
         } else if (errorMsg?.includes('mobile') || errorMsg?.includes('phone')) {
           setErrors(prev => ({ ...prev, mobile: 'Mobile number already registered' }));
           toast.error('Mobile number already registered');
+        } else if (errorMsg?.includes('gender')) {
+          setErrors(prev => ({ ...prev, gender: 'Gender validation failed' }));
+          toast.error('Gender validation failed');
         } else {
           toast.error(errorMsg || 'Update failed. Please try again.');
         }
@@ -634,7 +680,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
   };
 
   const calculateCompletion = () => {
-    const requiredFields = ['fullName', 'email', 'mobile', 'dob'];
+    const requiredFields = ['fullName', 'gender', 'email', 'mobile', 'dob'];
     const filledFields = requiredFields.filter(field => {
       const value = formData[field];
       if (!value) return false;
@@ -642,7 +688,7 @@ const EditUser = ({ user, onClose, onSuccess }) => {
       return true;
     }).length;
     
-    return Math.round((filledFields / 4) * 100);
+    return Math.round((filledFields / 5) * 100);
   };
 
   // Get formatted phone number for display
@@ -686,6 +732,43 @@ const EditUser = ({ user, onClose, onSuccess }) => {
             {isFieldValid('fullName') && (
               <p className="text-sm text-green-600 animate-slide-up flex items-center">
                 <FaCheck className="mr-1" /> Valid full name
+              </p>
+            )}
+          </div>
+
+          {/* Gender */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 flex items-center">
+              <span className="mr-2">{getGenderIcon(formData.gender)}</span>
+              Gender *
+            </label>
+            <div className="relative">
+              <select
+                name="gender"
+                value={formData.gender}
+                onChange={handleGenderChange}
+                onBlur={() => handleBlur('gender')}
+                className={`form-input py-3 ${isFieldInvalid('gender') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('gender') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                disabled={loading}
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                {isFieldValid('gender') && <FaCheck className="text-green-600" />}
+                {isFieldInvalid('gender') && <FaTimes className="text-red-600" />}
+              </div>
+            </div>
+            {errors.gender && (
+              <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                <FaTimes className="mr-1" /> {errors.gender}
+              </p>
+            )}
+            {isFieldValid('gender') && (
+              <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                <FaCheck className="mr-1" /> Valid gender selected
               </p>
             )}
           </div>

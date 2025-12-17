@@ -93,13 +93,14 @@ router.post(
       console.log('Password in body:', req.body.password ? 'PRESENT' : 'MISSING');
       console.log('Password value:', req.body.password ? req.body.password.substring(0, 5) + '...' : 'undefined');
       
-      // Extract ALL fields from request body
+      // Extract ALL fields from request body (ADD GENDER HERE)
       const { 
         fullName, 
         dob, 
         email, 
-        password,  // ← THIS WAS MISSING!
-        mobile 
+        password,
+        mobile,
+        gender  // ← ADD GENDER FIELD
       } = req.body;
       
       // Validate required fields
@@ -108,6 +109,23 @@ router.post(
         return res.status(400).json({
           success: false,
           message: 'Password is required'
+        });
+      }
+      
+      if (!gender) {
+        console.error('❌ ERROR: Gender is missing from request body');
+        return res.status(400).json({
+          success: false,
+          message: 'Gender is required'
+        });
+      }
+      
+      // Validate gender value
+      const validGenders = ['Male', 'Female', 'Other'];
+      if (!validGenders.includes(gender)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Gender must be either Male, Female, or Other'
         });
       }
       
@@ -120,13 +138,14 @@ router.post(
         });
       }
 
-      // Create new user WITH PASSWORD
+      // Create new user WITH ALL FIELDS INCLUDING GENDER
       const newUser = new User({
         fullName,
         dob,
         email,
-        password,  // ← ADD THIS LINE!
+        password,
         mobile,
+        gender,  // ← ADD GENDER HERE
         profileImage: req.files?.profileImage?.[0]?.path || null,
         document: req.files?.document?.[0]?.path || null
       });
@@ -136,7 +155,8 @@ router.post(
         email: newUser.email,
         password: '[HIDDEN]',
         mobile: newUser.mobile,
-        dob: newUser.dob
+        dob: newUser.dob,
+        gender: newUser.gender  // ← LOG GENDER
       });
 
       await newUser.save();
@@ -147,7 +167,8 @@ router.post(
         user: {
           id: newUser._id,
           fullName: newUser.fullName,
-          email: newUser.email
+          email: newUser.email,
+          gender: newUser.gender
         }
       });
     } catch (error) {
@@ -244,6 +265,7 @@ router.put(
         dob: req.body.dob,
         email: req.body.email,
         mobile: req.body.mobile,
+        gender: req.body.gender,  // ← ADD GENDER HERE
         updatedAt: Date.now()
       };
 
@@ -369,6 +391,7 @@ router.put(
         dob: req.body.dob,
         email: req.body.email,
         mobile: req.body.mobile,
+        gender: req.body.gender,  // ← ADD GENDER HERE
         updatedAt: Date.now()
       };
 
@@ -507,6 +530,79 @@ router.post('/test-formdata', upload.none(), (req, res) => {
     message: 'FormData test successful',
     received: req.body
   });
+});
+
+// ==================== LOGIN ROUTE ====================
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Check if email and password are provided
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Check password
+    const isPasswordValid = await user.comparePassword(password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        gender: user.gender  // ← ADD GENDER TO TOKEN
+      },
+      process.env.JWT_SECRET || 'fallback-secret-for-dev',
+      { expiresIn: '24h' }
+    );
+
+    // Return user data and token
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        gender: user.gender,  // ← INCLUDE GENDER IN RESPONSE
+        mobile: user.mobile,
+        dob: user.dob,
+        profileImage: user.profileImage,
+        document: user.document,
+        age: user.age
+      }
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Login failed',
+      error: error.message
+    });
+  }
 });
 
 module.exports = router;

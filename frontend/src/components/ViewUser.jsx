@@ -13,7 +13,10 @@ import {
   FaCheck,
   FaTimes,
   FaInfoCircle,
-  FaEdit
+  FaEdit,
+  FaMars,
+  FaVenus,
+  FaTransgender
 } from "react-icons/fa";
 
 const ViewUser = ({ user, onClose }) => {
@@ -39,6 +42,24 @@ const ViewUser = ({ user, onClose }) => {
       return `+91 ${mobile.slice(0, 5)}-${mobile.slice(5)}`;
     }
     return mobile;
+  };
+
+  const getGenderIcon = (gender) => {
+    switch (gender) {
+      case 'Male': return <FaMars className="text-blue-500" />;
+      case 'Female': return <FaVenus className="text-pink-500" />;
+      case 'Other': return <FaTransgender className="text-purple-500" />;
+      default: return <FaTransgender className="text-gray-500" />;
+    }
+  };
+
+  const getGenderColor = (gender) => {
+    switch (gender) {
+      case 'Male': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Female': return 'bg-pink-50 text-pink-700 border-pink-200';
+      case 'Other': return 'bg-purple-50 text-purple-700 border-purple-200';
+      default: return 'bg-gray-50 text-gray-700 border-gray-200';
+    }
   };
 
   const openInNewTab = (url) => {
@@ -78,6 +99,26 @@ const ViewUser = ({ user, onClose }) => {
             </div>
             <p className="text-sm text-green-600 animate-slide-up flex items-center">
               <FaCheck className="mr-1" /> Valid full name
+            </p>
+          </div>
+
+          {/* Gender */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 flex items-center">
+              <span className="mr-2">{getGenderIcon(user.gender)}</span>
+              Gender *
+              <span className="ml-2 text-xs text-green-600 flex items-center">
+                <FaCheck className="mr-1" /> Verified
+              </span>
+            </label>
+            <div className="relative">
+              <div className={`form-input bg-gray-50 cursor-not-allowed flex items-center justify-between py-3 ${getGenderColor(user.gender)}`}>
+                <span className="text-gray-700 font-medium">{user.gender || "Not provided"}</span>
+                <FaCheck className="text-green-600 flex-shrink-0" />
+              </div>
+            </div>
+            <p className="text-sm text-green-600 animate-slide-up flex items-center">
+              <FaCheck className="mr-1" /> Valid gender
             </p>
           </div>
 
@@ -288,9 +329,12 @@ const ViewUser = ({ user, onClose }) => {
               <p className="text-sm text-gray-500 mb-1">Last Updated</p>
               <p className="font-medium text-gray-800">{formatDate(user.updatedAt)}</p>
             </div>
-            <div className="bg-purple-50 rounded-xl p-4">
-              <p className="text-sm text-gray-500 mb-1">User Status</p>
-              <p className="font-medium text-green-600">Active</p>
+            <div className={`rounded-xl p-4 ${getGenderColor(user.gender)}`}>
+              <p className="text-sm text-gray-500 mb-1">Gender</p>
+              <div className="flex items-center">
+                {getGenderIcon(user.gender)}
+                <p className="font-medium ml-2">{user.gender || 'Not specified'}</p>
+              </div>
             </div>
           </div>
         </div>
