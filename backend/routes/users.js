@@ -1,608 +1,811 @@
+// routes/userRoutes.js - UPDATED
 const express = require('express');
 const router = express.Router();
 const { upload, handleUploadError } = require('../middleware/upload');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const emailService = require('../utils/emailService');
 
-// JWT Auth - FIXED VERSION
+// JWT Auth Middleware
 const authMiddleware = (req, res, next) => {
-  try {
-    console.log('=== AUTH MIDDLEWARE TRIGGERED ===');
-    console.log('Path:', req.path);
-    console.log('Authorization Header:', req.headers.authorization ? 'Present' : 'Missing');
-    
-    // Get token from Authorization header
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader) {
-      console.log('❌ No Authorization header found');
-      return res.status(401).json({ 
-        success: false, 
-        message: 'No token provided' 
-      });
+    try {
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'No token provided' 
+            });
+        }
+        
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-for-dev');
+        req.userId = decoded.userId;
+        req.user = decoded;
+        next();
+        
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Token expired' 
+            });
+        } else if (err.name === 'JsonWebTokenError') {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Invalid token' 
+            });
+        }
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Authentication failed' 
+        });
     }
-    
-    // Check if it's Bearer token
-    if (!authHeader.startsWith('Bearer ')) {
-      console.log('❌ Authorization header does not start with Bearer');
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid token format' 
-      });
-    }
-    
-    // Extract token
-    const token = authHeader.split(' ')[1];
-    
-    if (!token) {
-      console.log('❌ No token found after Bearer');
-      return res.status(401).json({ 
-        success: false, 
-        message: 'No token provided' 
-      });
-    }
-    
-    console.log('✅ Token extracted, verifying...');
-    
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-for-dev');
-    req.userId = decoded.userId;
-    req.user = decoded;
-    
-    console.log('✅ Token verified for user:', decoded.userId);
-    next();
-    
-  } catch (err) {
-    console.error('❌ JWT Error:', err.message);
-    
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Token expired' 
-      });
-    } else if (err.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid token' 
-      });
-    }
-    
-    return res.status(401).json({ 
-      success: false, 
-      message: 'Authentication failed' 
-    });
-  }
 };
 
-// ==================== AUTH ROUTES ====================
+// ==================== REGISTRATION WITH OTP ====================
 
-// Register - NO AUTH NEEDED
 router.post(
-  '/register',
-  upload.fields([
-    { name: 'profileImage', maxCount: 1 },
-    { name: 'document', maxCount: 1 }
-  ]),
-  handleUploadError,
-  async (req, res) => {
-    try {
-      // 🔍 DEBUG: Log what's coming in
-      console.log('=== BACKEND REGISTER REQUEST ===');
-      console.log('Request body:', req.body);
-      console.log('Request files:', req.files);
-      console.log('Password in body:', req.body.password ? 'PRESENT' : 'MISSING');
-      console.log('Password value:', req.body.password ? req.body.password.substring(0, 5) + '...' : 'undefined');
-      
-      // Extract ALL fields from request body (ADD GENDER HERE)
-      const { 
-        fullName, 
-        dob, 
-        email, 
-        password,
-        mobile,
-        gender  // ← ADD GENDER FIELD
-      } = req.body;
-      
-      // Validate required fields
-      if (!password) {
-        console.error('❌ ERROR: Password is missing from request body');
-        return res.status(400).json({
-          success: false,
-          message: 'Password is required'
-        });
-      }
-      
-      if (!gender) {
-        console.error('❌ ERROR: Gender is missing from request body');
-        return res.status(400).json({
-          success: false,
-          message: 'Gender is required'
-        });
-      }
-      
-      // Validate gender value
-      const validGenders = ['Male', 'Female', 'Other'];
-      if (!validGenders.includes(gender)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Gender must be either Male, Female, or Other'
-        });
-      }
-      
-      // Check if user already exists
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          message: 'User already exists'
-        });
-      }
+    '/register',
+    upload.fields([
+        { name: 'profileImage', maxCount: 1 },
+        { name: 'document', maxCount: 1 }
+    ]),
+    handleUploadError,
+    async (req, res) => {
+        try {
+            const { 
+                fullName, 
+                dob, 
+                email, 
+                password,
+                mobile,
+                gender
+            } = req.body;
+            
+            if (!password) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Password is required'
+                });
+            }
+            
+            if (!gender) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Gender is required'
+                });
+            }
+            
+            // Check if user already exists
+            const existingUser = await User.findOne({ email });
+            if (existingUser) {
+                if (existingUser.isEmailVerified) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email already registered and verified'
+                    });
+                }
+                // If user exists but not verified, allow re-registration
+                await User.findByIdAndDelete(existingUser._id);
+            }
 
-      // Create new user WITH ALL FIELDS INCLUDING GENDER
-      const newUser = new User({
-        fullName,
-        dob,
-        email,
-        password,
-        mobile,
-        gender,  // ← ADD GENDER HERE
-        profileImage: req.files?.profileImage?.[0]?.path || null,
-        document: req.files?.document?.[0]?.path || null
-      });
+            // Create new user with unverified status
+            const newUser = new User({
+                fullName,
+                dob,
+                email,
+                password,
+                mobile,
+                gender,
+                isEmailVerified: false,
+                profileImage: req.files?.profileImage?.[0]?.path || null,
+                document: req.files?.document?.[0]?.path || null
+            });
 
-      console.log('✅ Creating user with data:', {
-        fullName: newUser.fullName,
-        email: newUser.email,
-        password: '[HIDDEN]',
-        mobile: newUser.mobile,
-        dob: newUser.dob,
-        gender: newUser.gender  // ← LOG GENDER
-      });
+            // Generate and save OTP
+            const otp = newUser.generateOtp();
+            newUser.emailVerificationOtp = otp;
+            newUser.emailVerificationOtpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+            newUser.lastEmailOtpSent = new Date();
+            newUser.emailOtpResendAttempts = 0;
 
-      await newUser.save();
+            await newUser.save();
 
-      res.status(201).json({
-        success: true,
-        message: 'User registered successfully',
-        user: {
-          id: newUser._id,
-          fullName: newUser.fullName,
-          email: newUser.email,
-          gender: newUser.gender
+            // Send OTP email
+            const emailSent = await emailService.sendVerificationEmail(email, otp, fullName);
+            
+            if (!emailSent) {
+                await User.findByIdAndDelete(newUser._id);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Failed to send verification email'
+                });
+            }
+
+            res.status(201).json({
+                success: true,
+                message: 'Registration successful! Please verify your email with the OTP sent.',
+                data: {
+                    userId: newUser._id,
+                    email: newUser.email,
+                    name: newUser.fullName,
+                    otpExpiresIn: '5 minutes'
+                }
+            });
+
+        } catch (error) {
+            console.error('Registration error:', error);
+            
+            if (error.name === 'ValidationError') {
+                const messages = Object.values(error.errors).map(val => val.message);
+                return res.status(400).json({
+                    success: false,
+                    message: 'Validation failed',
+                    errors: messages
+                });
+            }
+            
+            if (error.code === 11000) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Email already exists'
+                });
+            }
+            
+            res.status(500).json({
+                success: false,
+                message: 'Registration failed',
+                error: error.message
+            });
         }
-      });
+    }
+);
+
+// ==================== VERIFY EMAIL OTP ====================
+
+router.post('/verify-email', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and OTP are required'
+            });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (user.isEmailVerified) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email already verified'
+            });
+        }
+
+        // Check if OTP attempts exceeded
+        if (user.emailVerificationAttempts >= 3) {
+            return res.status(429).json({
+                success: false,
+                message: 'Too many verification attempts. Please request a new OTP.'
+            });
+        }
+
+        // Check if OTP is expired
+        if (user.emailVerificationOtpExpires < new Date()) {
+            return res.status(400).json({
+                success: false,
+                message: 'OTP has expired. Please request a new one.'
+            });
+        }
+
+        // Verify OTP
+        if (user.emailVerificationOtp !== otp) {
+            user.emailVerificationAttempts += 1;
+            await user.save();
+            
+            const attemptsLeft = 3 - user.emailVerificationAttempts;
+            
+            return res.status(400).json({
+                success: false,
+                message: `Invalid OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} left.`
+            });
+        }
+
+        // OTP verified successfully
+        user.isEmailVerified = true;
+        user.emailVerificationOtp = undefined;
+        user.emailVerificationOtpExpires = undefined;
+        user.emailVerificationAttempts = 0;
+        user.emailOtpResendAttempts = 0;
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'Email verified successfully! You can now login.'
+        });
+
     } catch (error) {
-      console.error('Registration error:', error);
-      
-      // More detailed error handling
-      if (error.name === 'ValidationError') {
-        const messages = Object.values(error.errors).map(val => val.message);
-        return res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: messages
+        console.error('Email verification error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Email verification failed',
+            error: error.message
         });
-      }
-      
-      if (error.code === 11000) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email already exists'
-        });
-      }
-      
-      res.status(500).json({
-        success: false,
-        message: 'Registration failed',
-        error: error.message
-      });
     }
-  }
-);
-
-// ==================== NEW ROUTES ADDED ====================
-// These match your frontend routes
-
-// View user via /grid/view/:id - PROTECTED
-router.get('/grid/view/:id', authMiddleware, async (req, res) => {
-  try {
-    console.log('🔍 Fetching user via /grid/view/:id:', req.params.id);
-    
-    // Validate ID format
-    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID format'
-      });
-    }
-
-    const user = await User.findById(req.params.id, '-password -__v');
-    
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-
-    console.log('✅ User found via /grid/view/:id');
-    res.json({
-      success: true,
-      data: user
-    });
-  } catch (err) {
-    console.error('Error fetching user via /grid/view/:id:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch user' 
-    });
-  }
 });
 
-// Edit user via /grid/edit/:id - PROTECTED
-router.put(
-  '/grid/edit/:id',
-  authMiddleware,
-  upload.fields([
-    { name: 'profileImage', maxCount: 1 },
-    { name: 'document', maxCount: 1 }
-  ]),
-  handleUploadError,
-  async (req, res) => {
+// ==================== RESEND VERIFICATION OTP ====================
+
+router.post('/resend-verification-otp', async (req, res) => {
     try {
-      console.log('✏️ Updating user via /grid/edit/:id:', req.params.id);
-      
-      // Validate ID format
-      if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid user ID format'
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email is required'
+            });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (user.isEmailVerified) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email already verified'
+            });
+        }
+
+        // Check resend attempts
+        if (user.emailOtpResendAttempts >= 3) {
+            return res.status(429).json({
+                success: false,
+                message: 'Maximum resend attempts reached. Please contact support.'
+            });
+        }
+
+        // Check if enough time has passed since last OTP (30 seconds cooldown)
+        const now = new Date();
+        if (user.lastEmailOtpSent && (now - user.lastEmailOtpSent) < 30000) {
+            return res.status(429).json({
+                success: false,
+                message: 'Please wait 30 seconds before requesting a new OTP.'
+            });
+        }
+
+        // Generate new OTP
+        const otp = user.generateOtp();
+        user.emailVerificationOtp = otp;
+        user.emailVerificationOtpExpires = new Date(Date.now() + 5 * 60 * 1000);
+        user.emailVerificationAttempts = 0;
+        user.emailOtpResendAttempts += 1;
+        user.lastEmailOtpSent = now;
+        await user.save();
+
+        // Send new OTP email
+        const emailSent = await emailService.sendVerificationEmail(email, otp, user.fullName);
+        
+        if (!emailSent) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send verification email'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'New OTP sent to your email',
+            resendAttemptsLeft: 3 - user.emailOtpResendAttempts,
+            otpExpiresIn: '5 minutes'
         });
-      }
 
-      const updateData = {
-        fullName: req.body.fullName,
-        dob: req.body.dob,
-        email: req.body.email,
-        mobile: req.body.mobile,
-        gender: req.body.gender,  // ← ADD GENDER HERE
-        updatedAt: Date.now()
-      };
-
-      if (req.files?.profileImage) {
-        updateData.profileImage = req.files.profileImage[0].path;
-      }
-
-      if (req.files?.document) {
-        updateData.document = req.files.document[0].path;
-      }
-
-      const updatedUser = await User.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        { new: true, runValidators: true }
-      ).select('-password -__v');
-
-      if (!updatedUser) {
-        return res.status(404).json({ 
-          success: false,
-          message: 'User not found' 
+    } catch (error) {
+        console.error('Resend OTP error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to resend OTP',
+            error: error.message
         });
-      }
-
-      console.log('✅ User updated via /grid/edit/:id');
-      res.json({
-        success: true,
-        message: 'User updated successfully',
-        data: updatedUser
-      });
-
-    } catch (err) {
-      console.error('Update error via /grid/edit/:id:', err);
-      res.status(500).json({ 
-        success: false,
-        message: 'User update failed' 
-      });
     }
-  }
-);
-
-// Get all users - PROTECTED
-router.get('/all', authMiddleware, async (req, res) => {
-  try {
-    console.log('📋 Fetching all users for user ID:', req.userId);
-    
-    const users = await User.find({}, '-password -__v')
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      count: users.length,
-      data: users
-    });
-  } catch (err) {
-    console.error('Error fetching users:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch users' 
-    });
-  }
 });
 
-// Get single user by ID - PROTECTED
-router.get('/:id', authMiddleware, async (req, res) => {
-  try {
-    console.log('🔍 Fetching user via /:id:', req.params.id);
-    
-    // Validate ID format
-    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID format'
-      });
-    }
+// ==================== LOGIN WITH EMAIL VERIFICATION CHECK ====================
 
-    const user = await User.findById(req.params.id, '-password -__v');
-    
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-
-    console.log('✅ User found via /:id');
-    res.json({
-      success: true,
-      data: user
-    });
-  } catch (err) {
-    console.error('Error fetching user via /:id:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch user' 
-    });
-  }
-});
-
-// Update user - PROTECTED
-router.put(
-  '/:id',
-  authMiddleware,
-  upload.fields([
-    { name: 'profileImage', maxCount: 1 },
-    { name: 'document', maxCount: 1 }
-  ]),
-  handleUploadError,
-  async (req, res) => {
-    try {
-      console.log('✏️ Updating user via /:id:', req.params.id);
-      
-      // Validate ID format
-      if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid user ID format'
-      });
-    }
-
-      const updateData = {
-        fullName: req.body.fullName,
-        dob: req.body.dob,
-        email: req.body.email,
-        mobile: req.body.mobile,
-        gender: req.body.gender,  // ← ADD GENDER HERE
-        updatedAt: Date.now()
-      };
-
-      if (req.files?.profileImage) {
-        updateData.profileImage = req.files.profileImage[0].path;
-      }
-
-      if (req.files?.document) {
-        updateData.document = req.files.document[0].path;
-      }
-
-      const updatedUser = await User.findByIdAndUpdate(
-        req.params.id,
-        updateData,
-        { new: true, runValidators: true }
-      ).select('-password -__v');
-
-      if (!updatedUser) {
-        return res.status(404).json({ 
-          success: false,
-          message: 'User not found' 
-        });
-      }
-
-      console.log('✅ User updated via /:id');
-      res.json({
-        success: true,
-        message: 'User updated successfully',
-        data: updatedUser
-      });
-
-    } catch (err) {
-      console.error('Update error via /:id:', err);
-      res.status(500).json({ 
-        success: false,
-        message: 'User update failed' 
-      });
-    }
-  }
-);
-
-// Delete user - PROTECTED
-router.delete('/:id', authMiddleware, async (req, res) => {
-  try {
-    console.log('🗑️ Deleting user:', req.params.id, 'by user:', req.userId);
-    
-    // Validate ID format
-    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user ID format'
-      });
-    }
-
-    const deletedUser = await User.findByIdAndDelete(req.params.id);
-
-    if (!deletedUser) {
-      return res.status(404).json({ 
-        success: false,
-        message: 'User not found' 
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'User deleted successfully'
-    });
-
-  } catch (err) {
-    console.error('Delete error:', err);
-    res.status(500).json({ 
-      success: false,
-      message: 'User deletion failed' 
-    });
-  }
-});
-
-// ==================== LOGOUT ROUTE ====================
-// Logout user - CLEAR TOKEN ON SERVER SIDE
-router.post('/logout', authMiddleware, async (req, res) => {
-  try {
-    console.log('🚪 User logging out:', req.userId);
-    
-    // In a real application, you might:
-    // 1. Add token to blacklist
-    // 2. Clear session data
-    // 3. Update user's last logout time
-    
-    // For JWT (stateless), we just return success
-    // Client will remove token from localStorage
-    
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-    
-  } catch (err) {
-    console.error('Logout error:', err);
-    res.status(500).json({ 
-      success: false,
-      message: 'Logout failed' 
-    });
-  }
-});
-
-// ==================== PUBLIC LOGOUT (for when token is expired) ====================
-router.post('/public-logout', (req, res) => {
-  // This route doesn't require auth - for cases where token is expired
-  console.log('🚪 Public logout endpoint hit');
-  
-  res.json({
-    success: true,
-    message: 'Ready for logout'
-  });
-});
-
-// Health check endpoint (no auth needed)
-router.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Users API is working',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// ==================== TEST ENDPOINT ====================
-// Add this test endpoint to debug FormData
-router.post('/test-formdata', upload.none(), (req, res) => {
-  console.log('=== TEST FORMDATA RECEIVED ===');
-  console.log('Body:', req.body);
-  console.log('Headers:', req.headers);
-  console.log('==============================');
-  
-  res.json({
-    success: true,
-    message: 'FormData test successful',
-    received: req.body
-  });
-});
-
-// ==================== LOGIN ROUTE ====================
 router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
+    try {
+        const { email, password } = req.body;
 
-    // Check if email and password are provided
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and password are required'
-      });
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and password are required'
+            });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid email or password'
+            });
+        }
+
+        // Check if email is verified
+        if (!user.isEmailVerified) {
+            return res.status(403).json({
+                success: false,
+                message: 'Please verify your email before logging in',
+                requiresVerification: true,
+                email: user.email
+            });
+        }
+
+        // Check password
+        const isPasswordValid = await user.comparePassword(password);
+        
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid email or password'
+            });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign(
+            { 
+                userId: user._id,
+                email: user.email,
+                fullName: user.fullName,
+                gender: user.gender
+            },
+            process.env.JWT_SECRET || 'fallback-secret-for-dev',
+            { expiresIn: '24h' }
+        );
+
+        res.json({
+            success: true,
+            message: 'Login successful',
+            token,
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                gender: user.gender,
+                mobile: user.mobile,
+                dob: user.dob,
+                profileImage: user.profileImage,
+                document: user.document,
+                age: user.age
+            }
+        });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Login failed',
+            error: error.message
+        });
     }
+});
 
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
-    
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+// ==================== FORGOT PASSWORD ====================
+
+router.post('/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email is required'
+            });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'No account found with this email'
+            });
+        }
+
+        // Check if password reset attempts exceeded
+        if (user.passwordResetAttempts >= 3) {
+            return res.status(429).json({
+                success: false,
+                message: 'Too many password reset attempts. Please try again later.'
+            });
+        }
+
+        // Generate password reset OTP
+        const otp = user.generateOtp();
+        user.passwordResetOtp = otp;
+        user.passwordResetOtpExpires = new Date(Date.now() + 5 * 60 * 1000);
+        user.passwordResetAttempts = 0;
+        await user.save();
+
+        // Send password reset OTP email
+        const emailSent = await emailService.sendPasswordResetEmail(email, otp, user.fullName);
+        
+        if (!emailSent) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send password reset email'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Password reset OTP sent to your email',
+            email: user.email,
+            otpExpiresIn: '5 minutes'
+        });
+
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Password reset request failed',
+            error: error.message
+        });
     }
+});
 
-    // Check password
-    const isPasswordValid = await user.comparePassword(password);
-    
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
+// ==================== VERIFY PASSWORD RESET OTP ====================
+
+router.post('/verify-password-reset-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and OTP are required'
+            });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Check if OTP is expired
+        if (!user.passwordResetOtpExpires || user.passwordResetOtpExpires < new Date()) {
+            return res.status(400).json({
+                success: false,
+                message: 'OTP has expired. Please request a new one.'
+            });
+        }
+
+        // Check OTP attempts
+        if (user.passwordResetAttempts >= 3) {
+            return res.status(429).json({
+                success: false,
+                message: 'Too many OTP verification attempts'
+            });
+        }
+
+        // Verify OTP
+        if (user.passwordResetOtp !== otp) {
+            user.passwordResetAttempts += 1;
+            await user.save();
+            
+            const attemptsLeft = 3 - user.passwordResetAttempts;
+            
+            return res.status(400).json({
+                success: false,
+                message: `Invalid OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} left.`
+            });
+        }
+
+        // Generate reset token
+        const resetToken = jwt.sign(
+            { 
+                userId: user._id,
+                email: user.email,
+                purpose: 'password_reset'
+            },
+            process.env.JWT_SECRET || 'fallback-secret-for-dev',
+            { expiresIn: '15m' }
+        );
+
+        res.json({
+            success: true,
+            message: 'OTP verified successfully',
+            resetToken,
+            email: user.email
+        });
+
+    } catch (error) {
+        console.error('Verify password reset OTP error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'OTP verification failed',
+            error: error.message
+        });
     }
+});
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { 
-        userId: user._id,
-        email: user.email,
-        fullName: user.fullName,
-        gender: user.gender  // ← ADD GENDER TO TOKEN
-      },
-      process.env.JWT_SECRET || 'fallback-secret-for-dev',
-      { expiresIn: '24h' }
-    );
+// ==================== RESET PASSWORD ====================
 
-    // Return user data and token
-    res.json({
-      success: true,
-      message: 'Login successful',
-      token,
-      user: {
-        id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        gender: user.gender,  // ← INCLUDE GENDER IN RESPONSE
-        mobile: user.mobile,
-        dob: user.dob,
-        profileImage: user.profileImage,
-        document: user.document,
-        age: user.age
-      }
-    });
+router.post('/reset-password', async (req, res) => {
+    try {
+        const { resetToken, newPassword, confirmPassword } = req.body;
 
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Login failed',
-      error: error.message
-    });
-  }
+        if (!resetToken || !newPassword || !confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Reset token, new password and confirmation are required'
+            });
+        }
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Passwords do not match'
+            });
+        }
+
+        // Verify reset token
+        let decoded;
+        try {
+            decoded = jwt.verify(resetToken, process.env.JWT_SECRET || 'fallback-secret-for-dev');
+        } catch (error) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid or expired reset token'
+            });
+        }
+
+        if (decoded.purpose !== 'password_reset') {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid reset token'
+            });
+        }
+
+        const user = await User.findById(decoded.userId);
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Check if new password is same as old password
+        const isSamePassword = await user.comparePassword(newPassword);
+        if (isSamePassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'New password must be different from old password'
+            });
+        }
+
+        // Update password
+        user.password = newPassword;
+        user.passwordResetOtp = undefined;
+        user.passwordResetOtpExpires = undefined;
+        user.passwordResetAttempts = 0;
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'Password reset successfully! You can now login with your new password.'
+        });
+
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Password reset failed',
+            error: error.message
+        });
+    }
+});
+
+// ==================== CHECK VERIFICATION STATUS ====================
+
+router.get('/verification-status/:email', async (req, res) => {
+    try {
+        const user = await User.findOne({ email: req.params.email.toLowerCase() });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            isVerified: user.isEmailVerified,
+            email: user.email,
+            name: user.fullName
+        });
+
+    } catch (error) {
+        console.error('Check verification status error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to check verification status',
+            error: error.message
+        });
+    }
+});
+
+// ==================== PROTECTED ROUTES (Keep existing) ====================
+
+// View user via /grid/view/:id
+router.get('/grid/view/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findById(req.params.id, '-password -__v');
+        
+        if (!user) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'User not found' 
+            });
+        }
+
+        res.json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        console.error('Error fetching user:', err);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch user' 
+        });
+    }
+});
+
+// Edit user via /grid/edit/:id
+router.put(
+    '/grid/edit/:id',
+    authMiddleware,
+    upload.fields([
+        { name: 'profileImage', maxCount: 1 },
+        { name: 'document', maxCount: 1 }
+    ]),
+    handleUploadError,
+    async (req, res) => {
+        try {
+            if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid user ID format'
+                });
+            }
+
+            const updateData = {
+                fullName: req.body.fullName,
+                dob: req.body.dob,
+                email: req.body.email,
+                mobile: req.body.mobile,
+                gender: req.body.gender,
+                updatedAt: Date.now()
+            };
+
+            if (req.files?.profileImage) {
+                updateData.profileImage = req.files.profileImage[0].path;
+            }
+
+            if (req.files?.document) {
+                updateData.document = req.files.document[0].path;
+            }
+
+            const updatedUser = await User.findByIdAndUpdate(
+                req.params.id,
+                updateData,
+                { new: true, runValidators: true }
+            ).select('-password -__v');
+
+            if (!updatedUser) {
+                return res.status(404).json({ 
+                    success: false,
+                    message: 'User not found' 
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'User updated successfully',
+                data: updatedUser
+            });
+
+        } catch (err) {
+            console.error('Update error:', err);
+            res.status(500).json({ 
+                success: false,
+                message: 'User update failed' 
+            });
+        }
+    }
+);
+
+// Get all users
+router.get('/all', authMiddleware, async (req, res) => {
+    try {
+        const users = await User.find({}, '-password -__v')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: users.length,
+            data: users
+        });
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to fetch users' 
+        });
+    }
+});
+
+// Delete user
+router.delete('/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const deletedUser = await User.findByIdAndDelete(req.params.id);
+
+        if (!deletedUser) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'User not found' 
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User deleted successfully'
+        });
+
+    } catch (err) {
+        console.error('Delete error:', err);
+        res.status(500).json({ 
+            success: false,
+            message: 'User deletion failed' 
+        });
+    }
 });
 
 module.exports = router;

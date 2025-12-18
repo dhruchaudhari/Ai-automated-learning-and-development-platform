@@ -1,8 +1,9 @@
+// Register.jsx - COMPLETE WITH OTP VERIFICATION - FIXED VERSION
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import { toast } from 'react-hot-toast';
-import { userAPI } from '../utils/api';
+import { userAPI, authAPI } from '../utils/api';
 import { 
   validateFullName, 
   validateEmail, 
@@ -32,10 +33,240 @@ import {
   FaTransgender,
   FaMars,
   FaVenus,
-  FaGenderless
+  FaGenderless,
+  FaClock,
+  FaRedo
 } from 'react-icons/fa';
 import 'react-datepicker/dist/react-datepicker.css';
 
+// OTP Verification Component
+const OTPVerification = ({ email, name, onVerified, onCancel }) => {
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(300); // 5 minutes
+  const [resendAttempts, setResendAttempts] = useState(0);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    let timer;
+    if (countdown > 0) {
+      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [countdown]);
+
+  const handleOtpChange = (index, value) => {
+    if (!/^\d?$/.test(value)) return;
+    
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+    
+    // Auto focus next input
+    if (value && index < 5) {
+      const nextInput = document.getElementById(`otp-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+    
+    setError('');
+  };
+
+  const handleKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`);
+      if (prevInput) prevInput.focus();
+    }
+  };
+
+  const handleVerify = async () => {
+    const otpString = otp.join('');
+    
+    if (otpString.length !== 6) {
+      setError('Please enter all 6 digits');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    
+    try {
+      const response = await authAPI.verifyEmail(email, otpString);
+      
+      if (response.data.success) {
+        setSuccess('Email verified successfully! Redirecting to login...');
+        toast.success('Email verified successfully!');
+        setTimeout(() => {
+          onVerified();
+        }, 2000);
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Verification failed';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      
+      // If OTP expired, allow resend
+      if (errorMsg.includes('expired')) {
+        setCountdown(0);
+      }
+    }
+    
+    setLoading(false);
+  };
+
+  const handleResendOtp = async () => {
+    if (resendAttempts >= 3) {
+      toast.error('Maximum resend attempts reached. Please contact support.');
+      return;
+    }
+
+    if (countdown > 30) {
+      toast.error(`Please wait ${Math.ceil((countdown - 30) / 60)} minutes before resending`);
+      return;
+    }
+
+    try {
+      const response = await authAPI.resendVerificationOtp(email);
+      
+      if (response.data.success) {
+        toast.success('New OTP sent to your email!');
+        setCountdown(300);
+        setResendAttempts(prev => prev + 1);
+        setOtp(['', '', '', '', '', '']);
+        setError('');
+        setSuccess('');
+        
+        // Focus first input
+        const firstInput = document.getElementById('otp-0');
+        if (firstInput) firstInput.focus();
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to resend OTP';
+      toast.error(errorMsg);
+    }
+  };
+
+  const formatCountdown = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in p-4">
+      <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-gradient-to-r from-primary-600 to-secondary-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FaEnvelope className="w-8 h-8 text-white" />
+          </div>
+          <h3 className="text-2xl font-bold text-gray-800 mb-2">Verify Your Email</h3>
+          <p className="text-gray-600">
+            Enter the 6-digit code sent to <span className="font-semibold">{email}</span>
+          </p>
+          <p className="text-sm text-gray-500 mt-1">Welcome, {name}!</p>
+        </div>
+
+        <div className="space-y-6">
+          {/* OTP Inputs */}
+          <div className="flex justify-center space-x-3">
+            {otp.map((digit, index) => (
+              <input
+                key={index}
+                id={`otp-${index}`}
+                type="text"
+                value={digit}
+                onChange={(e) => handleOtpChange(index, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(index, e)}
+                className="w-14 h-14 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-colors"
+                maxLength={1}
+                inputMode="numeric"
+                disabled={loading || success}
+                autoFocus={index === 0}
+              />
+            ))}
+          </div>
+
+          {/* Error/Success Messages */}
+          {error && (
+            <div className="text-center">
+              <p className="text-red-600 text-sm flex items-center justify-center">
+                <FaTimes className="mr-2" /> {error}
+              </p>
+            </div>
+          )}
+          
+          {success && (
+            <div className="text-center">
+              <p className="text-green-600 text-sm flex items-center justify-center">
+                <FaCheck className="mr-2" /> {success}
+              </p>
+            </div>
+          )}
+
+          {/* Countdown and Resend */}
+          <div className="text-center">
+            {countdown > 0 ? (
+              <div className="flex items-center justify-center text-gray-600">
+                <FaClock className="mr-2" />
+                <span className="font-medium">OTP expires in: {formatCountdown(countdown)}</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleResendOtp}
+                className="text-primary-600 hover:text-primary-700 font-medium flex items-center justify-center mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={resendAttempts >= 3 || loading || success}
+              >
+                <FaRedo className="mr-2" />
+                Resend OTP {resendAttempts > 0 && `(${3 - resendAttempts} left)`}
+              </button>
+            )}
+          </div>
+
+          {/* Buttons */}
+          <div className="flex space-x-4">
+            <button
+              onClick={onCancel}
+              className="btn-secondary flex-1 py-3"
+              disabled={loading || success}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleVerify}
+              disabled={loading || otp.join('').length !== 6 || countdown === 0 || success}
+              className={`btn-primary flex-1 py-3 ${
+                otp.join('').length !== 6 || countdown === 0 || success ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  <div className="spinner mr-3"></div>
+                  Verifying...
+                </span>
+              ) : (
+                <>
+                  <FaCheck className="inline mr-2" />
+                  Verify Email
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-gray-200 text-center">
+          <p className="text-xs text-gray-500">
+            Didn't receive the code? Check your spam folder.
+            {resendAttempts >= 3 && ' Maximum resend attempts reached.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Custom hook for debouncing
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
 
@@ -52,6 +283,7 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
+// Main Register Component
 const Register = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -88,6 +320,11 @@ const Register = () => {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const datePickerRef = useRef(null);
   const mobileInputRef = useRef(null);
+  
+  // OTP Verification States
+  const [showOtpVerification, setShowOtpVerification] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [registeredName, setRegisteredName] = useState('');
 
   const validateField = useCallback(async (name, value, countryCode = '+91', passwordToCompare = '') => {
     switch (name) {
@@ -327,21 +564,8 @@ const Register = () => {
       let newValue = value;
       
       if (name === 'mobile') {
-        // Only allow digits and plus sign
-        const digitsOnly = value.replace(/[^\d+]/g, '');
-        
-        // If user included country code, extract just the national number
-        if (digitsOnly.startsWith('+')) {
-          const dialCodeMatch = digitsOnly.match(/^\+\d{1,3}/);
-          if (dialCodeMatch && dialCodeMatch[0] !== selectedCountry) {
-            toast.error(`Country code mismatch. Please use ${selectedCountry} or change country selection.`);
-            return;
-          }
-          // Remove country code for storage
-          newValue = digitsOnly.replace(/^\+\d{1,3}/, '');
-        } else {
-          newValue = digitsOnly;
-        }
+        // Only allow digits
+        newValue = value.replace(/[^\d]/g, '');
         
         // Get max digits for selected country
         const countryInfo = getCountryInfo(selectedCountry);
@@ -494,6 +718,7 @@ const Register = () => {
     }, {});
     setFieldTouched(allTouched);
     
+    // Validate all fields
     const validationResults = await Promise.all([
       validateField('fullName', formData.fullName),
       validateField('gender', formData.gender),
@@ -525,7 +750,9 @@ const Register = () => {
     setErrors(filteredErrors);
     
     if (Object.keys(filteredErrors).length > 0) {
-      toast.error('Please fix all validation errors');
+      toast.error('Please fix all validation errors before submitting');
+      
+      // Scroll to first error
       const firstErrorField = Object.keys(filteredErrors)[0];
       const element = document.querySelector(`[name="${firstErrorField}"]`);
       if (element) {
@@ -538,47 +765,35 @@ const Register = () => {
     setLoading(true);
     
     try {
-      // DEBUG: Log form data before creating FormData
-      console.log('=== FRONTEND FORM DATA DEBUG ===');
-      console.log('Full Name:', formData.fullName);
-      console.log('Gender:', formData.gender);
-      console.log('Email:', formData.email);
-      console.log('Password:', formData.password, 'Type:', typeof formData.password, 'Length:', formData.password?.length);
-      console.log('Confirm Password:', formData.confirmPassword);
-      console.log('Mobile:', formData.mobile);
-      console.log('Country Code:', selectedCountry);
-      console.log('Full Mobile:', selectedCountry + formData.mobile);
-      console.log('DOB:', formData.dob, 'Type:', typeof formData.dob);
-      console.log('Profile Image:', formData.profileImage ? 'File exists - ' + formData.profileImage.name : 'null');
-      console.log('Document:', formData.document ? 'File exists - ' + formData.document.name : 'null');
-      console.log('======================');
-      
-      if (!formData.password) {
-        throw new Error('Password is undefined! Check form data above.');
-      }
-      
+      // Create FormData for submission
       const submitData = new FormData();
       
-      // Append all fields with debugging
+      // Append text fields
       submitData.append('fullName', formData.fullName.trim());
       submitData.append('gender', formData.gender);
-      
-      let dobValue;
-      if (formData.dob instanceof Date) {
-        dobValue = formData.dob.toISOString();
-      } else if (typeof formData.dob === 'string') {
-        const parsed = parseDateInput(formData.dob);
-        dobValue = parsed ? parsed.toISOString() : formData.dob;
-      } else {
-        dobValue = formData.dob;
-      }
-      console.log('DOB to send:', dobValue);
-      submitData.append('dob', dobValue);
-      
       submitData.append('email', formData.email.trim().toLowerCase());
       submitData.append('password', formData.password);
       submitData.append('mobile', selectedCountry + formData.mobile);
       
+      // Handle DOB - ensure it's a proper date string
+      let dobValue;
+      if (formData.dob instanceof Date) {
+        dobValue = formData.dob.toISOString().split('T')[0]; // YYYY-MM-DD format
+      } else if (formData.dob) {
+        // Try to parse if it's a string
+        const parsedDate = new Date(formData.dob);
+        if (!isNaN(parsedDate.getTime())) {
+          dobValue = parsedDate.toISOString().split('T')[0];
+        } else {
+          dobValue = formData.dob; // Send as-is and let backend handle
+        }
+      }
+      
+      if (dobValue) {
+        submitData.append('dob', dobValue);
+      }
+      
+      // Append files
       if (formData.profileImage) {
         submitData.append('profileImage', formData.profileImage);
       }
@@ -588,45 +803,93 @@ const Register = () => {
       }
       
       // Debug: Log FormData contents
-      console.log('=== FORMDATA CONTENTS ===');
-      for (let pair of submitData.entries()) {
-        console.log(pair[0] + ':', pair[1]);
-      }
-      console.log('========================');
+      console.log('=== REGISTRATION SUBMISSION ===');
+      console.log('Form Data:', {
+        fullName: formData.fullName,
+        gender: formData.gender,
+        email: formData.email,
+        password: '***HIDDEN***',
+        mobile: selectedCountry + formData.mobile,
+        dob: dobValue,
+        profileImage: formData.profileImage?.name,
+        document: formData.document?.name
+      });
       
+      // Call API with proper error handling
       const response = await userAPI.register(submitData);
       
-      if (response.data.success) {
-        toast.success('Registration successful! Redirecting to login...');
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
+      console.log('Registration response:', response);
+      
+      if (response.data && response.data.success) {
+        // Show OTP verification modal
+        setRegisteredEmail(formData.email);
+        setRegisteredName(formData.fullName);
+        setShowOtpVerification(true);
+        toast.success('Registration successful! Please verify your email with the OTP sent.');
+      } else {
+        throw new Error(response.data?.message || 'Registration failed: No success response');
       }
     } catch (error) {
-      console.error('Registration error details:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error message:', error.message);
+      console.error('Registration error:', error);
       
-      const errorMsg = error.response?.data?.message || error.message;
+      let errorMessage = 'Registration failed. Please try again.';
       
-      if (errorMsg?.includes('email') || errorMsg?.includes('Email')) {
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error response data:', error.response.data);
+        console.error('Error response status:', error.response.status);
+        console.error('Error response headers:', error.response.headers);
+        
+        errorMessage = error.response.data?.message || 
+                      error.response.data?.error || 
+                      `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error('Error request:', error.request);
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error('Error message:', error.message);
+        errorMessage = error.message || errorMessage;
+      }
+      
+      // Handle specific error cases
+      if (errorMessage.toLowerCase().includes('email') || errorMessage.includes('already registered')) {
         setErrors(prev => ({ ...prev, email: 'Email already registered' }));
         toast.error('Email already registered');
-      } else if (errorMsg?.includes('mobile') || errorMsg?.includes('phone')) {
+      } else if (errorMessage.toLowerCase().includes('mobile') || errorMessage.toLowerCase().includes('phone')) {
         setErrors(prev => ({ ...prev, mobile: 'Mobile number already registered' }));
         toast.error('Mobile number already registered');
-      } else if (errorMsg?.includes('password')) {
+      } else if (errorMessage.toLowerCase().includes('password')) {
         setErrors(prev => ({ ...prev, password: 'Password validation failed' }));
         toast.error('Password validation failed');
-      } else if (errorMsg?.includes('gender')) {
+      } else if (errorMessage.toLowerCase().includes('gender')) {
         setErrors(prev => ({ ...prev, gender: 'Gender validation failed' }));
         toast.error('Gender validation failed');
+      } else if (errorMessage.toLowerCase().includes('dob') || errorMessage.toLowerCase().includes('date')) {
+        setErrors(prev => ({ ...prev, dob: 'Invalid date of birth' }));
+        toast.error('Invalid date of birth');
+      } else if (errorMessage.includes('Network error')) {
+        toast.error('Network error. Please check your internet connection and try again.');
       } else {
-        toast.error(errorMsg || 'Registration failed. Please try again.');
+        toast.error(errorMessage);
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOtpVerified = () => {
+    setShowOtpVerification(false);
+    setTimeout(() => {
+      navigate('/login');
+    }, 1000);
+  };
+
+  const handleOtpCancel = () => {
+    setShowOtpVerification(false);
+    toast.info('Please verify your email to login. You can verify later from login page.');
   };
 
   const calculateCompletion = () => {
@@ -674,8 +937,8 @@ const Register = () => {
   const formatPhoneNumber = (number) => {
     if (!number) return '';
     
-    const country = getCountryInfo(selectedCountry);
     const digits = number.replace(/\D/g, '');
+    const country = getCountryInfo(selectedCountry);
     
     switch (selectedCountry) {
       case '+1': // US/Canada
@@ -692,33 +955,6 @@ const Register = () => {
         if (digits.length <= 5) return digits;
         return `${digits.slice(0,5)}-${digits.slice(5,10)}`;
       
-      case '+61': // Australia
-        if (digits.length <= 1) return digits;
-        if (digits.length <= 4) return `${digits.slice(0,1)} ${digits.slice(1)}`;
-        if (digits.length <= 7) return `${digits.slice(0,1)} ${digits.slice(1,4)} ${digits.slice(4)}`;
-        return `${digits.slice(0,1)} ${digits.slice(1,4)} ${digits.slice(4,7)} ${digits.slice(7,9)}`;
-      
-      case '+49': // Germany
-        if (digits.length <= 3) return digits;
-        return `${digits.slice(0,3)} ${digits.slice(3)}`;
-      
-      case '+33': // France
-        if (digits.length <= 1) return digits;
-        if (digits.length <= 3) return `${digits.slice(0,1)} ${digits.slice(1)}`;
-        if (digits.length <= 5) return `${digits.slice(0,1)} ${digits.slice(1,3)} ${digits.slice(3)}`;
-        if (digits.length <= 7) return `${digits.slice(0,1)} ${digits.slice(1,3)} ${digits.slice(3,5)} ${digits.slice(5)}`;
-        return `${digits.slice(0,1)} ${digits.slice(1,3)} ${digits.slice(3,5)} ${digits.slice(5,7)} ${digits.slice(7,9)}`;
-      
-      case '+81': // Japan
-        if (digits.length <= 2) return digits;
-        if (digits.length <= 6) return `${digits.slice(0,2)}-${digits.slice(2)}`;
-        return `${digits.slice(0,2)}-${digits.slice(2,6)}-${digits.slice(6,10)}`;
-      
-      case '+86': // China
-        if (digits.length <= 3) return digits;
-        if (digits.length <= 7) return `${digits.slice(0,3)} ${digits.slice(3)}`;
-        return `${digits.slice(0,3)} ${digits.slice(3,7)} ${digits.slice(7,11)}`;
-      
       default:
         return digits;
     }
@@ -731,12 +967,6 @@ const Register = () => {
     
     // Extract digits only for storage
     const digitsOnly = value.replace(/\D/g, '');
-    
-    // Format for display
-    const formatted = formatPhoneNumber(digitsOnly);
-    
-    // Update input value with formatting
-    e.target.value = formatted;
     
     // Store digits only in form data
     setFormData(prev => ({
@@ -762,599 +992,611 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen py-8 px-4 animate-fade-in">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-10 animate-slide-down">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
-            Create Your Account
-          </h1>
-          <p className="text-gray-600 text-lg">Join our community with just a few steps</p>
-        </div>
+    <>
+      <div className="min-h-screen py-8 px-4 animate-fade-in">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-10 animate-slide-down">
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
+              Create Your Account
+            </h1>
+            <p className="text-gray-600 text-lg">Join our community with just a few steps</p>
+          </div>
 
-        <div className="card backdrop-blur-xl shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Full Name */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaUser className="mr-2 text-primary-600" />
-                  Full Name *
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="fullName"
-                    value={formData.fullName}
-                    onChange={handleChange}
-                    onBlur={() => handleBlur('fullName')}
-                    className={`form-input ${isFieldInvalid('fullName') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('fullName') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="Vatsalraj Solanki"
-                    disabled={loading}
-                    maxLength={100}
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    {isFieldValid('fullName') && <FaCheck className="text-green-600" />}
-                    {isFieldInvalid('fullName') && <FaTimes className="text-red-600" />}
-                  </div>
-                </div>
-                {errors.fullName && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.fullName}
-                  </p>
-                )}
-                {isFieldValid('fullName') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid full name
-                  </p>
-                )}
-              </div>
-
-              {/* Gender */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  {getGenderIcon(formData.gender)}
-                  <span className="ml-2">Gender *</span>
-                </label>
-                <div className="relative">
-                  <select
-                    name="gender"
-                    value={formData.gender}
-                    onChange={handleGenderChange}
-                    onBlur={() => handleBlur('gender')}
-                    className={`form-input ${isFieldInvalid('gender') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('gender') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    disabled={loading}
-                  >
-                    <option value="">Select Gender</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    {isFieldValid('gender') && <FaCheck className="text-green-600" />}
-                    {isFieldInvalid('gender') && <FaTimes className="text-red-600" />}
-                  </div>
-                </div>
-                {errors.gender && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.gender}
-                  </p>
-                )}
-                {isFieldValid('gender') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid gender selected
-                  </p>
-                )}
-              </div>
-
-              {/* Date of Birth - Combined Calendar and Manual Input */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaCalendar className="mr-2 text-primary-600" />
-                  Date of Birth *
-                </label>
-                
-                <div className="relative" ref={datePickerRef}>
-                  <div className="flex">
+          <div className="card backdrop-blur-xl shadow-2xl">
+            <form onSubmit={handleSubmit} className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Full Name */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaUser className="mr-2 text-primary-600" />
+                    Full Name *
+                  </label>
+                  <div className="relative">
                     <input
                       type="text"
-                      name="dob"
-                      value={formatDateForInput(formData.dob)}
-                      onChange={handleDobInputChange}
-                      onBlur={() => handleBlur('dob')}
-                      onClick={() => setIsCalendarOpen(true)}
-                      className={`form-input flex-1 ${isFieldInvalid('dob') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('dob') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                      placeholder="DD/MMM/YYYY or DD-MM-YYYY (e.g., 15/Jan/1990 or 15-12-1990)"
+                      name="fullName"
+                      value={formData.fullName}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('fullName')}
+                      className={`form-input ${isFieldInvalid('fullName') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('fullName') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                      placeholder="Vatsalraj Solanki"
                       disabled={loading}
-                      autoComplete="off"
+                      maxLength={100}
                     />
-                    <button
-                      type="button"
-                      onClick={toggleCalendar}
-                      className={`ml-2 px-4 border ${isFieldInvalid('dob') ? 'border-red-500' : isFieldValid('dob') ? 'border-green-500' : 'border-gray-300'} rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center`}
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      {isFieldValid('fullName') && <FaCheck className="text-green-600" />}
+                      {isFieldInvalid('fullName') && <FaTimes className="text-red-600" />}
+                    </div>
+                  </div>
+                  {errors.fullName && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.fullName}
+                    </p>
+                  )}
+                  {isFieldValid('fullName') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid full name
+                    </p>
+                  )}
+                </div>
+
+                {/* Gender */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    {getGenderIcon(formData.gender)}
+                    <span className="ml-2">Gender *</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      name="gender"
+                      value={formData.gender}
+                      onChange={handleGenderChange}
+                      onBlur={() => handleBlur('gender')}
+                      className={`form-input ${isFieldInvalid('gender') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('gender') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
                       disabled={loading}
                     >
-                      <FaCalendar className="text-gray-600" />
+                      <option value="">Select Gender</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      {isFieldValid('gender') && <FaCheck className="text-green-600" />}
+                      {isFieldInvalid('gender') && <FaTimes className="text-red-600" />}
+                    </div>
+                  </div>
+                  {errors.gender && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.gender}
+                    </p>
+                  )}
+                  {isFieldValid('gender') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid gender selected
+                    </p>
+                  )}
+                </div>
+
+                {/* Date of Birth - Combined Calendar and Manual Input */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaCalendar className="mr-2 text-primary-600" />
+                    Date of Birth *
+                  </label>
+                  
+                  <div className="relative" ref={datePickerRef}>
+                    <div className="flex">
+                      <input
+                        type="text"
+                        name="dob"
+                        value={formatDateForInput(formData.dob)}
+                        onChange={handleDobInputChange}
+                        onBlur={() => handleBlur('dob')}
+                        onClick={() => setIsCalendarOpen(true)}
+                        className={`form-input flex-1 ${isFieldInvalid('dob') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('dob') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                        placeholder="DD/MMM/YYYY or DD-MM-YYYY (e.g., 15/Jan/1990 or 15-12-1990)"
+                        disabled={loading}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        onClick={toggleCalendar}
+                        className={`ml-2 px-4 border ${isFieldInvalid('dob') ? 'border-red-500' : isFieldValid('dob') ? 'border-green-500' : 'border-gray-300'} rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-center`}
+                        disabled={loading}
+                      >
+                        <FaCalendar className="text-gray-600" />
+                      </button>
+                    </div>
+                    
+                    {/* Calendar dropdown */}
+                    {isCalendarOpen && (
+                      <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl">
+                        <DatePicker
+                          selected={formData.dob instanceof Date ? formData.dob : null}
+                          onChange={handleCalendarChange}
+                          inline
+                          showYearDropdown
+                          scrollableYearDropdown
+                          yearDropdownItemNumber={100}
+                          maxDate={new Date()}
+                          minDate={new Date(1900, 0, 1)}
+                          disabled={loading}
+                          peekNextMonth
+                          showMonthDropdown
+                          dropdownMode="select"
+                          strictParsing
+                          allowSameDay={false}
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="absolute right-16 top-1/2 transform -translate-y-1/2">
+                      {isFieldValid('dob') && <FaCheck className="text-green-600" />}
+                      {isFieldInvalid('dob') && <FaTimes className="text-red-600" />}
+                    </div>
+                  </div>
+                  
+                  {errors.dob && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.dob}
+                    </p>
+                  )}
+                  {isFieldValid('dob') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid date of birth
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    Type or click calendar. Accepts: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY or DD/MMM/YYYY, DD-MMM-YYYY
+                  </p>
+                </div>
+
+                {/* Email */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaEnvelope className="mr-2 text-primary-600" />
+                    Email Address *
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      (Max 254 chars)
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('email')}
+                      onKeyDown={(e) => {
+                        // Prevent space key in email
+                        if (e.key === ' ') {
+                          e.preventDefault();
+                          toast.error('Email cannot contain spaces');
+                        }
+                      }}
+                      className={`form-input ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                      placeholder="vatsalraj@example.com"
+                      disabled={loading}
+                      maxLength={254}
+                      minLength={6}
+                      autoComplete="email"
+                    />
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      {isFieldValid('email') && <FaCheck className="text-green-600" />}
+                      {isFieldInvalid('email') && <FaTimes className="text-red-600" />}
+                    </div>
+                  </div>
+                  {errors.email && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.email}
+                    </p>
+                  )}
+                  {isFieldValid('email') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid email address
+                    </p>
+                  )}
+                  <div className="text-xs text-gray-500">
+                    <FaInfoCircle className="inline mr-1" />
+                    Standard email format (no spaces, max 254 characters)
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaLock className="mr-2 text-primary-600" />
+                    Password *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('password')}
+                      onCopy={handlePasswordCopy}
+                      onPaste={handlePasswordPaste}
+                      onCut={handlePasswordCut}
+                      className={`form-input pr-10 ${isFieldInvalid('password') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('password') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                      placeholder="Minimum 8 characters with special chars"
+                      disabled={loading}
+                      maxLength={128}
+                      autoComplete="new-password"
+                    />
+                    <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                      {isFieldValid('password') && <FaCheck className="text-green-600" />}
+                      {isFieldInvalid('password') && <FaTimes className="text-red-600" />}
+                    </div>
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary-600"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
+                    >
+                      {showPassword ? <FaEyeSlash /> : <FaEye />}
                     </button>
                   </div>
                   
-                  {/* Calendar dropdown */}
-                  {isCalendarOpen && (
-                    <div className="absolute z-50 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl">
-                      <DatePicker
-                        selected={formData.dob instanceof Date ? formData.dob : null}
-                        onChange={handleCalendarChange}
-                        inline
-                        showYearDropdown
-                        scrollableYearDropdown
-                        yearDropdownItemNumber={100}
-                        maxDate={new Date()}
-                        minDate={new Date(1900, 0, 1)}
+                  {formData.password && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-600">Password Strength:</span>
+                        <span className="text-xs font-medium">
+                          {passwordStrength < 40 ? 'Weak' : 
+                           passwordStrength < 70 ? 'Fair' : 
+                           passwordStrength < 90 ? 'Good' : 'Strong'}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div 
+                          className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(passwordStrength)}`}
+                          style={{ width: `${passwordStrength}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {errors.password && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.password}
+                    </p>
+                  )}
+                  {isFieldValid('password') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Strong password
+                    </p>
+                  )}
+                </div>
+
+                {/* Confirm Password */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaLock className="mr-2 text-primary-600" />
+                    Confirm Password *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('confirmPassword')}
+                      onCopy={handlePasswordCopy}
+                      onPaste={handlePasswordPaste}
+                      onCut={handlePasswordCut}
+                      className={`form-input pr-10 ${isFieldInvalid('confirmPassword') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('confirmPassword') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                      placeholder="Re-enter your password"
+                      disabled={loading}
+                      maxLength={128}
+                      autoComplete="new-password"
+                    />
+                    <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                      {isFieldValid('confirmPassword') && doPasswordsMatch() && <FaCheck className="text-green-600" />}
+                      {isFieldInvalid('confirmPassword') && <FaTimes className="text-red-600" />}
+                    </div>
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary-600"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      disabled={loading}
+                    >
+                      {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+                    </button>
+                  </div>
+                  
+                  {formData.confirmPassword && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-600">Password Match:</span>
+                        <span className="text-xs font-medium">
+                          {doPasswordsMatch() ? (
+                            <span className="text-green-600">✓ Passwords match</span>
+                          ) : formData.password && formData.confirmPassword ? (
+                            <span className="text-red-600">✗ Passwords don't match</span>
+                          ) : 'Enter password to check'}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div 
+                          className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(confirmPasswordStrength)}`}
+                          style={{ width: `${confirmPasswordStrength}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {errors.confirmPassword && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.confirmPassword}
+                    </p>
+                  )}
+                  {isFieldValid('confirmPassword') && doPasswordsMatch() && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Passwords match
+                    </p>
+                  )}
+                </div>
+
+                {/* Mobile Number */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaPhone className="mr-2 text-primary-600" />
+                    Mobile Number *
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      ({getCountryInfo(selectedCountry).name})
+                    </span>
+                  </label>
+                  <div className="flex space-x-2">
+                    <select
+                      value={selectedCountry}
+                      onChange={handleCountryChange}
+                      className="form-input w-32"
+                      disabled={loading}
+                    >
+                      {MOBILE_COUNTRIES.map((country) => (
+                        <option key={country.code} value={country.code}>
+                          {country.flag} {country.code}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="relative flex-1">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                        {selectedCountry}
+                      </div>
+                      <input
+                        ref={mobileInputRef}
+                        type="tel"
+                        name="mobile"
+                        value={formatPhoneNumber(formData.mobile)}
+                        onChange={handleChange}
+                        onBlur={() => handleBlur('mobile')}
+                        className={`form-input w-full pl-14 ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
+                        placeholder={PHONE_EXAMPLES[selectedCountry]?.example || "Enter phone number"}
                         disabled={loading}
-                        peekNextMonth
-                        showMonthDropdown
-                        dropdownMode="select"
-                        strictParsing
-                        allowSameDay={false}
+                        inputMode="tel"
+                        maxLength={25}
                       />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        {isFieldValid('mobile') && <FaCheck className="text-green-600" />}
+                        {isFieldInvalid('mobile') && <FaTimes className="text-red-600" />}
+                      </div>
                     </div>
+                  </div>
+                  {errors.mobile && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.mobile}
+                    </p>
                   )}
-                  
-                  <div className="absolute right-16 top-1/2 transform -translate-y-1/2">
-                    {isFieldValid('dob') && <FaCheck className="text-green-600" />}
-                    {isFieldInvalid('dob') && <FaTimes className="text-red-600" />}
+                  {isFieldValid('mobile') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid phone number
+                    </p>
+                  )}
+                  <div className="text-xs text-gray-500">
+                    <FaInfoCircle className="inline mr-1" />
+                    {getCountryValidationMessage(selectedCountry)}
                   </div>
                 </div>
-                
-                {errors.dob && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.dob}
-                  </p>
-                )}
-                {isFieldValid('dob') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid date of birth
-                  </p>
-                )}
-                <p className="text-xs text-gray-500">
-                  Type or click calendar. Accepts: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY or DD/MMM/YYYY, DD-MMM-YYYY
-                </p>
-              </div>
 
-              {/* Email */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaEnvelope className="mr-2 text-primary-600" />
-                  Email Address *
-                  <span className="ml-2 text-xs font-normal text-gray-500">
-                    (Max 254 chars)
-                  </span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    onBlur={() => handleBlur('email')}
-                    onKeyDown={(e) => {
-                      // Prevent space key in email
-                      if (e.key === ' ') {
-                        e.preventDefault();
-                        toast.error('Email cannot contain spaces');
-                      }
-                    }}
-                    className={`form-input ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="vatsalraj@example.com"
-                    disabled={loading}
-                    maxLength={254}
-                    minLength={6}
-                    autoComplete="email"
-                  />
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    {isFieldValid('email') && <FaCheck className="text-green-600" />}
-                    {isFieldInvalid('email') && <FaTimes className="text-red-600" />}
-                  </div>
-                </div>
-                {errors.email && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.email}
-                  </p>
-                )}
-                {isFieldValid('email') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid email address
-                  </p>
-                )}
-                <div className="text-xs text-gray-500">
-                  <FaInfoCircle className="inline mr-1" />
-                  Standard email format (no spaces, max 254 characters)
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaLock className="mr-2 text-primary-600" />
-                  Password *
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    onBlur={() => handleBlur('password')}
-                    onCopy={handlePasswordCopy}
-                    onPaste={handlePasswordPaste}
-                    onCut={handlePasswordCut}
-                    className={`form-input pr-10 ${isFieldInvalid('password') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('password') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="Minimum 8 characters with special chars"
-                    disabled={loading}
-                    maxLength={128}
-                    autoComplete="new-password"
-                  />
-                  <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
-                    {isFieldValid('password') && <FaCheck className="text-green-600" />}
-                    {isFieldInvalid('password') && <FaTimes className="text-red-600" />}
-                  </div>
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary-600"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
-                  >
-                    {showPassword ? <FaEyeSlash /> : <FaEye />}
-                  </button>
-                </div>
-                
-                {formData.password && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-600">Password Strength:</span>
-                      <span className="text-xs font-medium">
-                        {passwordStrength < 40 ? 'Weak' : 
-                         passwordStrength < 70 ? 'Fair' : 
-                         passwordStrength < 90 ? 'Good' : 'Strong'}
+                {/* Profile Image */}
+                <div className="space-y-2 md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaCamera className="mr-2 text-primary-600" />
+                    Profile Image *
+                    {isFieldValid('profileImage') && (
+                      <span className="ml-2 text-xs text-green-600 flex items-center">
+                        <FaCheck className="mr-1" /> Valid
                       </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div 
-                        className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(passwordStrength)}`}
-                        style={{ width: `${passwordStrength}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                )}
-                
-                {errors.password && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.password}
-                  </p>
-                )}
-                {isFieldValid('password') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Strong password
-                  </p>
-                )}
-              </div>
-
-              {/* Confirm Password */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaLock className="mr-2 text-primary-600" />
-                  Confirm Password *
-                </label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    onBlur={() => handleBlur('confirmPassword')}
-                    onCopy={handlePasswordCopy}
-                    onPaste={handlePasswordPaste}
-                    onCut={handlePasswordCut}
-                    className={`form-input pr-10 ${isFieldInvalid('confirmPassword') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('confirmPassword') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                    placeholder="Re-enter your password"
-                    disabled={loading}
-                    maxLength={128}
-                    autoComplete="new-password"
-                  />
-                  <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
-                    {isFieldValid('confirmPassword') && doPasswordsMatch() && <FaCheck className="text-green-600" />}
-                    {isFieldInvalid('confirmPassword') && <FaTimes className="text-red-600" />}
-                  </div>
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary-600"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    disabled={loading}
-                  >
-                    {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
-                  </button>
-                </div>
-                
-                {formData.confirmPassword && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-600">Password Match:</span>
-                      <span className="text-xs font-medium">
-                        {doPasswordsMatch() ? (
-                          <span className="text-green-600">✓ Passwords match</span>
-                        ) : formData.password && formData.confirmPassword ? (
-                          <span className="text-red-600">✗ Passwords don't match</span>
-                        ) : 'Enter password to check'}
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div 
-                        className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(confirmPasswordStrength)}`}
-                        style={{ width: `${confirmPasswordStrength}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                )}
-                
-                {errors.confirmPassword && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.confirmPassword}
-                  </p>
-                )}
-                {isFieldValid('confirmPassword') && doPasswordsMatch() && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Passwords match
-                  </p>
-                )}
-              </div>
-
-              {/* Mobile Number */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaPhone className="mr-2 text-primary-600" />
-                  Mobile Number *
-                  <span className="ml-2 text-xs font-normal text-gray-500">
-                    ({getCountryInfo(selectedCountry).name})
-                  </span>
-                </label>
-                <div className="flex space-x-2">
-                  <select
-                    value={selectedCountry}
-                    onChange={handleCountryChange}
-                    className="form-input w-32"
-                    disabled={loading}
-                  >
-                    {MOBILE_COUNTRIES.map((country) => (
-                      <option key={country.code} value={country.code}>
-                        {country.flag} {country.code}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="relative flex-1">
-                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                      {selectedCountry}
-                    </div>
-                    <input
-                      ref={mobileInputRef}
-                      type="tel"
-                      name="mobile"
-                      value={formatPhoneNumber(formData.mobile)}
-                      onChange={handlePhoneChange}
-                      onBlur={() => handleBlur('mobile')}
-                      className={`form-input w-full pl-14 ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                      placeholder={PHONE_EXAMPLES[selectedCountry]?.example || "Enter phone number"}
-                      disabled={loading}
-                      inputMode="tel"
-                      maxLength={25}
-                    />
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                      {isFieldValid('mobile') && <FaCheck className="text-green-600" />}
-                      {isFieldInvalid('mobile') && <FaTimes className="text-red-600" />}
-                    </div>
-                  </div>
-                </div>
-                {errors.mobile && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.mobile}
-                  </p>
-                )}
-                {isFieldValid('mobile') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid {getCountryInfo(selectedCountry).name} number
-                  </p>
-                )}
-                <div className="text-xs text-gray-500">
-                  <FaInfoCircle className="inline mr-1" />
-                  {getCountryValidationMessage(selectedCountry)}
-                </div>
-              </div>
-
-              {/* Profile Image */}
-              <div className="space-y-2 md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaCamera className="mr-2 text-primary-600" />
-                  Profile Image *
-                  {isFieldValid('profileImage') && (
-                    <span className="ml-2 text-xs text-green-600 flex items-center">
-                      <FaCheck className="mr-1" /> Valid
-                    </span>
-                  )}
-                </label>
-                <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
-                  <label className={`cursor-pointer flex-1 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <input
-                      type="file"
-                      name="profileImage"
-                      onChange={handleChange}
-                      onBlur={() => handleBlur('profileImage')}
-                      accept=".jpg,.jpeg,image/jpeg"
-                      className="hidden"
-                      disabled={loading}
-                    />
-                    <div className={`card flex items-center justify-center p-8 border-2 border-dashed ${isFieldInvalid('profileImage') ? 'border-red-500' : isFieldValid('profileImage') ? 'border-green-500' : 'border-gray-300'} hover:border-primary-500 transition-all duration-300`}>
-                      <div className="text-center">
-                        <FaUpload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-600">
-                          {formData.profileImage ? formData.profileImage.name : 'Click to upload profile image'}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-1">Max 1MB, JPEG only (.jpg, .jpeg)</p>
-                      </div>
-                    </div>
+                    )}
                   </label>
-                  
-                  {imagePreview && (
-                    <div className="relative">
-                      <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg">
-                        <img
-                          src={imagePreview}
-                          alt="Profile Preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-primary-500 text-white rounded-full flex items-center justify-center">
-                        <FaCamera className="w-4 h-4" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {errors.profileImage && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.profileImage}
-                  </p>
-                )}
-                {isFieldValid('profileImage') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid JPEG image uploaded
-                  </p>
-                )}
-              </div>
-
-              {/* Document */}
-              <div className="space-y-2 md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 flex items-center">
-                  <FaFilePdf className="mr-2 text-primary-600" />
-                  Document *
-                  {isFieldValid('document') && (
-                    <span className="ml-2 text-xs text-green-600 flex items-center">
-                      <FaCheck className="mr-1" /> Valid
-                    </span>
-                  )}
-                </label>
-                <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
-                  <label className={`cursor-pointer flex-1 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <input
-                      type="file"
-                      name="document"
-                      onChange={handleChange}
-                      onBlur={() => handleBlur('document')}
-                      accept=".pdf,application/pdf"
-                      className="hidden"
-                      disabled={loading}
-                    />
-                    <div className={`card flex items-center justify-center p-8 border-2 border-dashed ${isFieldInvalid('document') ? 'border-red-500' : isFieldValid('document') ? 'border-green-500' : 'border-gray-300'} hover:border-primary-500 transition-all duration-300`}>
-                      <div className="text-center">
-                        <FaUpload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-600">
-                          {formData.document ? formData.document.name : 'Click to upload PDF document'}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-1">Max 5MB, PDF only (.pdf)</p>
-                      </div>
-                    </div>
-                  </label>
-                  
-                  {documentPreview && (
-                    <div className="relative">
-                      <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-red-50 flex items-center justify-center">
+                  <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
+                    <label className={`cursor-pointer flex-1 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <input
+                        type="file"
+                        name="profileImage"
+                        onChange={handleChange}
+                        onBlur={() => handleBlur('profileImage')}
+                        accept=".jpg,.jpeg,image/jpeg"
+                        className="hidden"
+                        disabled={loading}
+                      />
+                      <div className={`card flex items-center justify-center p-8 border-2 border-dashed ${isFieldInvalid('profileImage') ? 'border-red-500' : isFieldValid('profileImage') ? 'border-green-500' : 'border-gray-300'} hover:border-primary-500 transition-all duration-300`}>
                         <div className="text-center">
-                          <FaFilePdf className="w-12 h-12 text-red-500 mx-auto mb-2" />
-                          <p className="text-xs text-gray-700 font-medium truncate max-w-[100px]">
-                            {formData.document?.name}
+                          <FaUpload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                          <p className="text-gray-600">
+                            {formData.profileImage ? formData.profileImage.name : 'Click to upload profile image'}
                           </p>
-                          <p className="text-xs text-gray-500">PDF Document</p>
+                          <p className="text-sm text-gray-500 mt-1">Max 1MB, JPEG only (.jpg, .jpeg)</p>
                         </div>
                       </div>
-                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center">
-                        <FaFilePdf className="w-4 h-4" />
+                    </label>
+                    
+                    {imagePreview && (
+                      <div className="relative">
+                        <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg">
+                          <img
+                            src={imagePreview}
+                            alt="Profile Preview"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="absolute -top-2 -right-2 w-8 h-8 bg-primary-500 text-white rounded-full flex items-center justify-center">
+                          <FaCamera className="w-4 h-4" />
+                        </div>
                       </div>
-                    </div>
+                    )}
+                  </div>
+                  {errors.profileImage && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.profileImage}
+                    </p>
+                  )}
+                  {isFieldValid('profileImage') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid JPEG image uploaded
+                    </p>
                   )}
                 </div>
-                {errors.document && (
-                  <p className="text-sm text-red-600 animate-slide-up flex items-center">
-                    <FaTimes className="mr-1" /> {errors.document}
-                  </p>
-                )}
-                {isFieldValid('document') && (
-                  <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                    <FaCheck className="mr-1" /> Valid PDF document uploaded
-                  </p>
-                )}
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col md:flex-row gap-4 pt-6 border-t border-gray-200">
-              <button
-                type="submit"
-                disabled={loading || Object.keys(errors).length > 0 || calculateCompletion() < 100}
-                className={`btn-primary flex-1 py-4 text-lg ${Object.keys(errors).length > 0 || calculateCompletion() < 100 ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <div className="spinner mr-3"></div>
-                    Creating Account...
+                {/* Document */}
+                <div className="space-y-2 md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center">
+                    <FaFilePdf className="mr-2 text-primary-600" />
+                    Document *
+                    {isFieldValid('document') && (
+                      <span className="ml-2 text-xs text-green-600 flex items-center">
+                        <FaCheck className="mr-1" /> Valid
+                      </span>
+                    )}
+                  </label>
+                  <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
+                    <label className={`cursor-pointer flex-1 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <input
+                        type="file"
+                        name="document"
+                        onChange={handleChange}
+                        onBlur={() => handleBlur('document')}
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        disabled={loading}
+                      />
+                      <div className={`card flex items-center justify-center p-8 border-2 border-dashed ${isFieldInvalid('document') ? 'border-red-500' : isFieldValid('document') ? 'border-green-500' : 'border-gray-300'} hover:border-primary-500 transition-all duration-300`}>
+                        <div className="text-center">
+                          <FaUpload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                          <p className="text-gray-600">
+                            {formData.document ? formData.document.name : 'Click to upload PDF document'}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1">Max 5MB, PDF only (.pdf)</p>
+                        </div>
+                      </div>
+                    </label>
+                    
+                    {documentPreview && (
+                      <div className="relative">
+                        <div className="w-32 h-32 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-red-50 flex items-center justify-center">
+                          <div className="text-center">
+                            <FaFilePdf className="w-12 h-12 text-red-500 mx-auto mb-2" />
+                            <p className="text-xs text-gray-700 font-medium truncate max-w-[100px]">
+                              {formData.document?.name}
+                            </p>
+                            <p className="text-xs text-gray-500">PDF Document</p>
+                          </div>
+                        </div>
+                        <div className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center">
+                          <FaFilePdf className="w-4 h-4" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {errors.document && (
+                    <p className="text-sm text-red-600 animate-slide-up flex items-center">
+                      <FaTimes className="mr-1" /> {errors.document}
+                    </p>
+                  )}
+                  {isFieldValid('document') && (
+                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
+                      <FaCheck className="mr-1" /> Valid PDF document uploaded
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col md:flex-row gap-4 pt-6 border-t border-gray-200">
+                <button
+                  type="submit"
+                  disabled={loading || Object.keys(errors).length > 0 || calculateCompletion() < 100}
+                  className={`btn-primary flex-1 py-4 text-lg ${Object.keys(errors).length > 0 || calculateCompletion() < 100 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <div className="spinner mr-3"></div>
+                      Creating Account...
+                    </span>
+                  ) : (
+                    <>
+                      <FaUpload className="inline mr-2" />
+                      Create Account
+                    </>
+                  )}
+                </button>
+                
+                <Link
+                  to="/login"
+                  className="btn-secondary py-4 text-lg"
+                >
+                  Back to Login
+                </Link>
+              </div>
+            </form>
+
+            {/* Form Progress */}
+            <div className="mt-8">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Form Completion</span>
+                <span className={`text-sm font-semibold ${calculateCompletion() === 100 ? 'text-green-600' : 'text-primary-600'}`}>
+                  {calculateCompletion()}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full transition-all duration-500 ${calculateCompletion() === 100 ? 'bg-green-500' : 'bg-gradient-to-r from-primary-500 to-secondary-500'}`}
+                  style={{
+                    width: `${calculateCompletion()}%`
+                  }}
+                ></div>
+              </div>
+              <div className="mt-2 text-xs text-gray-500">
+                {Object.keys(errors).length > 0 ? (
+                  <span className="text-red-600">
+                    {Object.keys(errors).length} validation error(s) remaining
+                  </span>
+                ) : calculateCompletion() === 100 ? (
+                  <span className="text-green-600">
+                    ✓ All fields are valid! Ready to submit.
                   </span>
                 ) : (
-                  <>
-                    <FaUpload className="inline mr-2" />
-                    Create Account
-                  </>
+                  <span>
+                    Fill all required fields to complete the form
+                  </span>
                 )}
-              </button>
-              
-              <Link
-                to="/login"
-                className="btn-secondary py-4 text-lg"
-              >
-                Back to Login
-              </Link>
-            </div>
-          </form>
-
-          {/* Form Progress */}
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-600">Form Completion</span>
-              <span className={`text-sm font-semibold ${calculateCompletion() === 100 ? 'text-green-600' : 'text-primary-600'}`}>
-                {calculateCompletion()}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className={`h-2 rounded-full transition-all duration-500 ${calculateCompletion() === 100 ? 'bg-green-500' : 'bg-gradient-to-r from-primary-500 to-secondary-500'}`}
-                style={{
-                  width: `${calculateCompletion()}%`
-                }}
-              ></div>
-            </div>
-            <div className="mt-2 text-xs text-gray-500">
-              {Object.keys(errors).length > 0 ? (
-                <span className="text-red-600">
-                  {Object.keys(errors).length} validation error(s) remaining
-                </span>
-              ) : calculateCompletion() === 100 ? (
-                <span className="text-green-600">
-                  ✓ All fields are valid! Ready to submit.
-                </span>
-              ) : (
-                <span>
-                  Fill all required fields to complete the form
-                </span>
-              )}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* OTP Verification Modal */}
+      {showOtpVerification && (
+        <OTPVerification
+          email={registeredEmail}
+          name={registeredName}
+          onVerified={handleOtpVerified}
+          onCancel={handleOtpCancel}
+        />
+      )}
+    </>
   );
 };
 

@@ -1,3 +1,4 @@
+// models/User.js - UPDATED
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -50,7 +51,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: [true, 'Password is required'],
-        minlength: [4, 'Password must be at least 4 characters long']
+        minlength: [8, 'Password must be at least 8 characters long']
     },
     mobile: {
         type: String,
@@ -82,6 +83,39 @@ const userSchema = new mongoose.Schema({
             }
             return v;
         }
+    },
+    // Email verification fields
+    isEmailVerified: {
+        type: Boolean,
+        default: false
+    },
+    emailVerificationOtp: {
+        type: String
+    },
+    emailVerificationOtpExpires: {
+        type: Date
+    },
+    emailVerificationAttempts: {
+        type: Number,
+        default: 0
+    },
+    emailOtpResendAttempts: {
+        type: Number,
+        default: 0
+    },
+    lastEmailOtpSent: {
+        type: Date
+    },
+    // Password reset fields
+    passwordResetOtp: {
+        type: String
+    },
+    passwordResetOtpExpires: {
+        type: Date
+    },
+    passwordResetAttempts: {
+        type: Number,
+        default: 0
     },
     createdAt: {
         type: Date,
@@ -135,6 +169,25 @@ userSchema.virtual('age').get(function() {
     
     return age;
 });
+
+// Generate OTP
+userSchema.methods.generateOtp = function() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+// Check if OTP is valid
+userSchema.methods.isOtpValid = function(otp, type = 'email') {
+    const otpField = type === 'email' ? 'emailVerificationOtp' : 'passwordResetOtp';
+    const expiresField = type === 'email' ? 'emailVerificationOtpExpires' : 'passwordResetOtpExpires';
+    
+    return this[otpField] === otp && this[expiresField] > new Date();
+};
+
+// Reset verification attempts
+userSchema.methods.resetVerificationAttempts = function() {
+    this.emailVerificationAttempts = 0;
+    return this.save();
+};
 
 // Static method to find by email
 userSchema.statics.findByEmail = function(email) {

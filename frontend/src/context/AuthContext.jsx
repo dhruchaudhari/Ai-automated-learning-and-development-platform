@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { authAPI } from '../utils/api';
+import { authAPI, userAPI } from '../utils/api'; // IMPORT BOTH APIs
 import { toast } from 'react-hot-toast';
 
 const AuthContext = createContext();
@@ -84,11 +84,6 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
         toast.success('Login successful!');
         
-        // Verify the token was saved correctly
-        setTimeout(() => {
-          console.log('Verifying token after login:', localStorage.getItem('token'));
-        }, 100);
-        
         return { success: true };
       } else {
         console.error('Invalid response structure:', response);
@@ -113,9 +108,25 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
-    clearAuthData();
-    toast.success('Logged out successfully');
+  // FIXED: Simple logout function
+  const logout = async () => {
+    try {
+      // Try to call logout API if token exists
+      const token = localStorage.getItem('token');
+      if (token) {
+        await userAPI.logout();
+      }
+    } catch (error) {
+      console.log('Logout API failed, but proceeding with client logout:', error);
+    } finally {
+      clearAuthData();
+      toast.success('Logged out successfully');
+      
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 500);
+    }
   };
 
   return (
