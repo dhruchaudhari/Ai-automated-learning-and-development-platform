@@ -37,27 +37,28 @@ import {
   FaHistory,
   FaCalendar,
   FaClock,
-  FaCalendarCheck,
   FaCalendarTimes,
   FaGenderless,
-  FaSortNumericDown,
-  FaSortNumericUp,
-  FaChevronDown,
-  FaChevronUp,
   FaTrashAlt,
   FaChartBar,
   FaChartPie,
-  FaChartLine,
   FaUsers,
-  FaChartArea,
-  FaTable,
+  FaToggleOn as FaToggleOnIcon,
+  FaToggleOff as FaToggleOffIcon,
+  FaChartLine,
+  FaUserClock,
+  FaCalendarDay,
+  FaCalendarWeek,
+  FaCalendarCheck,
+  FaUserCheck,
+  FaUserTimes,
+  FaArrowRight,
   FaList,
-  FaTh,
-  FaCogs,
-  FaArrowUp,
-  FaArrowDown,
-  FaInfoCircle,
-  FaExclamationTriangle
+  FaTable,
+  FaUserFriends,
+  FaUsersCog,
+  FaChartArea,
+  FaInfoCircle
 } from "react-icons/fa";
 import { 
   format, 
@@ -76,16 +77,22 @@ import {
   endOfYear,
   isWithinInterval,
   eachDayOfInterval,
-  eachMonthOfInterval,
-  subMonths,
-  subYears,
-  addDays,
-  addMonths,
-  addYears,
   isValid,
   isSameDay,
   isSameMonth,
-  isSameYear
+  isSameYear,
+  subHours,
+  parse,
+  addDays,
+  addMonths,
+  addYears,
+  differenceInMinutes,
+  differenceInSeconds,
+  subMonths,
+  subYears,
+  eachMonthOfInterval,
+  isAfter,
+  isBefore
 } from "date-fns";
 import ConfirmationModal from "./ConfirmationModal";
 import ViewUser from "./ViewUser";
@@ -106,13 +113,7 @@ import {
   Line,
   AreaChart,
   Area,
-  ComposedChart,
-  Scatter,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis
+  ComposedChart
 } from "recharts";
 
 const ROWS_PER_PAGE = 5;
@@ -163,18 +164,20 @@ const getGenderDisplay = (gender) => {
 };
 
 // Enhanced activation duration calculation
-const calculateActivationDuration = (activationHistory, specificDate = null) => {
+const calculateActivationDuration = (activationHistory, specificDate = null, dateRange = null) => {
   if (!activationHistory || activationHistory.length === 0) {
     return { 
-      totalDays: 0, 
-      totalHours: 0, 
-      totalMinutes: 0,
       active: false,
       totalDuration: 0,
       sessions: 0,
-      avgSessionDuration: 0,
       lastActivation: null,
-      firstActivation: null
+      firstActivation: null,
+      todayDuration: 0,
+      yesterdayDuration: 0,
+      thisWeekDuration: 0,
+      thisMonthDuration: 0,
+      dateRangeDuration: 0,
+      hourlyBreakdown: {}
     };
   }
   
@@ -186,9 +189,26 @@ const calculateActivationDuration = (activationHistory, specificDate = null) => 
   let totalDuration = 0;
   let isCurrentlyActive = false;
   let sessions = 0;
-  let sessionDurations = [];
+  let todayDuration = 0;
+  let yesterdayDuration = 0;
+  let thisWeekDuration = 0;
+  let thisMonthDuration = 0;
+  let dateRangeDuration = 0;
+  const hourlyBreakdown = {};
   
-  // Calculate total active time
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const yesterdayStart = startOfDay(subDays(now, 1));
+  const yesterdayEnd = endOfDay(subDays(now, 1));
+  const weekStart = startOfWeek(now);
+  const monthStart = startOfMonth(now);
+  
+  // Initialize hourly breakdown for 24 hours
+  for (let hour = 0; hour < 24; hour++) {
+    hourlyBreakdown[hour] = 0;
+  }
+
+  // Calculate durations for specific date or date range
   for (let i = 0; i < sortedHistory.length; i += 2) {
     const start = sortedHistory[i];
     const end = sortedHistory[i + 1] || { status: 'inactive', timestamp: new Date().toISOString() };
@@ -197,7 +217,10 @@ const calculateActivationDuration = (activationHistory, specificDate = null) => 
       const startTime = new Date(start.timestamp);
       const endTime = new Date(end.timestamp);
       
-      // If specific date is provided, only count time on that date
+      // Calculate session duration
+      const sessionDuration = endTime - startTime;
+      
+      // Check if session falls within specific date
       if (specificDate) {
         const specificDateStart = startOfDay(specificDate);
         const specificDateEnd = endOfDay(specificDate);
@@ -206,15 +229,123 @@ const calculateActivationDuration = (activationHistory, specificDate = null) => 
         const sessionEnd = endTime > specificDateEnd ? specificDateEnd : endTime;
         
         if (sessionStart < sessionEnd) {
-          const sessionDuration = sessionEnd - sessionStart;
-          totalDuration += sessionDuration;
-          sessionDurations.push(sessionDuration);
+          const filteredSessionDuration = sessionEnd - sessionStart;
+          totalDuration += filteredSessionDuration;
+          
+          // Add to date-specific duration
+          if (isSameDay(specificDate, now)) {
+            todayDuration += filteredSessionDuration;
+          }
+          
+          // Add to hourly breakdown
+          const hourStart = new Date(sessionStart);
+          const hourEnd = new Date(sessionEnd);
+          while (hourStart < hourEnd) {
+            const hour = hourStart.getHours();
+            const nextHour = new Date(hourStart);
+            nextHour.setHours(hour + 1, 0, 0, 0);
+            const hourDuration = Math.min(hourEnd - hourStart, nextHour - hourStart);
+            hourlyBreakdown[hour] += hourDuration;
+            hourStart.setHours(hour + 1, 0, 0, 0);
+          }
+          
+          sessions++;
+        }
+      } else if (dateRange) {
+        // Check if session falls within date range
+        const rangeStart = dateRange.startDate;
+        const rangeEnd = dateRange.endDate;
+        
+        const sessionStart = startTime < rangeStart ? rangeStart : startTime;
+        const sessionEnd = endTime > rangeEnd ? rangeEnd : endTime;
+        
+        if (sessionStart < sessionEnd) {
+          const filteredSessionDuration = sessionEnd - sessionStart;
+          dateRangeDuration += filteredSessionDuration;
+          
+          // Add to hourly breakdown for each day in range
+          const currentDay = startOfDay(sessionStart);
+          const rangeEndDay = endOfDay(sessionEnd);
+          
+          while (currentDay <= rangeEndDay) {
+            const dayStart = startOfDay(currentDay);
+            const dayEnd = endOfDay(currentDay);
+            
+            const daySessionStart = sessionStart < dayStart ? dayStart : sessionStart;
+            const daySessionEnd = sessionEnd > dayEnd ? dayEnd : sessionEnd;
+            
+            if (daySessionStart < daySessionEnd) {
+              const dayDuration = daySessionEnd - daySessionStart;
+              
+              // Add to appropriate time period
+              if (isSameDay(currentDay, now)) {
+                todayDuration += dayDuration;
+              }
+              if (isSameDay(currentDay, subDays(now, 1))) {
+                yesterdayDuration += dayDuration;
+              }
+              if (currentDay >= weekStart) {
+                thisWeekDuration += dayDuration;
+              }
+              if (currentDay >= monthStart) {
+                thisMonthDuration += dayDuration;
+              }
+              
+              // Add to hourly breakdown for this day
+              const hourStart = new Date(daySessionStart);
+              const hourEnd = new Date(daySessionEnd);
+              while (hourStart < hourEnd) {
+                const hour = hourStart.getHours();
+                const nextHour = new Date(hourStart);
+                nextHour.setHours(hour + 1, 0, 0, 0);
+                const hourDuration = Math.min(hourEnd - hourStart, nextHour - hourStart);
+                hourlyBreakdown[hour] += hourDuration;
+                hourStart.setHours(hour + 1, 0, 0, 0);
+              }
+            }
+            
+            currentDay.setDate(currentDay.getDate() + 1);
+          }
+          
           sessions++;
         }
       } else {
-        const sessionDuration = endTime - startTime;
+        // Calculate for all time
         totalDuration += sessionDuration;
-        sessionDurations.push(sessionDuration);
+        
+        // Calculate durations for different time periods
+        if (startTime <= now && (isSameDay(startTime, now) || isSameDay(endTime, now))) {
+          const sessionStart = startTime < todayStart ? todayStart : startTime;
+          const sessionEnd = endTime > now ? now : endTime;
+          if (sessionStart < sessionEnd) {
+            todayDuration += sessionEnd - sessionStart;
+          }
+        }
+        
+        if (startTime <= yesterdayEnd && endTime >= yesterdayStart) {
+          const sessionStart = startTime < yesterdayStart ? yesterdayStart : startTime;
+          const sessionEnd = endTime > yesterdayEnd ? yesterdayEnd : endTime;
+          if (sessionStart < sessionEnd) {
+            yesterdayDuration += sessionEnd - sessionStart;
+          }
+        }
+        
+        if (startTime <= now && endTime >= weekStart) {
+          const sessionStart = startTime < weekStart ? weekStart : startTime;
+          const sessionEnd = endTime > now ? now : endTime;
+          if (sessionStart < sessionEnd) {
+            thisWeekDuration += sessionEnd - sessionStart;
+          }
+        }
+        
+        if (startTime <= now && endTime >= monthStart) {
+          const sessionStart = startTime < monthStart ? monthStart : startTime;
+          const sessionEnd = endTime > now ? now : endTime;
+          if (sessionStart < sessionEnd) {
+            thisMonthDuration += sessionEnd - sessionStart;
+          }
+        }
+        
         sessions++;
       }
       
@@ -227,24 +358,56 @@ const calculateActivationDuration = (activationHistory, specificDate = null) => 
     }
   }
   
-  const totalDays = Math.floor(totalDuration / (1000 * 60 * 60 * 24));
-  const totalHours = Math.floor((totalDuration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const totalMinutes = Math.floor((totalDuration % (1000 * 60 * 60)) / (1000 * 60));
-  
-  const avgSessionDuration = sessions > 0 ? totalDuration / sessions / (1000 * 60) : 0; // in minutes
-  
   return {
-    totalDays,
-    totalHours,
-    totalMinutes,
     active: isCurrentlyActive,
     totalDuration,
     sessions,
-    avgSessionDuration: Math.round(avgSessionDuration * 100) / 100,
     lastActivation: sortedHistory.length > 0 ? new Date(sortedHistory[sortedHistory.length - 1].timestamp) : null,
     firstActivation: sortedHistory.length > 0 ? new Date(sortedHistory[0].timestamp) : null,
-    sessionDurations
+    todayDuration,
+    yesterdayDuration,
+    thisWeekDuration,
+    thisMonthDuration,
+    dateRangeDuration,
+    hourlyBreakdown,
+    avgSessionDuration: sessions > 0 ? totalDuration / sessions : 0
   };
+};
+
+// Format duration helper
+const formatDuration = (milliseconds) => {
+  if (!milliseconds || milliseconds <= 0) return "0s";
+  
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  } else {
+    return `${seconds}s`;
+  }
+};
+
+// Format duration in HH:MM:SS
+const formatDurationHHMMSS = (milliseconds) => {
+  if (!milliseconds || milliseconds <= 0) return "00:00:00";
+  
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// Format hours from milliseconds
+const formatHours = (milliseconds) => {
+  if (!milliseconds || milliseconds <= 0) return "0";
+  return (milliseconds / (1000 * 60 * 60)).toFixed(2);
 };
 
 // Preview Modal Component
@@ -495,448 +658,999 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems }) => {
   );
 };
 
-// Enhanced Analytics Charts Component
-const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => {
-  const [registrationTimeRange, setRegistrationTimeRange] = useState('last30days');
-  const [genderTimeRange, setGenderTimeRange] = useState('all');
-  const [activationTimeRange, setActivationTimeRange] = useState('last7days');
-  const [activationChartType, setActivationChartType] = useState('daily'); // daily, hourly, weekly
-  const [activationMetric, setActivationMetric] = useState('duration'); // duration, sessions, avgDuration
-  const [viewMode, setViewMode] = useState('charts'); // charts, table, list
-  const [showAdvanced, setShowAdvanced] = useState(false);
+// Enhanced Activation Analytics Component
+const ActivationAnalytics = ({ users, selectedUsers }) => {
+  const [timeRange, setTimeRange] = useState('today');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [customDateRange, setCustomDateRange] = useState({
+    start: format(new Date(), 'yyyy-MM-dd'),
+    end: format(new Date(), 'yyyy-MM-dd')
+  });
+  const [viewMode, setViewMode] = useState('individual'); // 'individual' or 'comparison'
+  const [selectedAnalyticsUsers, setSelectedAnalyticsUsers] = useState([]);
+  const [chartType, setChartType] = useState('bar'); // 'bar', 'line', 'area'
+  const [timeUnit, setTimeUnit] = useState('hours'); // 'hours', 'minutes', 'seconds'
 
-  // Filter users based on selection
-  const targetUsers = showSelectedOnly 
-    ? users.filter(user => selectedUsers.includes(user._id))
-    : users;
+  // Filter users for analytics
+  const targetUsers = useMemo(() => {
+    return selectedUsers.length > 0 
+      ? users.filter(user => selectedUsers.includes(user._id))
+      : users;
+  }, [users, selectedUsers]);
 
-  // Prepare comprehensive registration data
-  const prepareRegistrationData = () => {
+  // Get date range based on selection
+  const getDateRange = useMemo(() => {
     const now = new Date();
-    let filteredUsers = [...targetUsers];
-    let timeInterval = { start: null, end: null };
+    let startDate, endDate;
     
-    // Apply time range filter
-    if (registrationTimeRange !== 'all') {
-      filteredUsers = filteredUsers.filter(user => {
-        const userDate = new Date(user.createdAt);
-        switch(registrationTimeRange) {
-          case 'today':
-            timeInterval = {
-              start: startOfDay(now),
-              end: endOfDay(now)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'yesterday':
-            const yesterday = subDays(now, 1);
-            timeInterval = {
-              start: startOfDay(yesterday),
-              end: endOfDay(yesterday)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'last7days':
-            timeInterval = {
-              start: subDays(now, 7),
-              end: endOfDay(now)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'last30days':
-            timeInterval = {
-              start: subDays(now, 30),
-              end: endOfDay(now)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'last90days':
-            timeInterval = {
-              start: subDays(now, 90),
-              end: endOfDay(now)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'thisMonth':
-            timeInterval = {
-              start: startOfMonth(now),
-              end: endOfMonth(now)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'thisYear':
-            timeInterval = {
-              start: startOfYear(now),
-              end: endOfYear(now)
-            };
-            return isWithinInterval(userDate, timeInterval);
-          case 'custom':
-            // For custom range, you would implement date pickers
-            return true;
-          default:
-            return true;
-        }
+    switch(timeRange) {
+      case 'today':
+        startDate = startOfDay(now);
+        endDate = endOfDay(now);
+        break;
+      case 'yesterday':
+        startDate = startOfDay(subDays(now, 1));
+        endDate = endOfDay(subDays(now, 1));
+        break;
+      case 'last7days':
+        startDate = startOfDay(subDays(now, 6));
+        endDate = endOfDay(now);
+        break;
+      case 'last30days':
+        startDate = startOfDay(subDays(now, 29));
+        endDate = endOfDay(now);
+        break;
+      case 'thisWeek':
+        startDate = startOfWeek(now);
+        endDate = endOfWeek(now);
+        break;
+      case 'thisMonth':
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+        break;
+      case 'custom':
+        startDate = startOfDay(new Date(customDateRange.start));
+        endDate = endOfDay(new Date(customDateRange.end));
+        break;
+      default:
+        startDate = startOfDay(selectedDate);
+        endDate = endOfDay(selectedDate);
+    }
+    
+    return { startDate, endDate };
+  }, [timeRange, selectedDate, customDateRange]);
+
+  // Prepare individual user activation data
+  const individualUserData = useMemo(() => {
+    return targetUsers.map(user => {
+      const activation = calculateActivationDuration(
+        user.activationHistory || [], 
+        timeRange === 'specific' ? selectedDate : null,
+        timeRange !== 'specific' ? getDateRange : null
+      );
+      
+      return {
+        id: user._id,
+        name: user.fullName || `User ${user._id?.substring(0, 6)}`,
+        email: user.email,
+        gender: user.gender,
+        totalDuration: activation.dateRangeDuration || activation.totalDuration,
+        todayDuration: activation.todayDuration,
+        yesterdayDuration: activation.yesterdayDuration,
+        thisWeekDuration: activation.thisWeekDuration,
+        thisMonthDuration: activation.thisMonthDuration,
+        sessions: activation.sessions,
+        active: activation.active,
+        lastActivation: activation.lastActivation,
+        hourlyBreakdown: activation.hourlyBreakdown,
+        avgSessionDuration: activation.avgSessionDuration
+      };
+    }).sort((a, b) => b.totalDuration - a.totalDuration);
+  }, [targetUsers, timeRange, selectedDate, getDateRange]);
+
+  // Prepare comparison data for selected users
+  const comparisonData = useMemo(() => {
+    if (selectedAnalyticsUsers.length === 0) return [];
+    
+    const selectedUsersData = individualUserData.filter(user => 
+      selectedAnalyticsUsers.includes(user.id)
+    );
+    
+    // Prepare data for chart
+    if (timeRange === 'today' || timeRange === 'yesterday' || timeRange === 'specific') {
+      // Hourly comparison
+      const hours = Array.from({ length: 24 }, (_, i) => i);
+      return hours.map(hour => {
+        const dataPoint = { hour: `${hour.toString().padStart(2, '0')}:00` };
+        selectedUsersData.forEach(user => {
+          const hourDuration = user.hourlyBreakdown[hour] || 0;
+          dataPoint[user.name] = timeUnit === 'hours' 
+            ? hourDuration / (1000 * 60 * 60)
+            : timeUnit === 'minutes'
+              ? hourDuration / (1000 * 60)
+              : hourDuration / 1000;
+        });
+        return dataPoint;
+      });
+    } else {
+      // Daily comparison for date ranges
+      const days = eachDayOfInterval({ 
+        start: getDateRange.startDate, 
+        end: getDateRange.endDate 
+      });
+      
+      return days.map(day => {
+        const dateStr = format(day, 'MMM dd');
+        const dataPoint = { date: dateStr, fullDate: day };
+        
+        selectedUsersData.forEach(user => {
+          const userData = individualUserData.find(u => u.id === user.id);
+          if (userData) {
+            // For simplicity, we'll show total duration for each day
+            // In a real app, you'd want to calculate per-day duration
+            dataPoint[user.name] = timeUnit === 'hours'
+              ? userData.totalDuration / (1000 * 60 * 60) / days.length
+              : timeUnit === 'minutes'
+                ? userData.totalDuration / (1000 * 60) / days.length
+                : userData.totalDuration / 1000 / days.length;
+          }
+        });
+        
+        return dataPoint;
       });
     }
+  }, [selectedAnalyticsUsers, individualUserData, timeRange, timeUnit, getDateRange]);
+
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const totalDuration = individualUserData.reduce((sum, user) => sum + user.totalDuration, 0);
+    const activeUsers = individualUserData.filter(user => user.active).length;
+    const totalSessions = individualUserData.reduce((sum, user) => sum + user.sessions, 0);
+    const avgSessionDuration = individualUserData.length > 0 
+      ? individualUserData.reduce((sum, user) => sum + user.avgSessionDuration, 0) / individualUserData.length
+      : 0;
     
-    // Group by date based on time range
-    let groupFormat = 'yyyy-MM-dd';
-    let intervalDays = eachDayOfInterval(timeInterval);
-    
-    if (registrationTimeRange === 'thisYear' || registrationTimeRange === 'all') {
-      groupFormat = 'yyyy-MM';
-      intervalDays = eachMonthOfInterval(timeInterval);
-    }
-    
-    // Initialize with all dates in interval
-    const grouped = {};
-    intervalDays.forEach(date => {
-      const key = format(date, groupFormat);
-      grouped[key] = 0;
-    });
-    
-    // Count registrations
-    filteredUsers.forEach(user => {
-      const key = format(new Date(user.createdAt), groupFormat);
-      if (grouped[key] !== undefined) {
-        grouped[key] = (grouped[key] || 0) + 1;
-      }
-    });
-    
-    // Convert to array and format for display
-    return Object.entries(grouped)
-      .map(([date, count]) => ({
-        date: format(new Date(date), groupFormat === 'yyyy-MM' ? 'MMM yyyy' : 'MMM dd'),
-        fullDate: date,
-        users: count,
-        cumulative: Object.entries(grouped)
-          .filter(([d]) => new Date(d) <= new Date(date))
-          .reduce((sum, [_, c]) => sum + c, 0)
-      }))
-      .sort((a, b) => new Date(a.fullDate) - new Date(b.fullDate));
+    return {
+      totalUsers: individualUserData.length,
+      activeUsers,
+      totalDuration,
+      totalSessions,
+      avgSessionDuration,
+      avgDurationPerUser: individualUserData.length > 0 ? totalDuration / individualUserData.length : 0
+    };
+  }, [individualUserData]);
+
+  // Toggle user selection for comparison
+  const toggleAnalyticsUser = (userId) => {
+    setSelectedAnalyticsUsers(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
   };
 
-  // Prepare enhanced gender data
-  const prepareGenderData = () => {
-    let filteredUsers = [...targetUsers];
-    const now = new Date();
-    
-    // Apply time range filter
-    if (genderTimeRange !== 'all') {
-      filteredUsers = filteredUsers.filter(user => {
-        const userDate = new Date(user.createdAt);
-        switch(genderTimeRange) {
-          case 'today':
-            return isWithinInterval(userDate, {
-              start: startOfDay(now),
-              end: endOfDay(now)
-            });
-          case 'last7days':
-            return isWithinInterval(userDate, {
-              start: subDays(now, 7),
-              end: endOfDay(now)
-            });
-          case 'last30days':
-            return isWithinInterval(userDate, {
-              start: subDays(now, 30),
-              end: endOfDay(now)
-            });
-          case 'thisMonth':
-            return isWithinInterval(userDate, {
-              start: startOfMonth(now),
-              end: endOfMonth(now)
-            });
-          case 'thisYear':
-            return isWithinInterval(userDate, {
-              start: startOfYear(now),
-              end: endOfYear(now)
-            });
-          default:
-            return true;
-        }
-      });
+  // Format value based on time unit
+  const formatTimeValue = (value) => {
+    switch(timeUnit) {
+      case 'hours':
+        return `${(value / (1000 * 60 * 60)).toFixed(2)}h`;
+      case 'minutes':
+        return `${(value / (1000 * 60)).toFixed(0)}m`;
+      case 'seconds':
+        return `${(value / 1000).toFixed(0)}s`;
+      default:
+        return formatDuration(value);
     }
+  };
+
+  return (
+    <div className="mb-8">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <FaChartArea className="text-green-600" />
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Activation Analytics</h3>
+            <p className="text-sm text-gray-500">
+              Analyzing {stats.totalUsers} users • {selectedUsers.length > 0 ? `${selectedUsers.length} selected` : 'All users'}
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">View:</label>
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('individual')}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  viewMode === 'individual' 
+                    ? 'bg-primary-600 text-white' 
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <FaUserClock className="inline mr-1" />
+                Individual
+              </button>
+              <button
+                onClick={() => setViewMode('comparison')}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  viewMode === 'comparison' 
+                    ? 'bg-primary-600 text-white' 
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <FaUserFriends className="inline mr-1" />
+                Compare
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Chart:</label>
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setChartType('bar')}
+                className={`p-1 rounded-md transition-colors ${
+                  chartType === 'bar' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+                title="Bar Chart"
+              >
+                <FaChartBar />
+              </button>
+              <button
+                onClick={() => setChartType('line')}
+                className={`p-1 rounded-md transition-colors ${
+                  chartType === 'line' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+                title="Line Chart"
+              >
+                <FaChartLine />
+              </button>
+              <button
+                onClick={() => setChartType('area')}
+                className={`p-1 rounded-md transition-colors ${
+                  chartType === 'area' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+                title="Area Chart"
+              >
+                <FaChartArea />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Time Range Selection */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <FaCalendar className="inline mr-2 text-blue-500" />
+              Time Range
+            </label>
+            <select
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value)}
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7days">Last 7 Days</option>
+              <option value="last30days">Last 30 Days</option>
+              <option value="thisWeek">This Week</option>
+              <option value="thisMonth">This Month</option>
+              <option value="specific">Specific Date</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          
+          {timeRange === 'specific' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <FaCalendarDay className="inline mr-2 text-purple-500" />
+                Select Date
+              </label>
+              <input
+                type="date"
+                value={format(selectedDate, 'yyyy-MM-dd')}
+                onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          )}
+          
+          {timeRange === 'custom' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={customDateRange.start}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={customDateRange.end}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </>
+          )}
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <FaClock className="inline mr-2 text-green-500" />
+              Time Unit
+            </label>
+            <select
+              value={timeUnit}
+              onChange={(e) => setTimeUnit(e.target.value)}
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+            >
+              <option value="hours">Hours</option>
+              <option value="minutes">Minutes</option>
+              <option value="seconds">Seconds</option>
+            </select>
+          </div>
+        </div>
+        
+        {timeRange === 'custom' && (
+          <div className="mt-3 text-sm text-gray-600">
+            <FaCalendarAlt className="inline mr-2 text-blue-500" />
+            Analyzing from {format(new Date(customDateRange.start), 'MMM dd, yyyy')} to {format(new Date(customDateRange.end), 'MMM dd, yyyy')}
+          </div>
+        )}
+      </div>
+
+      {/* Statistics Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Active Time</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {formatTimeValue(stats.totalDuration)}
+              </p>
+              <p className="text-xs text-gray-500">
+                {timeRange === 'today' ? 'Today' : timeRange === 'yesterday' ? 'Yesterday' : 'Selected period'}
+              </p>
+            </div>
+            <FaClock className="w-8 h-8 text-blue-500" />
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Active Users</p>
+              <p className="text-2xl font-bold text-green-600">{stats.activeUsers}</p>
+              <p className="text-xs text-gray-500">
+                {stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}% of total
+              </p>
+            </div>
+            <FaUserCheck className="w-8 h-8 text-green-500" />
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Sessions</p>
+              <p className="text-2xl font-bold text-purple-600">{stats.totalSessions}</p>
+              <p className="text-xs text-gray-500">
+                Avg {formatDuration(stats.avgSessionDuration)} per session
+              </p>
+            </div>
+            <FaHistory className="w-8 h-8 text-purple-500" />
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Avg per User</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {formatTimeValue(stats.avgDurationPerUser)}
+              </p>
+              <p className="text-xs text-gray-500">
+                Average active time
+              </p>
+            </div>
+            <FaUsers className="w-8 h-8 text-orange-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* Comparison Mode */}
+      {viewMode === 'comparison' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FaUserFriends className="text-primary-600" />
+              <h4 className="font-medium text-gray-800">User Comparison</h4>
+            </div>
+            <div className="text-sm text-gray-500">
+              {selectedAnalyticsUsers.length} users selected for comparison
+            </div>
+          </div>
+          
+          {/* User Selection */}
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2 mb-3">
+              {individualUserData.slice(0, 10).map(user => (
+                <button
+                  key={user.id}
+                  onClick={() => toggleAnalyticsUser(user.id)}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+                    selectedAnalyticsUsers.includes(user.id)
+                      ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                      : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
+                  }`}
+                >
+                  <FaUser className="text-gray-500" />
+                  {user.name}
+                  {selectedAnalyticsUsers.includes(user.id) && (
+                    <FaCheckCircle className="text-primary-600" />
+                  )}
+                </button>
+              ))}
+            </div>
+            
+            {selectedAnalyticsUsers.length > 0 && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">Selected Users:</span>
+                  <button
+                    onClick={() => setSelectedAnalyticsUsers([])}
+                    className="text-xs text-red-600 hover:text-red-700"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedAnalyticsUsers.map(userId => {
+                    const user = individualUserData.find(u => u.id === userId);
+                    if (!user) return null;
+                    return (
+                      <span key={userId} className="inline-flex items-center gap-1 px-2 py-1 bg-white text-gray-700 text-xs rounded-full border border-gray-300">
+                        {user.name}
+                        <button
+                          onClick={() => toggleAnalyticsUser(userId)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Comparison Chart */}
+          {selectedAnalyticsUsers.length > 0 && (
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                {chartType === 'bar' ? (
+                  <BarChart data={comparisonData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis 
+                      dataKey={timeRange.includes('day') || timeRange === 'specific' ? 'hour' : 'date'} 
+                      stroke="#666" 
+                      fontSize={12}
+                    />
+                    <YAxis 
+                      stroke="#666" 
+                      fontSize={12}
+                      label={{ 
+                        value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
+                        angle: -90, 
+                        position: 'insideLeft' 
+                      }}
+                    />
+                    <Tooltip 
+                      formatter={(value) => [`${value.toFixed(2)} ${timeUnit}`, 'Duration']}
+                    />
+                    <Legend />
+                    {selectedAnalyticsUsers.map((userId, index) => {
+                      const user = individualUserData.find(u => u.id === userId);
+                      if (!user) return null;
+                      const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
+                      return (
+                        <Bar 
+                          key={userId}
+                          dataKey={user.name}
+                          fill={colors[index % colors.length]}
+                          radius={[4, 4, 0, 0]}
+                          barSize={20}
+                        />
+                      );
+                    })}
+                  </BarChart>
+                ) : chartType === 'line' ? (
+                  <LineChart data={comparisonData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis 
+                      dataKey={timeRange.includes('day') || timeRange === 'specific' ? 'hour' : 'date'} 
+                      stroke="#666" 
+                      fontSize={12}
+                    />
+                    <YAxis 
+                      stroke="#666" 
+                      fontSize={12}
+                      label={{ 
+                        value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
+                        angle: -90, 
+                        position: 'insideLeft' 
+                      }}
+                    />
+                    <Tooltip 
+                      formatter={(value) => [`${value.toFixed(2)} ${timeUnit}`, 'Duration']}
+                    />
+                    <Legend />
+                    {selectedAnalyticsUsers.map((userId, index) => {
+                      const user = individualUserData.find(u => u.id === userId);
+                      if (!user) return null;
+                      const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
+                      return (
+                        <Line 
+                          key={userId}
+                          type="monotone"
+                          dataKey={user.name}
+                          stroke={colors[index % colors.length]}
+                          strokeWidth={2}
+                          dot={{ strokeWidth: 2, r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      );
+                    })}
+                  </LineChart>
+                ) : (
+                  <AreaChart data={comparisonData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis 
+                      dataKey={timeRange.includes('day') || timeRange === 'specific' ? 'hour' : 'date'} 
+                      stroke="#666" 
+                      fontSize={12}
+                    />
+                    <YAxis 
+                      stroke="#666" 
+                      fontSize={12}
+                      label={{ 
+                        value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
+                        angle: -90, 
+                        position: 'insideLeft' 
+                      }}
+                    />
+                    <Tooltip 
+                      formatter={(value) => [`${value.toFixed(2)} ${timeUnit}`, 'Duration']}
+                    />
+                    <Legend />
+                    {selectedAnalyticsUsers.map((userId, index) => {
+                      const user = individualUserData.find(u => u.id === userId);
+                      if (!user) return null;
+                      const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
+                      return (
+                        <Area 
+                          key={userId}
+                          type="monotone"
+                          dataKey={user.name}
+                          stroke={colors[index % colors.length]}
+                          fill={colors[index % colors.length]}
+                          fillOpacity={0.3}
+                          strokeWidth={2}
+                        />
+                      );
+                    })}
+                  </AreaChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Individual User Analysis */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* User Activity List */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm lg:col-span-2">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FaList className="text-blue-500" />
+              <h4 className="font-medium text-gray-800">User Activity Details</h4>
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
+                {viewMode === 'individual' ? 'Individual' : 'Comparison'} View
+              </span>
+            </div>
+            <div className="text-sm text-gray-500">
+              Sorted by total active time
+            </div>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">User</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Active Time</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Sessions</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Avg Session</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {individualUserData.slice(0, 8).map(user => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-medium">
+                          {user.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{user.name}</p>
+                          <p className="text-xs text-gray-500">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-gray-800">
+                          {formatTimeValue(user.totalDuration)}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {formatDurationHHMMSS(user.totalDuration)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-700">{user.sessions}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-gray-700">
+                        {formatDuration(user.avgSessionDuration)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
+                        user.active
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {user.active ? (
+                          <>
+                            <FaToggleOnIcon className="text-green-500" />
+                            Active
+                          </>
+                        ) : (
+                          <>
+                            <FaToggleOffIcon className="text-gray-500" />
+                            Inactive
+                          </>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => toggleAnalyticsUser(user.id)}
+                        className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                          selectedAnalyticsUsers.includes(user.id)
+                            ? 'bg-primary-600 text-white hover:bg-primary-700'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        {selectedAnalyticsUsers.includes(user.id) ? 'Remove' : 'Compare'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          
+          {individualUserData.length > 8 && (
+            <div className="mt-4 text-center">
+              <button className="text-sm text-primary-600 hover:text-primary-700">
+                View all {individualUserData.length} users
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Hourly Breakdown */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FaClock className="text-purple-500" />
+              <h4 className="font-medium text-gray-800">Hourly Pattern</h4>
+            </div>
+            <div className="text-xs text-gray-500">
+              {timeRange === 'today' ? 'Today' : timeRange === 'yesterday' ? 'Yesterday' : 'Selected day'}
+            </div>
+          </div>
+          
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+            {Array.from({ length: 24 }, (_, hour) => {
+              const totalHourDuration = individualUserData.reduce((sum, user) => 
+                sum + (user.hourlyBreakdown[hour] || 0), 0
+              );
+              
+              const percentage = individualUserData.length > 0
+                ? (totalHourDuration / individualUserData.reduce((sum, user) => 
+                    sum + Object.values(user.hourlyBreakdown).reduce((a, b) => a + b, 0), 0
+                  )) * 100
+                : 0;
+              
+              return (
+                <div key={hour} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 text-center">
+                      <span className="text-sm font-medium text-gray-700">
+                        {hour.toString().padStart(2, '0')}:00
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"
+                          style={{ width: `${Math.min(percentage * 3, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-gray-800">
+                      {formatDuration(totalHourDuration)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {percentage.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">
+              <FaInfoCircle className="inline mr-2 text-blue-500" />
+              Shows when users are most active throughout the day
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Detailed Statistics */}
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+          <div className="flex items-center gap-3 mb-2">
+            <FaCalendarDay className="text-blue-600" />
+            <div>
+              <p className="text-sm font-medium text-gray-700">Peak Hour</p>
+              <p className="text-xs text-gray-500">Most active time of day</p>
+            </div>
+          </div>
+          {(() => {
+            const hourlyTotals = Array.from({ length: 24 }, (_, hour) => ({
+              hour,
+              total: individualUserData.reduce((sum, user) => sum + (user.hourlyBreakdown[hour] || 0), 0)
+            }));
+            const peakHour = hourlyTotals.reduce((max, current) => 
+              current.total > max.total ? current : max
+            , { hour: 0, total: 0 });
+            
+            return (
+              <>
+                <p className="text-2xl font-bold text-blue-600">
+                  {peakHour.hour.toString().padStart(2, '0')}:00
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {formatDuration(peakHour.total)} total activity
+                </p>
+              </>
+            );
+          })()}
+        </div>
+        
+        <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
+          <div className="flex items-center gap-3 mb-2">
+            <FaUserCheck className="text-green-600" />
+            <div>
+              <p className="text-sm font-medium text-gray-700">Most Active User</p>
+              <p className="text-xs text-gray-500">Highest total active time</p>
+            </div>
+          </div>
+          {individualUserData.length > 0 ? (
+            <>
+              <p className="text-lg font-bold text-green-600 truncate">
+                {individualUserData[0].name}
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {formatTimeValue(individualUserData[0].totalDuration)} • {individualUserData[0].sessions} sessions
+              </p>
+            </>
+          ) : (
+            <p className="text-gray-500">No data available</p>
+          )}
+        </div>
+        
+        <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
+          <div className="flex items-center gap-3 mb-2">
+            <FaUsersCog className="text-purple-600" />
+            <div>
+              <p className="text-sm font-medium text-gray-700">Engagement Rate</p>
+              <p className="text-xs text-gray-500">Active users vs total</p>
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-purple-600">
+            {stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}%
+          </p>
+          <p className="text-sm text-gray-600 mt-1">
+            {stats.activeUsers} active out of {stats.totalUsers} users
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Simplified Analytics Charts Component
+const AnalyticsCharts = ({ users }) => {
+  const [timeRange, setTimeRange] = useState('last30days');
+
+  // Prepare registration data (bar chart)
+  const registrationData = useMemo(() => {
+    const now = new Date();
+    let startDate, endDate;
     
-    // Group by gender with detailed stats
+    // Set date range based on selection
+    switch(timeRange) {
+      case 'today':
+        startDate = startOfDay(now);
+        endDate = endOfDay(now);
+        break;
+      case 'yesterday':
+        startDate = startOfDay(subDays(now, 1));
+        endDate = endOfDay(subDays(now, 1));
+        break;
+      case 'last7days':
+        startDate = subDays(now, 6);
+        endDate = endOfDay(now);
+        break;
+      case 'last30days':
+        startDate = subDays(now, 29);
+        endDate = endOfDay(now);
+        break;
+      case 'last90days':
+        startDate = subDays(now, 89);
+        endDate = endOfDay(now);
+        break;
+      case 'thisMonth':
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+        break;
+      case 'thisYear':
+        startDate = startOfYear(now);
+        endDate = endOfYear(now);
+        break;
+      default:
+        // All time - use first registration date
+        const allDates = users.map(u => new Date(u.createdAt)).filter(d => isValid(d));
+        if (allDates.length > 0) {
+          startDate = new Date(Math.min(...allDates));
+          endDate = now;
+        } else {
+          startDate = subDays(now, 30);
+          endDate = now;
+        }
+    }
+
+    // Generate date intervals
+    const days = eachDayOfInterval({ start: startDate, end: endDate });
+    
+    // Group registrations by date
+    const grouped = {};
+    days.forEach(day => {
+      const key = format(day, 'yyyy-MM-dd');
+      grouped[key] = {
+        date: format(day, 'MMM dd'),
+        fullDate: day,
+        users: 0,
+        cumulative: 0
+      };
+    });
+
+    // Count registrations
+    users.forEach(user => {
+      const userDate = new Date(user.createdAt);
+      const key = format(userDate, 'yyyy-MM-dd');
+      if (grouped[key]) {
+        grouped[key].users++;
+      }
+    });
+
+    // Calculate cumulative totals
+    let cumulative = 0;
+    const result = Object.values(grouped)
+      .sort((a, b) => a.fullDate - b.fullDate)
+      .map(item => {
+        cumulative += item.users;
+        return {
+          ...item,
+          cumulative
+        };
+      });
+
+    return result;
+  }, [users, timeRange]);
+
+  // Prepare gender distribution data (pie chart)
+  const genderData = useMemo(() => {
     const genderStats = {
-      Male: { count: 0, active: 0, avgActivation: 0 },
-      Female: { count: 0, active: 0, avgActivation: 0 },
-      Other: { count: 0, active: 0, avgActivation: 0 },
-      'Not specified': { count: 0, active: 0, avgActivation: 0 }
+      'Male': { count: 0, active: 0 },
+      'Female': { count: 0, active: 0 },
+      'Other': { count: 0, active: 0 },
+      'Not specified': { count: 0, active: 0 }
     };
-    
-    filteredUsers.forEach(user => {
+
+    users.forEach(user => {
       const gender = user.gender || 'Not specified';
       const activation = calculateActivationDuration(user.activationHistory || []);
       
       genderStats[gender].count++;
       if (activation.active) genderStats[gender].active++;
-      genderStats[gender].avgActivation += activation.totalDuration;
     });
-    
-    // Calculate average activation time
-    Object.keys(genderStats).forEach(gender => {
-      if (genderStats[gender].count > 0) {
-        genderStats[gender].avgActivation = 
-          Math.round((genderStats[gender].avgActivation / genderStats[gender].count) / (1000 * 60 * 60) * 100) / 100;
-      }
-    });
-    
-    // Convert to array for chart
-    return Object.entries(genderStats)
+
+    // Convert to chart data format
+    const result = Object.entries(genderStats)
       .filter(([_, stats]) => stats.count > 0)
       .map(([name, stats]) => ({
         name,
         value: stats.count,
         active: stats.active,
-        percentage: Math.round((stats.count / filteredUsers.length) * 100),
-        avgActivation: stats.avgActivation,
+        percentage: users.length > 0 ? Math.round((stats.count / users.length) * 100) : 0,
         fill: name === 'Male' ? '#3B82F6' : 
               name === 'Female' ? '#EC4899' : 
               name === 'Other' ? '#8B5CF6' : '#6B7280'
       }));
-  };
 
-  // Enhanced activation analytics data
-  const prepareActivationData = () => {
-    const now = new Date();
-    let filteredUsers = [...targetUsers];
-    
-    // Apply time range filter
-    if (activationTimeRange !== 'all') {
-      filteredUsers = filteredUsers.filter(user => {
-        const userDate = new Date(user.createdAt);
-        switch(activationTimeRange) {
-          case 'today':
-            return isWithinInterval(userDate, {
-              start: startOfDay(now),
-              end: endOfDay(now)
-            });
-          case 'last7days':
-            return isWithinInterval(userDate, {
-              start: subDays(now, 7),
-              end: endOfDay(now)
-            });
-          case 'last30days':
-            return isWithinInterval(userDate, {
-              start: subDays(now, 30),
-              end: endOfDay(now)
-            });
-          case 'thisMonth':
-            return isWithinInterval(userDate, {
-              start: startOfMonth(now),
-              end: endOfMonth(now)
-            });
-          case 'thisYear':
-            return isWithinInterval(userDate, {
-              start: startOfYear(now),
-              end: endOfYear(now)
-            });
-          default:
-            return true;
-        }
-      });
-    }
-    
-    // Prepare data based on chart type
-    let data = [];
-    
-    if (activationChartType === 'daily') {
-      // Daily activation metrics for last 30 days
-      const days = eachDayOfInterval({
-        start: subDays(now, 30),
-        end: now
-      });
-      
-      data = days.map(day => {
-        const dayStart = startOfDay(day);
-        const dayEnd = endOfDay(day);
-        
-        let totalDuration = 0;
-        let totalSessions = 0;
-        let activeUsers = 0;
-        let totalUsers = 0;
-        
-        filteredUsers.forEach(user => {
-          const activation = calculateActivationDuration(user.activationHistory || [], day);
-          if (activation.totalDuration > 0) {
-            totalDuration += activation.totalDuration;
-            totalSessions += activation.sessions;
-            activeUsers++;
-          }
-          totalUsers++;
-        });
-        
-        return {
-          date: format(day, 'MMM dd'),
-          fullDate: day,
-          duration: Math.round(totalDuration / (1000 * 60 * 60) * 100) / 100, // in hours
-          sessions: totalSessions,
-          avgDuration: totalSessions > 0 ? Math.round((totalDuration / totalSessions) / (1000 * 60) * 100) / 100 : 0, // in minutes
-          activeUsers,
-          activePercentage: Math.round((activeUsers / totalUsers) * 100),
-          totalUsers
-        };
-      });
-    } else if (activationChartType === 'hourly') {
-      // Hourly pattern for last 7 days
-      const hours = Array.from({ length: 24 }, (_, i) => i);
-      const lastWeekStart = subDays(now, 7);
-      
-      data = hours.map(hour => {
-        let hourDuration = 0;
-        let hourSessions = 0;
-        
-        filteredUsers.forEach(user => {
-          const activationHistory = user.activationHistory || [];
-          activationHistory.forEach((record, index) => {
-            if (record.status === 'active') {
-              const startTime = new Date(record.timestamp);
-              const endTime = activationHistory[index + 1] ? 
-                new Date(activationHistory[index + 1].timestamp) : now;
-              
-              // Only consider last 7 days
-              if (startTime >= lastWeekStart) {
-                const startHour = startTime.getHours();
-                const endHour = endTime.getHours();
-                
-                if (startHour <= hour && endHour >= hour) {
-                  const hourStart = new Date(startTime);
-                  hourStart.setHours(hour, 0, 0, 0);
-                  const hourEnd = new Date(hourStart);
-                  hourEnd.setHours(hour + 1, 0, 0, 0);
-                  
-                  const overlapStart = startTime > hourStart ? startTime : hourStart;
-                  const overlapEnd = endTime < hourEnd ? endTime : hourEnd;
-                  
-                  if (overlapStart < overlapEnd) {
-                    hourDuration += overlapEnd - overlapStart;
-                    hourSessions++;
-                  }
-                }
-              }
-            }
-          });
-        });
-        
-        return {
-          hour: `${hour}:00`,
-          duration: Math.round(hourDuration / (1000 * 60 * 60) * 100) / 100,
-          sessions: hourSessions,
-          avgDuration: hourSessions > 0 ? Math.round((hourDuration / hourSessions) / (1000 * 60) * 100) / 100 : 0
-        };
-      });
-    } else if (activationChartType === 'weekly') {
-      // Weekly trends
-      const weeks = Array.from({ length: 12 }, (_, i) => subDays(now, i * 7));
-      
-      data = weeks.map(weekDate => {
-        const weekStart = startOfWeek(weekDate);
-        const weekEnd = endOfWeek(weekDate);
-        
-        let weekDuration = 0;
-        let weekSessions = 0;
-        let weekActiveUsers = 0;
-        
-        filteredUsers.forEach(user => {
-          const activationHistory = user.activationHistory || [];
-          let userWeekDuration = 0;
-          let userWeekSessions = 0;
-          
-          activationHistory.forEach((record, index) => {
-            if (record.status === 'active') {
-              const startTime = new Date(record.timestamp);
-              const endTime = activationHistory[index + 1] ? 
-                new Date(activationHistory[index + 1].timestamp) : now;
-              
-              if (isWithinInterval(startTime, { start: weekStart, end: weekEnd }) ||
-                  isWithinInterval(endTime, { start: weekStart, end: weekEnd })) {
-                
-                const sessionStart = startTime < weekStart ? weekStart : startTime;
-                const sessionEnd = endTime > weekEnd ? weekEnd : endTime;
-                
-                if (sessionStart < sessionEnd) {
-                  const sessionDuration = sessionEnd - sessionStart;
-                  userWeekDuration += sessionDuration;
-                  userWeekSessions++;
-                }
-              }
-            }
-          });
-          
-          if (userWeekDuration > 0) {
-            weekDuration += userWeekDuration;
-            weekSessions += userWeekSessions;
-            weekActiveUsers++;
-          }
-        });
-        
-        return {
-          week: `Week ${format(weekStart, 'w')}`,
-          dateRange: `${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd')}`,
-          duration: Math.round(weekDuration / (1000 * 60 * 60) * 100) / 100,
-          sessions: weekSessions,
-          avgDuration: weekSessions > 0 ? Math.round((weekDuration / weekSessions) / (1000 * 60) * 100) / 100 : 0,
-          activeUsers: weekActiveUsers
-        };
-      }).reverse();
-    }
-    
-    return data;
-  };
+    return result;
+  }, [users]);
 
-  // Prepare user engagement radar data
-  const prepareEngagementData = () => {
-    const activeUsers = targetUsers.filter(user => 
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const activeUsers = users.filter(user => 
       calculateActivationDuration(user.activationHistory || []).active
     ).length;
     
-    const totalActivationTime = targetUsers.reduce((sum, user) => {
-      const activation = calculateActivationDuration(user.activationHistory || []);
-      return sum + activation.totalDuration;
-    }, 0);
+    const maleUsers = users.filter(user => user.gender === 'Male').length;
+    const femaleUsers = users.filter(user => user.gender === 'Female').length;
+    const otherUsers = users.filter(user => user.gender === 'Other').length;
     
-    const avgActivationPerUser = targetUsers.length > 0 ? 
-      totalActivationTime / targetUsers.length / (1000 * 60 * 60) : 0; // in hours
-    
-    const frequentUsers = targetUsers.filter(user => {
-      const activation = calculateActivationDuration(user.activationHistory || []);
-      return activation.sessions >= 3;
-    }).length;
-    
-    const recentActiveUsers = targetUsers.filter(user => {
-      const activation = calculateActivationDuration(user.activationHistory || []);
-      return activation.lastActivation && 
-             differenceInDays(new Date(), activation.lastActivation) <= 1;
-    }).length;
-    
-    const longSessionUsers = targetUsers.filter(user => {
-      const activation = calculateActivationDuration(user.activationHistory || []);
-      return activation.avgSessionDuration >= 30; // 30+ minutes avg session
-    }).length;
-    
-    return [
-      { subject: 'Active Now', A: Math.round((activeUsers / targetUsers.length) * 100), fullMark: 100 },
-      { subject: 'Avg Hours/User', A: Math.min(Math.round(avgActivationPerUser * 10), 100), fullMark: 100 },
-      { subject: 'Frequent Users', A: Math.round((frequentUsers / targetUsers.length) * 100), fullMark: 100 },
-      { subject: 'Recent Active', A: Math.round((recentActiveUsers / targetUsers.length) * 100), fullMark: 100 },
-      { subject: 'Long Sessions', A: Math.round((longSessionUsers / targetUsers.length) * 100), fullMark: 100 }
-    ];
-  };
-
-  const registrationData = prepareRegistrationData();
-  const genderData = prepareGenderData();
-  const activationData = prepareActivationData();
-  const engagementData = prepareEngagementData();
-
-  // Calculate statistics
-  const totalActiveUsers = targetUsers.filter(user => 
-    calculateActivationDuration(user.activationHistory || []).active
-  ).length;
-
-  const totalActivationHours = targetUsers.reduce((sum, user) => {
-    const activation = calculateActivationDuration(user.activationHistory || []);
-    return sum + activation.totalDuration;
-  }, 0) / (1000 * 60 * 60);
-
-  const avgSessionDuration = targetUsers.reduce((sum, user) => {
-    const activation = calculateActivationDuration(user.activationHistory || []);
-    return sum + activation.avgSessionDuration;
-  }, 0) / targetUsers.length;
+    return {
+      totalUsers: users.length,
+      activeUsers,
+      maleUsers,
+      femaleUsers,
+      otherUsers
+    };
+  }, [users]);
 
   return (
     <div className="mb-8">
@@ -944,118 +1658,52 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
         <div className="flex items-center gap-3">
           <FaChartBar className="text-primary-600" />
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Advanced Analytics Dashboard</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Analytics Dashboard</h3>
             <p className="text-sm text-gray-500">
-              {showSelectedOnly ? `Analyzing ${selectedUsers.length} selected users` : `Analyzing ${users.length} total users`}
+              Analyzing {stats.totalUsers} users
             </p>
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600">Time Range:</label>
+          <select
+            value={timeRange}
+            onChange={(e) => setTimeRange(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <FaCogs />
-            {showAdvanced ? 'Hide Advanced' : 'Advanced Options'}
-          </button>
-          
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setViewMode('charts')}
-              className={`p-2 rounded-lg ${viewMode === 'charts' ? 'bg-primary-100 text-primary-600' : 'text-gray-500 hover:bg-gray-100'}`}
-              title="Chart View"
-            >
-              <FaChartBar />
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-2 rounded-lg ${viewMode === 'table' ? 'bg-primary-100 text-primary-600' : 'text-gray-500 hover:bg-gray-100'}`}
-              title="Table View"
-            >
-              <FaTable />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-primary-100 text-primary-600' : 'text-gray-500 hover:bg-gray-100'}`}
-              title="List View"
-            >
-              <FaList />
-            </button>
-          </div>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7days">Last 7 Days</option>
+            <option value="last30days">Last 30 Days</option>
+            <option value="last90days">Last 90 Days</option>
+            <option value="thisMonth">This Month</option>
+            <option value="thisYear">This Year</option>
+            <option value="all">All Time</option>
+          </select>
         </div>
       </div>
-
-      {/* Advanced Options Panel */}
-      {showAdvanced && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl border border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <FaCalendar className="inline mr-2" />
-                Time Granularity
-              </label>
-              <select
-                value={registrationTimeRange}
-                onChange={(e) => setRegistrationTimeRange(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
-                <option value="last90days">Last 90 Days</option>
-                <option value="thisMonth">This Month</option>
-                <option value="thisYear">This Year</option>
-                <option value="all">All Time</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <FaClock className="inline mr-2" />
-                Activation Analysis
-              </label>
-              <select
-                value={activationChartType}
-                onChange={(e) => setActivationChartType(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
-              >
-                <option value="daily">Daily Trends</option>
-                <option value="hourly">Hourly Patterns</option>
-                <option value="weekly">Weekly Analysis</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <FaChartLine className="inline mr-2" />
-                Metric Type
-              </label>
-              <select
-                value={activationMetric}
-                onChange={(e) => setActivationMetric(e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="duration">Total Duration (hours)</option>
-                <option value="sessions">Number of Sessions</option>
-                <option value="avgDuration">Average Session Duration</option>
-                <option value="activeUsers">Active Users Count</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Statistics Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Active Users</p>
-              <p className="text-2xl font-bold text-green-600">{totalActiveUsers}</p>
+              <p className="text-sm text-gray-600">Total Users</p>
+              <p className="text-2xl font-bold text-primary-600">{stats.totalUsers}</p>
+              <p className="text-xs text-gray-500">Registered</p>
+            </div>
+            <FaUsers className="w-8 h-8 text-primary-500" />
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Active Now</p>
+              <p className="text-2xl font-bold text-green-600">{stats.activeUsers}</p>
               <p className="text-xs text-gray-500">
-                {targetUsers.length > 0 ? Math.round((totalActiveUsers / targetUsers.length) * 100) : 0}% of total
+                {stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}% of total
               </p>
             </div>
             <FaToggleOn className="w-8 h-8 text-green-500" />
@@ -1065,83 +1713,57 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Activation</p>
-              <p className="text-2xl font-bold text-blue-600">{Math.round(totalActivationHours * 100) / 100}h</p>
-              <p className="text-xs text-gray-500">Across all users</p>
-            </div>
-            <FaClock className="w-8 h-8 text-blue-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Avg Session</p>
-              <p className="text-2xl font-bold text-purple-600">{Math.round(avgSessionDuration * 100) / 100}m</p>
-              <p className="text-xs text-gray-500">Per user session</p>
-            </div>
-            <FaHistory className="w-8 h-8 text-purple-500" />
-          </div>
-        </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Engagement Score</p>
-              <p className="text-2xl font-bold text-orange-600">
-                {targetUsers.length > 0 ? Math.round((totalActiveUsers / targetUsers.length) * 100) : 0}
+              <p className="text-sm text-gray-600">Male Users</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.maleUsers}</p>
+              <p className="text-xs text-gray-500">
+                {stats.totalUsers > 0 ? Math.round((stats.maleUsers / stats.totalUsers) * 100) : 0}%
               </p>
-              <p className="text-xs text-gray-500">Based on activity</p>
             </div>
-            <FaChartLine className="w-8 h-8 text-orange-500" />
+            <FaMars className="w-8 h-8 text-blue-500" />
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Female Users</p>
+              <p className="text-2xl font-bold text-pink-600">{stats.femaleUsers}</p>
+              <p className="text-xs text-gray-500">
+                {stats.totalUsers > 0 ? Math.round((stats.femaleUsers / stats.totalUsers) * 100) : 0}%
+              </p>
+            </div>
+            <FaVenus className="w-8 h-8 text-pink-500" />
           </div>
         </div>
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Registration Trends Chart */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm lg:col-span-2">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <FaCalendar className="text-blue-500" />
               <h4 className="font-medium text-gray-800">Registration Trends</h4>
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
-                {registrationTimeRange}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={registrationTimeRange}
-                onChange={(e) => setRegistrationTimeRange(e.target.value)}
-                className="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
-                <option value="last90days">Last 90 Days</option>
-                <option value="thisMonth">This Month</option>
-                <option value="thisYear">This Year</option>
-                <option value="all">All Time</option>
-              </select>
             </div>
           </div>
-          <div className="h-72">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={registrationData}>
+              <BarChart data={registrationData.slice(-15)}> {/* Show last 15 days */}
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" stroke="#666" fontSize={12} />
+                <XAxis 
+                  dataKey="date" 
+                  stroke="#666" 
+                  fontSize={12}
+                  angle={-45}
+                  textAnchor="end"
+                  height={50}
+                />
                 <YAxis stroke="#666" fontSize={12} />
                 <Tooltip 
-                  formatter={(value, name) => {
-                    if (name === 'users') return [`${value} users`, 'Daily Registrations'];
-                    if (name === 'cumulative') return [`${value} users`, 'Cumulative Total'];
-                    return [value, name];
-                  }}
+                  formatter={(value) => [`${value} users`, 'Registrations']}
                   labelFormatter={(label) => `Date: ${label}`}
                 />
-                <Legend />
                 <Bar 
                   dataKey="users" 
                   name="Daily Registrations" 
@@ -1149,28 +1771,14 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
                   radius={[4, 4, 0, 0]}
                   barSize={20}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="cumulative" 
-                  name="Cumulative Total" 
-                  stroke="#10B981" 
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </ComposedChart>
+              </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+          <div className="mt-4">
             <div className="text-center p-2 bg-blue-50 rounded-lg">
-              <p className="text-gray-600">Total Registrations</p>
+              <p className="text-sm text-gray-600">Total Registrations ({timeRange})</p>
               <p className="text-xl font-bold text-blue-600">
                 {registrationData.reduce((sum, item) => sum + item.users, 0)}
-              </p>
-            </div>
-            <div className="text-center p-2 bg-green-50 rounded-lg">
-              <p className="text-gray-600">Average Daily</p>
-              <p className="text-xl font-bold text-green-600">
-                {Math.round(registrationData.reduce((sum, item) => sum + item.users, 0) / registrationData.length) || 0}
               </p>
             </div>
           </div>
@@ -1183,18 +1791,6 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
               <FaUsers className="text-purple-500" />
               <h4 className="font-medium text-gray-800">Gender Distribution</h4>
             </div>
-            <select
-              value={genderTimeRange}
-              onChange={(e) => setGenderTimeRange(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="last7days">Last 7 Days</option>
-              <option value="last30days">Last 30 Days</option>
-              <option value="thisMonth">This Month</option>
-              <option value="thisYear">This Year</option>
-            </select>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -1204,8 +1800,8 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
-                  outerRadius={80}
+                  label={({ name, percentage }) => `${name}: ${percentage}%`}
+                  outerRadius={70}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -1215,13 +1811,10 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
                 </Pie>
                 <Tooltip 
                   formatter={(value, name, props) => {
-                    if (name === 'value') return [`${value} users`, 'Count'];
-                    if (name === 'active') return [`${value} active`, 'Active Users'];
-                    if (name === 'avgActivation') return [`${value} hours`, 'Avg Activation'];
-                    return [value, name];
+                    const payload = props.payload;
+                    return [`${value} users (${payload.percentage}%)`, name];
                   }}
                 />
-                <Legend />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -1241,182 +1834,70 @@ const AnalyticsCharts = ({ users, selectedUsers, showSelectedOnly = false }) => 
           </div>
         </div>
 
-        {/* Activation Analysis Chart */}
+        {/* Activation Status Chart */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <FaToggleOn className="text-green-500" />
-              <h4 className="font-medium text-gray-800">Activation Analysis</h4>
-              <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
-                {activationChartType}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={activationTimeRange}
-                onChange={(e) => setActivationTimeRange(e.target.value)}
-                className="text-sm border border-gray-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-green-500"
-              >
-                <option value="today">Today</option>
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
-                <option value="thisMonth">This Month</option>
-                <option value="thisYear">This Year</option>
-                <option value="all">All Time</option>
-              </select>
+              <FaToggleOnIcon className="text-green-500" />
+              <h4 className="font-medium text-gray-800">Current Status</h4>
             </div>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={activationData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey={activationChartType === 'hourly' ? 'hour' : 'date'} 
-                  stroke="#666" 
-                  fontSize={12} 
-                />
-                <YAxis stroke="#666" fontSize={12} />
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Active', value: stats.activeUsers, fill: '#10B981' },
+                    { name: 'Inactive', value: stats.totalUsers - stats.activeUsers, fill: '#6B7280' }
+                  ]}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, value }) => `${name}: ${value}`}
+                  outerRadius={70}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  <Cell key="active" fill="#10B981" />
+                  <Cell key="inactive" fill="#6B7280" />
+                </Pie>
                 <Tooltip 
                   formatter={(value, name) => {
-                    switch(name) {
-                      case 'duration': return [`${value} hours`, 'Total Duration'];
-                      case 'sessions': return [`${value} sessions`, 'Number of Sessions'];
-                      case 'avgDuration': return [`${value} minutes`, 'Avg Session Duration'];
-                      case 'activeUsers': return [`${value} users`, 'Active Users'];
-                      default: return [value, name];
-                    }
-                  }}
-                  labelFormatter={(label) => {
-                    if (activationChartType === 'weekly') {
-                      const item = activationData.find(d => d.date === label);
-                      return item ? item.dateRange : label;
-                    }
-                    return activationChartType === 'hourly' ? `Hour: ${label}` : `Date: ${label}`;
+                    const percentage = stats.totalUsers > 0 ? Math.round((value / stats.totalUsers) * 100) : 0;
+                    return [`${value} users (${percentage}%)`, name];
                   }}
                 />
-                <Legend />
-                <Area 
-                  type="monotone" 
-                  dataKey={activationMetric} 
-                  name={
-                    activationMetric === 'duration' ? 'Total Duration (hours)' :
-                    activationMetric === 'sessions' ? 'Number of Sessions' :
-                    activationMetric === 'avgDuration' ? 'Avg Session (minutes)' :
-                    'Active Users Count'
-                  }
-                  stroke="#10B981" 
-                  fill="#10B981" 
-                  fillOpacity={0.3}
-                  strokeWidth={2}
-                />
-              </AreaChart>
+              </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <div className="text-center">
-              <p className="text-gray-600">Peak Value</p>
-              <p className="font-bold text-green-600">
-                {activationData.length > 0 ? 
-                  Math.max(...activationData.map(d => d[activationMetric] || 0)).toFixed(1) : 
-                  0
-                }
-              </p>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span>Active Users</span>
+              </div>
+              <div className="text-right">
+                <span className="font-medium">{stats.activeUsers} users</span>
+                <span className="text-gray-500 ml-2">
+                  ({stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}%)
+                </span>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-gray-600">Average</p>
-              <p className="font-bold text-blue-600">
-                {activationData.length > 0 ? 
-                  (activationData.reduce((sum, d) => sum + (d[activationMetric] || 0), 0) / activationData.length).toFixed(1) : 
-                  0
-                }
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-gray-600">Total</p>
-              <p className="font-bold text-purple-600">
-                {activationData.reduce((sum, d) => sum + (d[activationMetric] || 0), 0).toFixed(1)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* User Engagement Radar */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <FaChartArea className="text-orange-500" />
-              <h4 className="font-medium text-gray-800">User Engagement Radar</h4>
-            </div>
-            <div className="text-sm text-gray-500">
-              Overall engagement metrics (0-100 scale)
-            </div>
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={engagementData}>
-                <PolarGrid stroke="#e5e7eb" />
-                <PolarAngleAxis dataKey="subject" stroke="#666" fontSize={12} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="#666" fontSize={10} />
-                <Radar
-                  name="Engagement"
-                  dataKey="A"
-                  stroke="#3B82F6"
-                  fill="#3B82F6"
-                  fillOpacity={0.3}
-                  strokeWidth={2}
-                />
-                <Tooltip 
-                  formatter={(value) => [`${value}%`, 'Score']}
-                />
-                <Legend />
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-4 text-sm text-gray-600">
-            <div className="flex items-center gap-2 mb-2">
-              <FaInfoCircle className="text-blue-500" />
-              <span>Higher scores indicate better user engagement across different metrics</span>
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                <span>Inactive Users</span>
+              </div>
+              <div className="text-right">
+                <span className="font-medium">{stats.totalUsers - stats.activeUsers} users</span>
+                <span className="text-gray-500 ml-2">
+                  ({stats.totalUsers > 0 ? Math.round(((stats.totalUsers - stats.activeUsers) / stats.totalUsers) * 100) : 0}%)
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Table View (when selected) */}
-      {viewMode === 'table' && (
-        <div className="mt-6 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="p-4 border-b border-gray-200">
-            <h4 className="font-medium text-gray-800">Detailed Analytics Data</h4>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Date</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Registrations</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Cumulative</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Activation Hours</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Active Users</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {registrationData.slice(-10).map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-800">{item.date}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{item.users}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{item.cumulative}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {Math.round((activationData[index]?.duration || 0) * 100) / 100}h
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {activationData[index]?.activeUsers || 0}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
@@ -1466,15 +1947,12 @@ const FilterPanel = ({
     { value: 'oldest', label: 'Oldest First', icon: <FaSortAmountUp /> },
     { value: 'name-asc', label: 'Name A-Z', icon: <FaSortAlphaDown /> },
     { value: 'name-desc', label: 'Name Z-A', icon: <FaSortAlphaUp /> },
-    { value: 'recent-active', label: 'Recently Active', icon: <FaClock /> },
-    { value: 'longest-active', label: 'Longest Active', icon: <FaHistory /> },
-    { value: 'most-sessions', label: 'Most Sessions', icon: <FaChartBar /> },
-    { value: 'recent-inactive', label: 'Recently Inactive', icon: <FaCalendarTimes /> }
+    { value: 'recent-active', label: 'Recently Active', icon: <FaClock /> }
   ];
 
   const handleDateRangeChange = (value) => {
     if (value === 'custom') {
-      setIsOpen(true); // Ensure custom date inputs are visible
+      setIsOpen(true);
       onFilterChange('dateRange', { 
         value: 'custom', 
         startDate: customDateRange.start ? startOfDay(new Date(customDateRange.start)) : null,
@@ -1569,7 +2047,6 @@ const FilterPanel = ({
             onClick={() => setIsOpen(!isOpen)}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
           >
-            {isOpen ? <FaChevronUp /> : <FaChevronDown />}
             {isOpen ? 'Hide Filters' : 'Show Filters'}
           </button>
           
@@ -1592,7 +2069,6 @@ const FilterPanel = ({
               {/* Gender Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  <FaMars className="inline mr-2 text-blue-500" />
                   Gender
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1616,7 +2092,6 @@ const FilterPanel = ({
               {/* Activation Status Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  <FaToggleOn className="inline mr-2 text-green-500" />
                   Activation Status
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -1645,7 +2120,6 @@ const FilterPanel = ({
               {/* Date Range Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  <FaCalendar className="inline mr-2 text-purple-500" />
                   Registration Date
                 </label>
                 <div className="space-y-3">
@@ -1701,31 +2175,15 @@ const FilterPanel = ({
                       </button>
                     </div>
                   )}
-                  
-                  {/* Apply Custom Range Button */}
-                  {filters.dateRange?.value !== 'custom' && (
-                    <button
-                      onClick={() => handleDateRangeChange('custom')}
-                      className={`w-full px-4 py-2 text-sm rounded-lg transition-all ${
-                        filters.dateRange?.value === 'custom'
-                          ? 'bg-purple-100 text-purple-700 border-2 border-purple-300'
-                          : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400'
-                      }`}
-                    >
-                      <FaCalendarAlt className="inline mr-2" />
-                      Set Custom Date Range
-                    </button>
-                  )}
                 </div>
               </div>
 
               {/* Sorting Options */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
-                  <FaSortAmountDown className="inline mr-2 text-orange-500" />
                   Sort By
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {sortOptions.map(option => (
                     <button
                       key={option.value}
@@ -1743,92 +2201,6 @@ const FilterPanel = ({
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Date Range Display */}
-          {filters.dateRange?.startDate && filters.dateRange?.endDate && (
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FaCalendar className="text-blue-600" />
-                  <span className="text-sm font-medium text-blue-800">
-                    {filters.dateRange.value === 'custom' ? 'Custom Range:' : 'Date Range:'}
-                  </span>
-                  <span className="text-sm text-blue-700">
-                    {format(filters.dateRange.startDate, 'MMM dd, yyyy')} - {format(filters.dateRange.endDate, 'MMM dd, yyyy')}
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleDateRangeChange('')}
-                  className="text-blue-500 hover:text-blue-700 text-sm"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Active Filters Display */}
-      {(filters.gender || filters.activationStatus || filters.dateRange?.value || sortBy !== 'latest') && (
-        <div className="mt-4 p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200">
-          <div className="flex items-center gap-2 mb-2">
-            <FaFilter className="text-blue-600" />
-            <span className="text-sm font-medium text-blue-800">Active Filters:</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {filters.gender && (
-              <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-100 text-blue-700 text-sm rounded-full border border-blue-200">
-                {getGenderIcon(filters.gender)}
-                Gender: {filters.gender}
-                <button 
-                  onClick={() => onFilterChange('gender', '')}
-                  className="ml-1.5 text-blue-500 hover:text-blue-700 hover:scale-110 transition-transform"
-                >
-                  ×
-                </button>
-              </span>
-            )}
-            
-            {filters.activationStatus && (
-              <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 text-sm rounded-full border border-green-200">
-                <FaToggleOn className={filters.activationStatus === 'active' ? 'text-green-500' : 'text-red-500'} />
-                Status: {filters.activationStatus}
-                <button 
-                  onClick={() => onFilterChange('activationStatus', '')}
-                  className="ml-1.5 text-green-500 hover:text-green-700 hover:scale-110 transition-transform"
-                >
-                  ×
-                </button>
-              </span>
-            )}
-            
-            {filters.dateRange?.value && (
-              <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-700 text-sm rounded-full border border-purple-200">
-                <FaCalendar className="text-purple-500" />
-                Date: {dateRangeOptions.find(d => d.value === filters.dateRange.value)?.label || 'Custom'}
-                <button 
-                  onClick={() => handleDateRangeChange('')}
-                  className="ml-1.5 text-purple-500 hover:text-purple-700 hover:scale-110 transition-transform"
-                >
-                  ×
-                </button>
-              </span>
-            )}
-            
-            {sortBy !== 'latest' && (
-              <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-100 text-orange-700 text-sm rounded-full border border-orange-200">
-                <FaSortAmountDown className="text-orange-500" />
-                Sort: {sortOptions.find(s => s.value === sortBy)?.label}
-                <button 
-                  onClick={() => onSortChange('latest')}
-                  className="ml-1.5 text-orange-500 hover:text-orange-700 hover:scale-110 transition-transform"
-                >
-                  ×
-                </button>
-              </span>
-            )}
           </div>
         </div>
       )}
@@ -1849,7 +2221,6 @@ const UserGrid = () => {
   const [previewModal, setPreviewModal] = useState({ show: false, src: null, type: null });
   const [logoutModal, setLogoutModal] = useState(false);
   const [activationModal, setActivationModal] = useState({ show: false, userId: null, currentStatus: false });
-  const [showSelectedAnalytics, setShowSelectedAnalytics] = useState(false);
   
   const [viewModal, setViewModal] = useState({ show: false, userId: null });
   const [editModal, setEditModal] = useState({ show: false, userId: null });
@@ -1915,7 +2286,7 @@ const UserGrid = () => {
       });
     }
 
-    // Apply date range filter - FIXED with proper null checks
+    // Apply date range filter
     if (filters.dateRange?.startDate && filters.dateRange?.endDate) {
       result = result.filter(user => {
         const userDate = new Date(user.createdAt);
@@ -1947,17 +2318,6 @@ const UserGrid = () => {
             return new Date(activationB.lastActivation) - new Date(activationA.lastActivation);
           }
           return new Date(b.createdAt) - new Date(a.createdAt);
-        case 'recent-inactive':
-          if (!activationA.active && activationB.active) return -1;
-          if (activationA.active && !activationB.active) return 1;
-          if (activationA.lastActivation && activationB.lastActivation) {
-            return new Date(activationB.lastActivation) - new Date(activationA.lastActivation);
-          }
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        case 'longest-active':
-          return activationB.totalDuration - activationA.totalDuration;
-        case 'most-sessions':
-          return activationB.sessions - activationA.sessions;
         default:
           return new Date(b.createdAt) - new Date(a.createdAt);
       }
@@ -2014,31 +2374,6 @@ const UserGrid = () => {
     setSortBy('latest');
     setSearchTerm('');
     toast.success('All filters cleared');
-  };
-
-  /* =========================
-     DEBUG TOKEN STATUS
-  ========================= */
-  const checkTokenStatus = () => {
-    console.log("=== TOKEN STATUS CHECK ===");
-    const token = localStorage.getItem("token");
-    console.log("Token exists:", !!token);
-    console.log("Token length:", token?.length);
-    
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        console.log("Token payload:", payload);
-        console.log("Token expires:", new Date(payload.exp * 1000));
-        console.log("Is token expired?", payload.exp * 1000 < Date.now());
-      } catch (e) {
-        console.error("Failed to decode token:", e);
-      }
-    }
-    
-    userAPI.getAllUsers()
-      .then(res => console.log("✅ API test successful:", res.data.success))
-      .catch(err => console.error("❌ API test failed:", err.response?.status));
   };
 
   /* =========================
@@ -2256,12 +2591,11 @@ const UserGrid = () => {
         </div>
 
         <div className="card backdrop-blur-xl shadow-2xl">
-          {/* Analytics Charts */}
-          <AnalyticsCharts 
-            users={users} 
-            selectedUsers={selectedUsers}
-            showSelectedOnly={showSelectedAnalytics}
-          />
+          {/* Basic Analytics Charts */}
+          <AnalyticsCharts users={users} />
+          
+          {/* Enhanced Activation Analytics */}
+          <ActivationAnalytics users={users} selectedUsers={selectedUsers} />
 
           {/* Action Bar */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
@@ -2284,36 +2618,12 @@ const UserGrid = () => {
                   </button>
                 )}
               </div>
-              
-              <button
-                onClick={checkTokenStatus}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-                title="Check token status"
-              >
-                <FaBug />
-                Debug Token
-              </button>
             </div>
 
             <div className="flex items-center gap-4">
               <span className={`text-sm font-medium ${selectedUsers.length > 0 ? 'text-primary-600' : 'text-gray-600'}`}>
                 {selectedUsers.length} selected
               </span>
-              
-              {selectedUsers.length > 0 && (
-                <button
-                  onClick={() => setShowSelectedAnalytics(!showSelectedAnalytics)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                    showSelectedAnalytics
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                  title="Toggle selected users analytics"
-                >
-                  <FaChartPie />
-                  {showSelectedAnalytics ? 'Show All Analytics' : 'Show Selected Analytics'}
-                </button>
-              )}
               
               <button
                 onClick={handleRefresh}
@@ -2448,7 +2758,12 @@ const UserGrid = () => {
                               <p className="text-xs text-gray-400 mt-1">{user.mobile}</p>
                               {activation.sessions > 0 && (
                                 <p className="text-xs text-green-600 mt-1">
-                                  {activation.sessions} sessions • {activation.avgSessionDuration}m avg
+                                  {activation.sessions} sessions • {formatDuration(activation.totalDuration)} total
+                                </p>
+                              )}
+                              {activation.todayDuration > 0 && (
+                                <p className="text-xs text-blue-500 mt-1">
+                                  Today: {formatDuration(activation.todayDuration)}
                                 </p>
                               )}
                             </div>
@@ -2649,13 +2964,16 @@ const UserGrid = () => {
                               )}
                             </div>
                             <div className="text-xs text-gray-400 mt-1">
-                              {activation.totalDays > 0 ? `${activation.totalDays}d ${activation.totalHours}h` : 
-                               activation.totalHours > 0 ? `${activation.totalHours}h ${activation.totalMinutes}m` : 
-                               'Not activated'}
+                              {formatDuration(activation.totalDuration)}
                             </div>
                             {activation.sessions > 0 && (
                               <div className="text-xs text-blue-500 mt-1">
                                 {activation.sessions} sessions
+                              </div>
+                            )}
+                            {activation.todayDuration > 0 && (
+                              <div className="text-xs text-green-500 mt-1">
+                                Today: {formatDuration(activation.todayDuration)}
                               </div>
                             )}
                           </div>
