@@ -65,7 +65,7 @@ const Login = () => {
     resetToken: ''
   });
   
-  // Forgot email state
+  // Forgot email state - Fixed: Store mobile without country code for validation
   const [forgotEmailData, setForgotEmailData] = useState({
     mobile: '',
     countryCode: '+91'
@@ -133,6 +133,7 @@ const Login = () => {
         if (value !== forgotPasswordData.newPassword) return 'Passwords do not match';
         return '';
       case 'mobile':
+        // Pass the country code separately for validation
         return validateMobile(value, forgotEmailData.countryCode);
       default:
         return '';
@@ -170,6 +171,7 @@ const Login = () => {
         }
       } else if (mode === 'forgot-email') {
         if (fieldTouched.mobile || forgotEmailData.mobile) {
+          // Pass mobile number without country code for validation
           newErrors.mobile = await validateField('mobile', forgotEmailData.mobile);
         }
       }
@@ -295,8 +297,8 @@ const Login = () => {
         validatePasswordRequirementsList(newValue);
       }
     } else if (name === 'mobile') {
-      // Only allow digits and plus sign
-      newValue = value.replace(/[^\d+]/g, '');
+      // Only allow digits (no plus sign for mobile field)
+      newValue = value.replace(/\D/g, '');
       
       // Remove leading zeros if any
       if (newValue.startsWith('0')) {
@@ -385,8 +387,8 @@ const Login = () => {
       return;
     }
     
-    // Allow only digits
-    if (!/^\d$/.test(e.key) && e.key !== '+') {
+    // Allow only digits (no plus sign for mobile field)
+    if (!/^\d$/.test(e.key)) {
       e.preventDefault();
       toast.error('Please enter only numbers');
     }
@@ -530,6 +532,7 @@ const Login = () => {
   };
 
   const handleForgotEmail = async () => {
+    // Validate mobile number
     if (!forgotEmailData.mobile) {
       setFieldTouched({ mobile: true });
       setErrors({ mobile: 'Mobile number is required' });
@@ -545,7 +548,9 @@ const Login = () => {
     setLoading(true);
     
     try {
-      const response = await authAPI.forgotEmail(forgotEmailData.mobile);
+      // Combine country code and mobile number for API call
+      const fullMobileNumber = `${forgotEmailData.countryCode}${forgotEmailData.mobile}`;
+      const response = await authAPI.forgotEmail(fullMobileNumber);
       
       if (response.data.success) {
         setForgotEmailSuccess(true);
@@ -818,6 +823,21 @@ const Login = () => {
     );
   };
 
+  // Helper function to get country-specific example
+  const getMobileExample = (countryCode) => {
+    const examples = {
+      '+91': '9876543210',
+      '+1': '2125551234',
+      '+44': '7123456789',
+      '+61': '412345678',
+      '+49': '15123456789',
+      '+33': '612345678',
+      '+81': '9012345678',
+      '+86': '13800138000'
+    };
+    return examples[countryCode] || '9876543210';
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 animate-fade-in bg-gradient-to-br from-blue-50 to-purple-50">
       <div className="relative w-full max-w-md">
@@ -1060,7 +1080,7 @@ const Login = () => {
                 </div>
               )}
 
-              {/* Forgot Email Form */}
+              {/* Forgot Email Form - Fixed Phone Number Handling */}
               {mode === 'forgot-email' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
@@ -1071,10 +1091,13 @@ const Login = () => {
                     <div className="relative w-32">
                       <select
                         value={forgotEmailData.countryCode}
-                        onChange={(e) => setForgotEmailData(prev => ({
-                          ...prev,
-                          countryCode: e.target.value
-                        }))}
+                        onChange={(e) => {
+                          const newCountryCode = e.target.value;
+                          setForgotEmailData(prev => ({
+                            ...prev,
+                            countryCode: newCountryCode
+                          }));
+                        }}
                         className={`form-input pl-10 pr-3 ${fieldTouched.countryCode ? 'border-blue-300' : ''}`}
                         disabled={loading}
                         onBlur={() => handleBlur('countryCode')}
@@ -1085,9 +1108,7 @@ const Login = () => {
                           </option>
                         ))}
                       </select>
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-400">🌍</span>
-                      </div>
+                      
                     </div>
                     <div className="relative flex-1">
                       <input
@@ -1098,7 +1119,7 @@ const Login = () => {
                         onBlur={handleMobileBlur}
                         onKeyDown={handleMobileKeyDown}
                         className={`form-input pl-12 pr-12 ${isFieldInvalid('mobile') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('mobile', forgotEmailData.mobile) ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                        placeholder={`Enter mobile number`}
+                        placeholder={`Example: ${getMobileExample(forgotEmailData.countryCode)}`}
                         disabled={loading}
                         maxLength={15}
                         inputMode="tel"
@@ -1119,12 +1140,19 @@ const Login = () => {
                   )}
                   <div className="text-xs text-gray-500 mt-1">
                     <FaInfoCircle className="inline mr-1" />
-                    Enter your registered mobile number with country code. We'll send your email to the registered email address.
+                    Enter your registered mobile number without country code.
                   </div>
                   
-                  <p className="text-sm text-gray-500 mt-2">
-                    Your registered email will be sent to you. Please check both inbox and spam folder.
-                  </p>
+                  <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-100">
+                    <div className="flex items-center text-xs text-blue-700">
+                      <FaInfoCircle className="mr-1 flex-shrink-0" />
+                      <span>
+                        <strong>Format:</strong> {forgotEmailData.countryCode} XXXXXXXX
+                        <br />
+                        <strong>Example:</strong> {forgotEmailData.countryCode}{getMobileExample(forgotEmailData.countryCode)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 

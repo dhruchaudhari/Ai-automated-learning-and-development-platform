@@ -1,4 +1,4 @@
-// Register.jsx - Updated with password info boxes
+// Register.jsx - Updated with correct password info boxes
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
@@ -1565,11 +1565,8 @@ const Register = () => {
                     </button>
                   </div>
                   
-                  {/* Password Requirements Info Box */}
-                  <PasswordRequirements 
-                    password={formData.password} 
-                    confirmPassword={formData.confirmPassword}
-                  />
+                  {/* Password Requirements Info Box - FIXED */}
+                  <PasswordRequirements password={formData.password} />
                   
                   {errors.password && (
                     <p className="text-sm text-red-600 animate-slide-up flex items-center">
@@ -1614,7 +1611,12 @@ const Register = () => {
                     </button>
                   </div>
                   
-                  {/* Already included in PasswordRequirements component */}
+                  {/* Confirm Password Requirements Info Box - FIXED */}
+                  <PasswordRequirements 
+                    password={formData.password}
+                    confirmPassword={formData.confirmPassword}
+                    isConfirm={true}
+                  />
                   
                   {errors.confirmPassword && (
                     <p className="text-sm text-red-600 animate-slide-up flex items-center">
