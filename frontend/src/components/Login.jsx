@@ -1108,7 +1108,9 @@ const Login = () => {
                           </option>
                         ))}
                       </select>
-                      
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-gray-400">🌍</span>
+                      </div>
                     </div>
                     <div className="relative flex-1">
                       <input
