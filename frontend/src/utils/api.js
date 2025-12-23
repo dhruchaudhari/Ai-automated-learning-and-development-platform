@@ -1,4 +1,3 @@
-// utils/api.js - FIXED VERSION
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -41,6 +40,7 @@ const isPublicEndpoint = (url) => {
     '/users/forgot-password',
     '/users/verify-password-reset-otp',
     '/users/reset-password',
+    '/users/forgot-email',
     '/users/public-logout',
     '/health',
     '/auth/verify'
@@ -112,6 +112,10 @@ export const authAPI = {
   // Forgot password
   forgotPassword: (email) =>
     api.post('/users/forgot-password', { email }),
+  
+  // Forgot email
+  forgotEmail: (mobile) =>
+    api.post('/users/forgot-email', { mobile }),
   
   verifyPasswordResetOtp: (email, otp) =>
     api.post('/users/verify-password-reset-otp', { email, otp }),

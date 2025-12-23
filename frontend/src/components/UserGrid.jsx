@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { userAPI } from "../utils/api";
 import { toast } from "react-hot-toast";
@@ -163,8 +163,8 @@ const getGenderDisplay = (gender) => {
   }
 };
 
-// Enhanced activation duration calculation
-const calculateActivationDuration = (activationHistory, specificDate = null, dateRange = null) => {
+// Enhanced activation duration calculation with real-time updates
+const calculateActivationDuration = (activationHistory, specificDate = null, dateRange = null, realTime = true) => {
   if (!activationHistory || activationHistory.length === 0) {
     return { 
       active: false,
@@ -177,7 +177,8 @@ const calculateActivationDuration = (activationHistory, specificDate = null, dat
       thisWeekDuration: 0,
       thisMonthDuration: 0,
       dateRangeDuration: 0,
-      hourlyBreakdown: {}
+      hourlyBreakdown: {},
+      liveDuration: 0
     };
   }
   
@@ -194,6 +195,7 @@ const calculateActivationDuration = (activationHistory, specificDate = null, dat
   let thisWeekDuration = 0;
   let thisMonthDuration = 0;
   let dateRangeDuration = 0;
+  let liveDuration = 0;
   const hourlyBreakdown = {};
   
   const now = new Date();
@@ -208,17 +210,28 @@ const calculateActivationDuration = (activationHistory, specificDate = null, dat
     hourlyBreakdown[hour] = 0;
   }
 
+  // Check if currently active (last status is active)
+  const lastEntry = sortedHistory[sortedHistory.length - 1];
+  const isActiveNow = lastEntry && lastEntry.status === 'active';
+  isCurrentlyActive = isActiveNow;
+
   // Calculate durations for specific date or date range
   for (let i = 0; i < sortedHistory.length; i += 2) {
     const start = sortedHistory[i];
-    const end = sortedHistory[i + 1] || { status: 'inactive', timestamp: new Date().toISOString() };
+    const end = sortedHistory[i + 1] || (isActiveNow ? { status: 'inactive', timestamp: new Date().toISOString() } : null);
     
-    if (start.status === 'active') {
+    if (start.status === 'active' && end) {
       const startTime = new Date(start.timestamp);
       const endTime = new Date(end.timestamp);
       
       // Calculate session duration
-      const sessionDuration = endTime - startTime;
+      let sessionDuration = endTime - startTime;
+      
+      // If this is the current active session and we want real-time, add time since activation
+      if (isActiveNow && i === sortedHistory.length - 2 && realTime) {
+        sessionDuration = now - startTime;
+        liveDuration = now - startTime;
+      }
       
       // Check if session falls within specific date
       if (specificDate) {
@@ -348,14 +361,19 @@ const calculateActivationDuration = (activationHistory, specificDate = null, dat
         
         sessions++;
       }
-      
-      // If last status is active, user is currently active
-      if (i === sortedHistory.length - 2 && end.status === 'inactive') {
-        isCurrentlyActive = false;
-      } else if (i === sortedHistory.length - 1) {
-        isCurrentlyActive = start.status === 'active';
-      }
     }
+  }
+  
+  // Add live duration to today's total if user is currently active
+  if (isCurrentlyActive && realTime) {
+    todayDuration += liveDuration;
+    thisWeekDuration += liveDuration;
+    thisMonthDuration += liveDuration;
+    totalDuration += liveDuration;
+    
+    // Add to current hour's breakdown
+    const currentHour = now.getHours();
+    hourlyBreakdown[currentHour] = (hourlyBreakdown[currentHour] || 0) + liveDuration;
   }
   
   return {
@@ -370,7 +388,8 @@ const calculateActivationDuration = (activationHistory, specificDate = null, dat
     thisMonthDuration,
     dateRangeDuration,
     hourlyBreakdown,
-    avgSessionDuration: sessions > 0 ? totalDuration / sessions : 0
+    avgSessionDuration: sessions > 0 ? totalDuration / sessions : 0,
+    liveDuration
   };
 };
 
@@ -408,6 +427,35 @@ const formatDurationHHMMSS = (milliseconds) => {
 const formatHours = (milliseconds) => {
   if (!milliseconds || milliseconds <= 0) return "0";
   return (milliseconds / (1000 * 60 * 60)).toFixed(2);
+};
+
+// Live timer component for active users
+const LiveTimer = ({ startTime, className = "" }) => {
+  const [elapsed, setElapsed] = useState(0);
+  
+  useEffect(() => {
+    if (!startTime) return;
+    
+    const updateElapsed = () => {
+      const now = new Date();
+      const start = new Date(startTime);
+      setElapsed(now - start);
+    };
+    
+    // Initial update
+    updateElapsed();
+    
+    // Update every second
+    const interval = setInterval(updateElapsed, 1000);
+    
+    return () => clearInterval(interval);
+  }, [startTime]);
+  
+  return (
+    <span className={`font-medium ${className}`}>
+      {formatDuration(elapsed)}
+    </span>
+  );
 };
 
 // Preview Modal Component
@@ -658,7 +706,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange, totalItems }) => {
   );
 };
 
-// Enhanced Activation Analytics Component
+// Enhanced Activation Analytics Component with live updates
 const ActivationAnalytics = ({ users, selectedUsers }) => {
   const [timeRange, setTimeRange] = useState('today');
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -666,17 +714,27 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
     start: format(new Date(), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
   });
-  const [viewMode, setViewMode] = useState('individual'); // 'individual' or 'comparison'
+  const [viewMode, setViewMode] = useState('individual');
   const [selectedAnalyticsUsers, setSelectedAnalyticsUsers] = useState([]);
-  const [chartType, setChartType] = useState('bar'); // 'bar', 'line', 'area'
-  const [timeUnit, setTimeUnit] = useState('hours'); // 'hours', 'minutes', 'seconds'
+  const [chartType, setChartType] = useState('bar');
+  const [timeUnit, setTimeUnit] = useState('hours');
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  
+  // Force refresh every 5 seconds for live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastUpdate(Date.now());
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Filter users for analytics
   const targetUsers = useMemo(() => {
     return selectedUsers.length > 0 
       ? users.filter(user => selectedUsers.includes(user._id))
       : users;
-  }, [users, selectedUsers]);
+  }, [users, selectedUsers, lastUpdate]);
 
   // Get date range based on selection
   const getDateRange = useMemo(() => {
@@ -720,14 +778,20 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
     return { startDate, endDate };
   }, [timeRange, selectedDate, customDateRange]);
 
-  // Prepare individual user activation data
+  // Prepare individual user activation data with live updates
   const individualUserData = useMemo(() => {
     return targetUsers.map(user => {
       const activation = calculateActivationDuration(
         user.activationHistory || [], 
         timeRange === 'specific' ? selectedDate : null,
-        timeRange !== 'specific' ? getDateRange : null
+        timeRange !== 'specific' ? getDateRange : null,
+        true // Enable real-time calculation
       );
+      
+      // Get last activation time for live timer
+      const lastActivationEntry = user.activationHistory
+        ?.filter(entry => entry.status === 'active')
+        .pop();
       
       return {
         id: user._id,
@@ -742,11 +806,18 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
         sessions: activation.sessions,
         active: activation.active,
         lastActivation: activation.lastActivation,
+        lastActivationTime: lastActivationEntry?.timestamp,
         hourlyBreakdown: activation.hourlyBreakdown,
-        avgSessionDuration: activation.avgSessionDuration
+        avgSessionDuration: activation.avgSessionDuration,
+        liveDuration: activation.liveDuration
       };
-    }).sort((a, b) => b.totalDuration - a.totalDuration);
-  }, [targetUsers, timeRange, selectedDate, getDateRange]);
+    }).sort((a, b) => {
+      // Sort active users first, then by total duration
+      if (a.active && !b.active) return -1;
+      if (!a.active && b.active) return 1;
+      return b.totalDuration - a.totalDuration;
+    });
+  }, [targetUsers, timeRange, selectedDate, getDateRange, lastUpdate]);
 
   // Prepare comparison data for selected users
   const comparisonData = useMemo(() => {
@@ -787,7 +858,6 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
           const userData = individualUserData.find(u => u.id === user.id);
           if (userData) {
             // For simplicity, we'll show total duration for each day
-            // In a real app, you'd want to calculate per-day duration
             dataPoint[user.name] = timeUnit === 'hours'
               ? userData.totalDuration / (1000 * 60 * 60) / days.length
               : timeUnit === 'minutes'
@@ -801,7 +871,7 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
     }
   }, [selectedAnalyticsUsers, individualUserData, timeRange, timeUnit, getDateRange]);
 
-  // Calculate statistics
+  // Calculate statistics with live updates
   const stats = useMemo(() => {
     const totalDuration = individualUserData.reduce((sum, user) => sum + user.totalDuration, 0);
     const activeUsers = individualUserData.filter(user => user.active).length;
@@ -810,10 +880,16 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
       ? individualUserData.reduce((sum, user) => sum + user.avgSessionDuration, 0) / individualUserData.length
       : 0;
     
+    // Calculate live active duration for active users
+    const liveActiveDuration = individualUserData
+      .filter(user => user.active)
+      .reduce((sum, user) => sum + (user.liveDuration || 0), 0);
+    
     return {
       totalUsers: individualUserData.length,
       activeUsers,
       totalDuration,
+      liveActiveDuration,
       totalSessions,
       avgSessionDuration,
       avgDurationPerUser: individualUserData.length > 0 ? totalDuration / individualUserData.length : 0
@@ -851,7 +927,11 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Activation Analytics</h3>
             <p className="text-sm text-gray-500">
-              Analyzing {stats.totalUsers} users • {selectedUsers.length > 0 ? `${selectedUsers.length} selected` : 'All users'}
+              <span className="inline-flex items-center gap-1">
+                <FaClock className="text-green-500 animate-pulse" />
+                Live Updates
+              </span>
+              • Analyzing {stats.totalUsers} users • {selectedUsers.length > 0 ? `${selectedUsers.length} selected` : 'All users'}
             </p>
           </div>
         </div>
@@ -1017,10 +1097,11 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
         )}
       </div>
 
-      {/* Statistics Summary */}
+      {/* Live Statistics Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500 bg-opacity-10 rounded-full transform translate-x-8 -translate-y-8"></div>
+          <div className="flex items-center justify-between relative z-10">
             <div>
               <p className="text-sm text-gray-600">Total Active Time</p>
               <p className="text-2xl font-bold text-blue-600">
@@ -1034,21 +1115,37 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
           </div>
         </div>
         
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-green-500 bg-opacity-10 rounded-full transform translate-x-8 -translate-y-8"></div>
+          <div className="flex items-center justify-between relative z-10">
             <div>
-              <p className="text-sm text-gray-600">Active Users</p>
-              <p className="text-2xl font-bold text-green-600">{stats.activeUsers}</p>
+              <p className="text-sm text-gray-600">Active Users Now</p>
+              <p className="text-2xl font-bold text-green-600">
+                <span className="flex items-center gap-2">
+                  {stats.activeUsers}
+                  {stats.activeUsers > 0 && (
+                    <span className="text-xs font-normal text-green-500">
+                      ({formatTimeValue(stats.liveActiveDuration)} live)
+                    </span>
+                  )}
+                </span>
+              </p>
               <p className="text-xs text-gray-500">
                 {stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}% of total
               </p>
             </div>
-            <FaUserCheck className="w-8 h-8 text-green-500" />
+            <div className="relative">
+              <FaUserCheck className="w-8 h-8 text-green-500" />
+              {stats.activeUsers > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse"></span>
+              )}
+            </div>
           </div>
         </div>
         
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500 bg-opacity-10 rounded-full transform translate-x-8 -translate-y-8"></div>
+          <div className="flex items-center justify-between relative z-10">
             <div>
               <p className="text-sm text-gray-600">Total Sessions</p>
               <p className="text-2xl font-bold text-purple-600">{stats.totalSessions}</p>
@@ -1060,8 +1157,9 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
           </div>
         </div>
         
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500 bg-opacity-10 rounded-full transform translate-x-8 -translate-y-8"></div>
+          <div className="flex items-center justify-between relative z-10">
             <div>
               <p className="text-sm text-gray-600">Avg per User</p>
               <p className="text-2xl font-bold text-orange-600">
@@ -1107,6 +1205,9 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
                   {selectedAnalyticsUsers.includes(user.id) && (
                     <FaCheckCircle className="text-primary-600" />
                   )}
+                  {user.active && (
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  )}
                 </button>
               ))}
             </div>
@@ -1129,6 +1230,7 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
                     return (
                       <span key={userId} className="inline-flex items-center gap-1 px-2 py-1 bg-white text-gray-700 text-xs rounded-full border border-gray-300">
                         {user.name}
+                        {user.active && <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>}
                         <button
                           onClick={() => toggleAnalyticsUser(userId)}
                           className="text-gray-400 hover:text-gray-600"
@@ -1279,7 +1381,10 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
               </span>
             </div>
             <div className="text-sm text-gray-500">
-              Sorted by total active time
+              <span className="flex items-center gap-1">
+                <FaClock className="text-green-500 animate-pulse" />
+                Live Updates
+              </span>
             </div>
           </div>
           
@@ -1300,8 +1405,13 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-medium">
+                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-medium relative ${
+                          user.active ? 'ring-2 ring-green-500 ring-offset-1' : ''
+                        }`}>
                           {user.name.charAt(0)}
+                          {user.active && (
+                            <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                          )}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">{user.name}</p>
@@ -1317,6 +1427,12 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
                         <span className="text-xs text-gray-500">
                           {formatDurationHHMMSS(user.totalDuration)}
                         </span>
+                        {user.active && user.lastActivationTime && (
+                          <span className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                            <FaClock className="animate-pulse" />
+                            <LiveTimer startTime={user.lastActivationTime} />
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -1335,8 +1451,8 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
                       }`}>
                         {user.active ? (
                           <>
-                            <FaToggleOnIcon className="text-green-500" />
-                            Active
+                            <FaToggleOnIcon className="text-green-500 animate-pulse" />
+                            Active Now
                           </>
                         ) : (
                           <>
@@ -1397,12 +1513,16 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
                   )) * 100
                 : 0;
               
+              const currentHour = new Date().getHours();
+              const isCurrentHour = hour === currentHour;
+              
               return (
-                <div key={hour} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg">
+                <div key={hour} className={`flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg ${isCurrentHour ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}>
                   <div className="flex items-center gap-3">
                     <div className="w-10 text-center">
-                      <span className="text-sm font-medium text-gray-700">
+                      <span className={`text-sm font-medium ${isCurrentHour ? 'text-blue-600' : 'text-gray-700'}`}>
                         {hour.toString().padStart(2, '0')}:00
+                        {isCurrentHour && <span className="ml-1 text-xs text-blue-500">●</span>}
                       </span>
                     </div>
                     <div className="flex-1">
@@ -1484,6 +1604,12 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
               <p className="text-sm text-gray-600 mt-1">
                 {formatTimeValue(individualUserData[0].totalDuration)} • {individualUserData[0].sessions} sessions
               </p>
+              {individualUserData[0].active && (
+                <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                  <FaClock className="animate-pulse" />
+                  Currently active for <LiveTimer startTime={individualUserData[0].lastActivationTime} className="text-green-600" />
+                </p>
+              )}
             </>
           ) : (
             <p className="text-gray-500">No data available</p>
@@ -1513,6 +1639,16 @@ const ActivationAnalytics = ({ users, selectedUsers }) => {
 // Simplified Analytics Charts Component
 const AnalyticsCharts = ({ users }) => {
   const [timeRange, setTimeRange] = useState('last30days');
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
+
+  // Force refresh every 10 seconds for live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastUpdate(Date.now());
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Prepare registration data (bar chart)
   const registrationData = useMemo(() => {
@@ -1598,7 +1734,7 @@ const AnalyticsCharts = ({ users }) => {
       });
 
     return result;
-  }, [users, timeRange]);
+  }, [users, timeRange, lastUpdate]);
 
   // Prepare gender distribution data (pie chart)
   const genderData = useMemo(() => {
@@ -1611,7 +1747,7 @@ const AnalyticsCharts = ({ users }) => {
 
     users.forEach(user => {
       const gender = user.gender || 'Not specified';
-      const activation = calculateActivationDuration(user.activationHistory || []);
+      const activation = calculateActivationDuration(user.activationHistory || [], null, null, true);
       
       genderStats[gender].count++;
       if (activation.active) genderStats[gender].active++;
@@ -1631,12 +1767,12 @@ const AnalyticsCharts = ({ users }) => {
       }));
 
     return result;
-  }, [users]);
+  }, [users, lastUpdate]);
 
-  // Calculate statistics
+  // Calculate statistics with live updates
   const stats = useMemo(() => {
     const activeUsers = users.filter(user => 
-      calculateActivationDuration(user.activationHistory || []).active
+      calculateActivationDuration(user.activationHistory || [], null, null, true).active
     ).length;
     
     const maleUsers = users.filter(user => user.gender === 'Male').length;
@@ -1650,7 +1786,7 @@ const AnalyticsCharts = ({ users }) => {
       femaleUsers,
       otherUsers
     };
-  }, [users]);
+  }, [users, lastUpdate]);
 
   return (
     <div className="mb-8">
@@ -1660,7 +1796,11 @@ const AnalyticsCharts = ({ users }) => {
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Analytics Dashboard</h3>
             <p className="text-sm text-gray-500">
-              Analyzing {stats.totalUsers} users
+              <span className="flex items-center gap-1">
+                <FaClock className="text-green-500 animate-pulse" />
+                Live Updates
+              </span>
+              • Analyzing {stats.totalUsers} users
             </p>
           </div>
         </div>
@@ -1701,12 +1841,24 @@ const AnalyticsCharts = ({ users }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">Active Now</p>
-              <p className="text-2xl font-bold text-green-600">{stats.activeUsers}</p>
+              <p className="text-2xl font-bold text-green-600">
+                <span className="flex items-center gap-2">
+                  {stats.activeUsers}
+                  {stats.activeUsers > 0 && (
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  )}
+                </span>
+              </p>
               <p className="text-xs text-gray-500">
                 {stats.totalUsers > 0 ? Math.round((stats.activeUsers / stats.totalUsers) * 100) : 0}% of total
               </p>
             </div>
-            <FaToggleOn className="w-8 h-8 text-green-500" />
+            <div className="relative">
+              <FaToggleOn className="w-8 h-8 text-green-500" />
+              {stats.activeUsers > 0 && (
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+              )}
+            </div>
           </div>
         </div>
         
@@ -1824,6 +1976,11 @@ const AnalyticsCharts = ({ users }) => {
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: gender.fill }} />
                   <span>{gender.name}</span>
+                  {gender.active > 0 && (
+                    <span className="text-xs text-green-500">
+                      ({gender.active} active)
+                    </span>
+                  )}
                 </div>
                 <div className="text-right">
                   <span className="font-medium">{gender.value} users</span>
@@ -1875,6 +2032,9 @@ const AnalyticsCharts = ({ users }) => {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-green-500" />
                 <span>Active Users</span>
+                {stats.activeUsers > 0 && (
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                )}
               </div>
               <div className="text-right">
                 <span className="font-medium">{stats.activeUsers} users</span>
@@ -1947,7 +2107,8 @@ const FilterPanel = ({
     { value: 'oldest', label: 'Oldest First', icon: <FaSortAmountUp /> },
     { value: 'name-asc', label: 'Name A-Z', icon: <FaSortAlphaDown /> },
     { value: 'name-desc', label: 'Name Z-A', icon: <FaSortAlphaUp /> },
-    { value: 'recent-active', label: 'Recently Active', icon: <FaClock /> }
+    { value: 'recent-active', label: 'Recently Active', icon: <FaClock /> },
+    { value: 'most-active', label: 'Most Active', icon: <FaToggleOnIcon /> }
   ];
 
   const handleDateRangeChange = (value) => {
@@ -2020,10 +2181,10 @@ const FilterPanel = ({
     }
   };
 
-  // Calculate filter statistics
+  // Calculate filter statistics with live updates
   const filteredCount = users.length;
   const activeUsers = users.filter(user => 
-    calculateActivationDuration(user.activationHistory || []).active
+    calculateActivationDuration(user.activationHistory || [], null, null, true).active
   ).length;
   const maleUsers = users.filter(user => user.gender === 'Male').length;
   const femaleUsers = users.filter(user => user.gender === 'Female').length;
@@ -2037,7 +2198,11 @@ const FilterPanel = ({
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Filters & Sorting</h3>
             <p className="text-sm text-gray-500">
-              {filteredCount} users • {activeUsers} active • {maleUsers} male • {femaleUsers} female
+              <span className="flex items-center gap-1">
+                <FaClock className="text-green-500 animate-pulse" />
+                Live Stats
+              </span>
+              • {filteredCount} users • {activeUsers} active • {maleUsers} male • {femaleUsers} female
             </p>
           </div>
         </div>
@@ -2225,6 +2390,7 @@ const UserGrid = () => {
   const [viewModal, setViewModal] = useState({ show: false, userId: null });
   const [editModal, setEditModal] = useState({ show: false, userId: null });
   const [selectedUserData, setSelectedUserData] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
 
   const [filters, setFilters] = useState({
     gender: '',
@@ -2246,6 +2412,7 @@ const UserGrid = () => {
       }));
       setUsers(usersWithActivation);
       setFilteredUsers(usersWithActivation);
+      setLastUpdate(Date.now());
     } catch (err) {
       console.error("❌ Error fetching users:", err);
       toast.error("Failed to load users");
@@ -2258,7 +2425,18 @@ const UserGrid = () => {
     fetchUsers();
   }, []);
 
-  // Apply filters and sorting to ALL users
+  // Force refresh every 30 seconds for live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (users.length > 0) {
+        setLastUpdate(Date.now());
+      }
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [users]);
+
+  // Apply filters and sorting to ALL users with live updates
   useEffect(() => {
     let result = [...users];
 
@@ -2281,7 +2459,7 @@ const UserGrid = () => {
     // Apply activation status filter
     if (filters.activationStatus) {
       result = result.filter(user => {
-        const activation = calculateActivationDuration(user.activationHistory);
+        const activation = calculateActivationDuration(user.activationHistory, null, null, true);
         return filters.activationStatus === 'active' ? activation.active : !activation.active;
       });
     }
@@ -2299,8 +2477,8 @@ const UserGrid = () => {
 
     // Apply sorting with enhanced options
     result.sort((a, b) => {
-      const activationA = calculateActivationDuration(a.activationHistory);
-      const activationB = calculateActivationDuration(b.activationHistory);
+      const activationA = calculateActivationDuration(a.activationHistory, null, null, true);
+      const activationB = calculateActivationDuration(b.activationHistory, null, null, true);
       
       switch(sortBy) {
         case 'latest':
@@ -2318,6 +2496,10 @@ const UserGrid = () => {
             return new Date(activationB.lastActivation) - new Date(activationA.lastActivation);
           }
           return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'most-active':
+          const durationA = activationA.totalDuration + (activationA.active ? Date.now() - new Date(activationA.lastActivation).getTime() : 0);
+          const durationB = activationB.totalDuration + (activationB.active ? Date.now() - new Date(activationB.lastActivation).getTime() : 0);
+          return durationB - durationA;
         default:
           return new Date(b.createdAt) - new Date(a.createdAt);
       }
@@ -2325,7 +2507,7 @@ const UserGrid = () => {
 
     setFilteredUsers(result);
     setPage(1);
-  }, [users, searchTerm, filters, sortBy]);
+  }, [users, searchTerm, filters, sortBy, lastUpdate]);
 
   const totalPages = Math.ceil(filteredUsers.length / ROWS_PER_PAGE);
   const paginatedUsers = filteredUsers.slice(
@@ -2454,7 +2636,7 @@ const UserGrid = () => {
     const user = users.find(u => u._id === userId);
     if (!user) return;
     
-    const activation = calculateActivationDuration(user.activationHistory || []);
+    const activation = calculateActivationDuration(user.activationHistory || [], null, null, true);
     setActivationModal({
       show: true,
       userId,
@@ -2470,6 +2652,7 @@ const UserGrid = () => {
       const newStatus = !activationModal.currentStatus;
       const timestamp = new Date().toISOString();
       
+      // Update locally first for instant feedback
       const updatedUsers = users.map(user => {
         if (user._id === activationModal.userId) {
           const updatedHistory = [
@@ -2485,12 +2668,16 @@ const UserGrid = () => {
       });
       
       setUsers(updatedUsers);
+      setLastUpdate(Date.now());
       toast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`);
       
       if (selectedUserData && selectedUserData._id === activationModal.userId) {
         const user = updatedUsers.find(u => u._id === activationModal.userId);
         setSelectedUserData(user);
       }
+      
+      // Optionally update on server
+      // await userAPI.updateActivationStatus(activationModal.userId, newStatus);
     } catch (error) {
       console.error("Error updating activation status:", error);
       toast.error("Failed to update activation status");
@@ -2716,7 +2903,7 @@ const UserGrid = () => {
                   paginatedUsers.map((user) => {
                     const isSelected = isUserSelected(user._id);
                     const registrationDate = formatDateTime(user.createdAt);
-                    const activation = calculateActivationDuration(user.activationHistory || []);
+                    const activation = calculateActivationDuration(user.activationHistory || [], null, null, true);
                     
                     return (
                       <tr
@@ -2743,16 +2930,22 @@ const UserGrid = () => {
                         {/* Name & Details */}
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold relative ${
                               isSelected 
                                 ? "bg-gradient-to-br from-primary-500 to-secondary-500 text-white"
                                 : "bg-gray-200 text-gray-600"
-                            }`}>
+                            } ${activation.active ? 'ring-2 ring-green-500 ring-offset-1' : ''}`}>
                               {user.fullName?.charAt(0) || "U"}
+                              {activation.active && (
+                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                              )}
                             </div>
                             <div>
                               <p className={`font-medium ${isSelected ? 'text-primary-700' : 'text-gray-800'}`}>
                                 {user.fullName}
+                                {activation.active && (
+                                  <span className="ml-2 text-xs text-green-600">● Live</span>
+                                )}
                               </p>
                               <p className="text-sm text-gray-500">{user.email}</p>
                               <p className="text-xs text-gray-400 mt-1">{user.mobile}</p>
@@ -2764,6 +2957,11 @@ const UserGrid = () => {
                               {activation.todayDuration > 0 && (
                                 <p className="text-xs text-blue-500 mt-1">
                                   Today: {formatDuration(activation.todayDuration)}
+                                  {activation.active && (
+                                    <span className="ml-1">
+                                      + <LiveTimer startTime={activation.lastActivation} className="text-green-600" />
+                                    </span>
+                                  )}
                                 </p>
                               )}
                             </div>
@@ -2935,7 +3133,9 @@ const UserGrid = () => {
                                   activation.active 
                                     ? 'bg-green-500 focus:ring-green-500' 
                                     : 'bg-gray-300 focus:ring-gray-400'
-                                } ${!isSelected ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                } ${!isSelected ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${
+                                  activation.active ? 'animate-pulse' : ''
+                                }`}
                                 title={isSelected ? 
                                   (activation.active ? 'Deactivate user' : 'Activate user') : 
                                   'Select user to enable'}
@@ -2947,15 +3147,15 @@ const UserGrid = () => {
                               <span className={`font-medium text-sm ${
                                 activation.active ? 'text-green-600' : 'text-gray-600'
                               }`}>
-                                {activation.active ? 'Active' : 'Inactive'}
+                                {activation.active ? 'Active Now' : 'Inactive'}
                               </span>
                             </div>
                             <div className="text-xs text-gray-500">
                               {activation.active ? (
-                                <span className="flex items-center gap-1 text-green-600">
-                                  <FaClock className="w-3 h-3" />
-                                  Active now
-                                </span>
+                                <div className="flex items-center gap-1 text-green-600">
+                                  <FaClock className="w-3 h-3 animate-pulse" />
+                                  <LiveTimer startTime={activation.lastActivation} />
+                                </div>
                               ) : (
                                 <span className="flex items-center gap-1 text-gray-500">
                                   <FaCalendarTimes className="w-3 h-3" />
@@ -3012,7 +3212,7 @@ const UserGrid = () => {
                 <div>
                   <p className="text-sm text-gray-600">Active Users</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {users.filter(u => calculateActivationDuration(u.activationHistory || []).active).length}
+                    {users.filter(u => calculateActivationDuration(u.activationHistory || [], null, null, true).active).length}
                   </p>
                   <p className="text-xs text-gray-500">Currently active</p>
                 </div>

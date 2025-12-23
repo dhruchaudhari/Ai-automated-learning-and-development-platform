@@ -1,4 +1,4 @@
-// Register.jsx - COMPLETE WITH OTP VERIFICATION - FIXED VERSION
+// Register.jsx - Updated with password info boxes
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
@@ -13,7 +13,9 @@ import {
   validateProfileImage, 
   validateDocument,
   preventPasswordCopyPaste,
-  parseDateInput
+  parseDateInput,
+  formatName,
+  validatePasswordRequirements // Added import
 } from '../utils/validations';
 import { MOBILE_COUNTRIES, APP_CONSTANTS, PHONE_EXAMPLES } from '../utils/constants';
 import { 
@@ -35,11 +37,13 @@ import {
   FaVenus,
   FaGenderless,
   FaClock,
-  FaRedo
+  FaRedo,
+  FaCheckCircle,
+  FaTimesCircle
 } from 'react-icons/fa';
 import 'react-datepicker/dist/react-datepicker.css';
 
-// OTP Verification Component
+// OTP Verification Component (same as before)
 const OTPVerification = ({ email, name, onVerified, onCancel }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -281,6 +285,239 @@ const useDebounce = (value, delay) => {
   }, [value, delay]);
 
   return debouncedValue;
+};
+
+// Password Requirements Display Component - UPDATED VERSION
+const PasswordRequirements = ({ password, confirmPassword = '', isConfirm = false }) => {
+  const [requirements, setRequirements] = useState({
+    minLength: false,
+    hasUpperCase: false,
+    hasLowerCase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+    noCommonPatterns: false,
+    noRepeatingChars: false
+  });
+
+  const [confirmRequirements, setConfirmRequirements] = useState({
+    minLength: false,
+    hasUpperCase: false,
+    hasLowerCase: false,
+    hasNumber: false,
+    hasSpecialChar: false,
+    noCommonPatterns: false,
+    noRepeatingChars: false,
+    matchesPassword: false
+  });
+
+  useEffect(() => {
+    if (password) {
+      const reqs = validatePasswordRequirements(password);
+      setRequirements(reqs);
+    } else {
+      setRequirements({
+        minLength: false,
+        hasUpperCase: false,
+        hasLowerCase: false,
+        hasNumber: false,
+        hasSpecialChar: false,
+        noCommonPatterns: false,
+        noRepeatingChars: false
+      });
+    }
+  }, [password]);
+
+  useEffect(() => {
+    if (confirmPassword) {
+      const reqs = validatePasswordRequirements(confirmPassword);
+      setConfirmRequirements({
+        ...reqs,
+        matchesPassword: confirmPassword === password
+      });
+    } else {
+      setConfirmRequirements({
+        minLength: false,
+        hasUpperCase: false,
+        hasLowerCase: false,
+        hasNumber: false,
+        hasSpecialChar: false,
+        noCommonPatterns: false,
+        noRepeatingChars: false,
+        matchesPassword: false
+      });
+    }
+  }, [confirmPassword, password]);
+
+  const calculateStrength = (password) => {
+    if (!password) return 0;
+    
+    let strength = 0;
+    if (password.length >= 8) strength += 20;
+    if (password.length >= 12) strength += 10;
+    if (/[a-z]/.test(password)) strength += 15;
+    if (/[A-Z]/.test(password)) strength += 15;
+    if (/\d/.test(password)) strength += 15;
+    if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 15;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 5;
+    if (/\d/.test(password) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength += 5;
+    if (/password|123456|qwerty/i.test(password)) strength = Math.max(0, strength - 30);
+    if (/(.)\1{3,}/.test(password)) strength = Math.max(0, strength - 20);
+    
+    return Math.min(100, strength);
+  };
+
+  const getStrengthColor = (strength) => {
+    if (strength < 40) return 'bg-red-500';
+    if (strength < 70) return 'bg-yellow-500';
+    if (strength < 90) return 'bg-blue-500';
+    return 'bg-green-500';
+  };
+
+  const getStrengthText = (strength) => {
+    if (strength < 40) return 'Weak';
+    if (strength < 70) return 'Fair';
+    if (strength < 90) return 'Good';
+    return 'Strong';
+  };
+
+  const renderRequirementsList = (requirements, isConfirm = false) => {
+    const requirementsList = [
+      {
+        key: 'minLength',
+        text: 'At least 8 characters long',
+        met: requirements.minLength
+      },
+      {
+        key: 'hasUpperCase',
+        text: 'At least one uppercase letter (A-Z)',
+        met: requirements.hasUpperCase
+      },
+      {
+        key: 'hasLowerCase',
+        text: 'At least one lowercase letter (a-z)',
+        met: requirements.hasLowerCase
+      },
+      {
+        key: 'hasNumber',
+        text: 'At least one number (0-9)',
+        met: requirements.hasNumber
+      },
+      {
+        key: 'hasSpecialChar',
+        text: 'At least one special character (!@#$%^&*)',
+        met: requirements.hasSpecialChar
+      },
+      {
+        key: 'noCommonPatterns',
+        text: 'No common patterns (password, 123456, qwerty)',
+        met: requirements.noCommonPatterns
+      },
+      {
+        key: 'noRepeatingChars',
+        text: 'No repeating characters (aaaa, 1111)',
+        met: requirements.noRepeatingChars
+      }
+    ];
+
+    if (isConfirm) {
+      requirementsList.push({
+        key: 'matchesPassword',
+        text: 'Passwords match',
+        met: requirements.matchesPassword
+      });
+    }
+
+    return (
+      <ul className="space-y-1 text-xs">
+        {requirementsList.map((req) => (
+          <li 
+            key={req.key} 
+            className={`flex items-center transition-all duration-200 ${req.met ? 'text-green-600' : 'text-gray-500'}`}
+          >
+            {req.met ? (
+              <FaCheckCircle className="mr-2 text-green-600 flex-shrink-0" />
+            ) : (
+              <FaTimesCircle className="mr-2 text-gray-400 flex-shrink-0" />
+            )}
+            <span>{req.text}</span>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
+  const passwordStrength = calculateStrength(password);
+  const confirmPasswordStrength = calculateStrength(confirmPassword);
+
+  // For confirm password field
+  if (isConfirm) {
+    if (!confirmPassword) return null;
+    
+    return (
+      <div className="mt-4">
+        <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 animate-slide-up">
+          <div className="flex items-center mb-2">
+            <FaInfoCircle className="text-purple-600 mr-2" />
+            <span className="text-sm font-medium text-gray-700">Confirm Password Requirements:</span>
+          </div>
+          {renderRequirementsList(confirmRequirements, true)}
+          
+          <div className="mt-3 pt-2 border-t border-purple-200">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-600">Password Strength:</span>
+              <span className={`text-xs font-medium ${
+                confirmPasswordStrength < 40 ? 'text-red-600' :
+                confirmPasswordStrength < 70 ? 'text-yellow-600' :
+                confirmPasswordStrength < 90 ? 'text-blue-600' : 'text-green-600'
+              }`}>
+                {getStrengthText(confirmPasswordStrength)}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className={`h-2 rounded-full transition-all duration-300 ${getStrengthColor(confirmPasswordStrength)}`}
+                style={{ width: `${confirmPasswordStrength}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // For password field
+  if (!password) return null;
+
+  return (
+    <div className="mt-4">
+      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 animate-slide-up">
+        <div className="flex items-center mb-2">
+          <FaInfoCircle className="text-blue-600 mr-2" />
+          <span className="text-sm font-medium text-gray-700">Password Requirements:</span>
+        </div>
+        {renderRequirementsList(requirements)}
+        
+        <div className="mt-3 pt-2 border-t border-blue-200">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-gray-600">Password Strength:</span>
+            <span className={`text-xs font-medium ${
+              passwordStrength < 40 ? 'text-red-600' :
+              passwordStrength < 70 ? 'text-yellow-600' :
+              passwordStrength < 90 ? 'text-blue-600' : 'text-green-600'
+            }`}>
+              {getStrengthText(passwordStrength)}
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-300 ${getStrengthColor(passwordStrength)}`}
+              style={{ width: `${passwordStrength}%` }}
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // Main Register Component
@@ -563,7 +800,19 @@ const Register = () => {
     } else {
       let newValue = value;
       
-      if (name === 'mobile') {
+      if (name === 'fullName') {
+        // Only allow letters and spaces - NO apostrophes or hyphens
+        newValue = value.replace(/[^a-zA-Z\s]/g, '');
+        
+        // Remove extra spaces
+        newValue = newValue.replace(/\s{2,}/g, ' ');
+        
+        // Auto-capitalize on blur
+        if (!e.target.isEqualNode(document.activeElement)) {
+          newValue = formatName(newValue);
+        }
+        
+      } else if (name === 'mobile') {
         // Only allow digits
         newValue = value.replace(/[^\d]/g, '');
         
@@ -579,25 +828,97 @@ const Register = () => {
           newValue = newValue.substring(0, max);
         }
         
-      } else if (name === 'fullName') {
-        newValue = value.replace(/[^a-zA-Z\s\-\']/g, '');
       } else if (name === 'email') {
+        // Convert to lowercase
         newValue = value.toLowerCase();
+        
+        // Prevent spaces in email
+        if (newValue.includes(' ')) {
+          toast.error('Email cannot contain spaces');
+          newValue = newValue.replace(/\s/g, '');
+        }
+        
+        // Allow only specific characters: letters, numbers, $ - _ . @
+        // Remove any other characters
+        newValue = newValue.replace(/[^a-zA-Z0-9$_.@\-]/g, '');
+        
       } else if (name === 'password') {
         // When password changes, recalculate strength for both passwords
         calculatePasswordStrength(value);
         if (formData.confirmPassword) {
           calculateConfirmPasswordStrength(formData.confirmPassword);
         }
+        newValue = value;
       } else if (name === 'confirmPassword') {
         // When confirm password changes, calculate its strength
         calculateConfirmPasswordStrength(value);
+        newValue = value;
+      } else {
+        newValue = value;
       }
       
       setFormData(prev => ({
         ...prev,
         [name]: newValue
       }));
+    }
+  };
+
+  // Handle full name blur with auto-capitalization
+  const handleFullNameBlur = (e) => {
+    const value = e.target.value;
+    if (value.trim()) {
+      const formattedName = formatName(value);
+      setFormData(prev => ({
+        ...prev,
+        fullName: formattedName
+      }));
+    }
+    handleBlur('fullName');
+  };
+
+  // Handle email blur with validation
+  const handleEmailBlur = (e) => {
+    const value = e.target.value.trim().toLowerCase();
+    
+    // Remove any invalid characters on blur
+    const cleanedValue = value.replace(/[^a-zA-Z0-9$_.@\-]/g, '');
+    
+    setFormData(prev => ({
+      ...prev,
+      email: cleanedValue
+    }));
+    
+    handleBlur('email');
+  };
+
+  // Handle email input keydown to prevent certain characters
+  const handleEmailKeyDown = (e) => {
+    const allowedChars = /[a-zA-Z0-9$_.@\-]/;
+    
+    // Allow control keys
+    if (e.ctrlKey || e.altKey || e.metaKey) {
+      return;
+    }
+    
+    // Allow navigation keys
+    if ([
+      'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 
+      'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'
+    ].includes(e.key)) {
+      return;
+    }
+    
+    // Check if character is allowed
+    if (!allowedChars.test(e.key) && e.key.length === 1) {
+      e.preventDefault();
+      toast.error('Email can only contain letters, numbers, and: $ . _ - @');
+    }
+    
+    // Check for multiple @ symbols
+    if (e.key === '@' && e.target.value.includes('@')) {
+      e.preventDefault();
+      toast.error('Email can only contain one @ symbol');
     }
   };
 
@@ -1017,7 +1338,15 @@ const Register = () => {
                       name="fullName"
                       value={formData.fullName}
                       onChange={handleChange}
-                      onBlur={() => handleBlur('fullName')}
+                      onBlur={handleFullNameBlur}
+                      onKeyDown={(e) => {
+                        // Prevent special characters
+                        if (!/^[a-zA-Z\s]$/.test(e.key) && 
+                            !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)) {
+                          e.preventDefault();
+                          toast.error('Full name can only contain letters and spaces');
+                        }
+                      }}
                       className={`form-input ${isFieldInvalid('fullName') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('fullName') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
                       placeholder="Vatsalraj Solanki"
                       disabled={loading}
@@ -1038,6 +1367,10 @@ const Register = () => {
                       <FaCheck className="mr-1" /> Valid full name
                     </p>
                   )}
+                  <div className="text-xs text-gray-500">
+                    <FaInfoCircle className="inline mr-1" />
+                    Letters and spaces only. Auto-capitalizes each name.
+                  </div>
                 </div>
 
                 {/* Gender */}
@@ -1166,14 +1499,8 @@ const Register = () => {
                       name="email"
                       value={formData.email}
                       onChange={handleChange}
-                      onBlur={() => handleBlur('email')}
-                      onKeyDown={(e) => {
-                        // Prevent space key in email
-                        if (e.key === ' ') {
-                          e.preventDefault();
-                          toast.error('Email cannot contain spaces');
-                        }
-                      }}
+                      onBlur={handleEmailBlur}
+                      onKeyDown={handleEmailKeyDown}
                       className={`form-input ${isFieldInvalid('email') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('email') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
                       placeholder="vatsalraj@example.com"
                       disabled={loading}
@@ -1198,12 +1525,12 @@ const Register = () => {
                   )}
                   <div className="text-xs text-gray-500">
                     <FaInfoCircle className="inline mr-1" />
-                    Standard email format (no spaces, max 254 characters)
+                    Allowed characters: letters, numbers, and: $ . _ - @ (only one @)
                   </div>
                 </div>
 
                 {/* Password */}
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 flex items-center">
                     <FaLock className="mr-2 text-primary-600" />
                     Password *
@@ -1238,39 +1565,21 @@ const Register = () => {
                     </button>
                   </div>
                   
-                  {formData.password && (
-                    <div className="mt-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-600">Password Strength:</span>
-                        <span className="text-xs font-medium">
-                          {passwordStrength < 40 ? 'Weak' : 
-                           passwordStrength < 70 ? 'Fair' : 
-                           passwordStrength < 90 ? 'Good' : 'Strong'}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1.5">
-                        <div 
-                          className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(passwordStrength)}`}
-                          style={{ width: `${passwordStrength}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Password Requirements Info Box */}
+                  <PasswordRequirements 
+                    password={formData.password} 
+                    confirmPassword={formData.confirmPassword}
+                  />
                   
                   {errors.password && (
                     <p className="text-sm text-red-600 animate-slide-up flex items-center">
                       <FaTimes className="mr-1" /> {errors.password}
                     </p>
                   )}
-                  {isFieldValid('password') && (
-                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                      <FaCheck className="mr-1" /> Strong password
-                    </p>
-                  )}
                 </div>
 
                 {/* Confirm Password */}
-                <div className="space-y-2">
+                <div className="space-y-2 md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 flex items-center">
                     <FaLock className="mr-2 text-primary-600" />
                     Confirm Password *
@@ -1305,35 +1614,11 @@ const Register = () => {
                     </button>
                   </div>
                   
-                  {formData.confirmPassword && (
-                    <div className="mt-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-600">Password Match:</span>
-                        <span className="text-xs font-medium">
-                          {doPasswordsMatch() ? (
-                            <span className="text-green-600">✓ Passwords match</span>
-                          ) : formData.password && formData.confirmPassword ? (
-                            <span className="text-red-600">✗ Passwords don't match</span>
-                          ) : 'Enter password to check'}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1.5">
-                        <div 
-                          className={`h-1.5 rounded-full transition-all duration-300 ${getPasswordStrengthColor(confirmPasswordStrength)}`}
-                          style={{ width: `${confirmPasswordStrength}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Already included in PasswordRequirements component */}
                   
                   {errors.confirmPassword && (
                     <p className="text-sm text-red-600 animate-slide-up flex items-center">
                       <FaTimes className="mr-1" /> {errors.confirmPassword}
-                    </p>
-                  )}
-                  {isFieldValid('confirmPassword') && doPasswordsMatch() && (
-                    <p className="text-sm text-green-600 animate-slide-up flex items-center">
-                      <FaCheck className="mr-1" /> Passwords match
                     </p>
                   )}
                 </div>

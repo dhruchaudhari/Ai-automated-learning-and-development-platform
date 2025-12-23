@@ -1,4 +1,3 @@
-// routes/userRoutes.js - UPDATED
 const express = require('express');
 const router = express.Router();
 const { upload, handleUploadError } = require('../middleware/upload');
@@ -42,6 +41,82 @@ const authMiddleware = (req, res, next) => {
         });
     }
 };
+
+// ==================== FORGOT EMAIL ====================
+
+router.post('/forgot-email', async (req, res) => {
+    try {
+        const { mobile } = req.body;
+
+        if (!mobile) {
+            return res.status(400).json({
+                success: false,
+                message: 'Mobile number is required'
+            });
+        }
+
+        // Clean mobile number - remove all non-digit characters except plus
+        let mobileNumber = mobile.replace(/[^\d+]/g, '');
+        
+        // If starts with country code, extract just the national number
+        let searchMobile = mobileNumber;
+        if (mobileNumber.startsWith('+')) {
+            // Remove country code for searching
+            const dialCodeMatch = mobileNumber.match(/^\+\d{1,3}/);
+            if (dialCodeMatch) {
+                searchMobile = mobileNumber.substring(dialCodeMatch[0].length);
+            }
+        }
+
+        // Find user by mobile number (exact match)
+        const user = await User.findOne({ 
+            mobile: { 
+                $regex: new RegExp(`^\\+?\\d*${searchMobile}$`),
+                $options: 'i'
+            }
+        });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'No account found with this mobile number'
+            });
+        }
+
+        if (!user.isEmailVerified) {
+            return res.status(400).json({
+                success: false,
+                message: 'Account email is not verified. Please contact support.'
+            });
+        }
+
+        // Send email with registered email address
+        const emailSent = await emailService.sendForgotEmail(user.email, user.fullName, user.mobile);
+        
+        if (!emailSent.success) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send email'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Email sent successfully to your registered email address',
+            email: user.email,
+            name: user.fullName,
+            mobile: user.mobile
+        });
+
+    } catch (error) {
+        console.error('Forgot email error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve email',
+            error: error.message
+        });
+    }
+});
 
 // ==================== REGISTRATION WITH OTP ====================
 
@@ -115,7 +190,7 @@ router.post(
             // Send OTP email
             const emailSent = await emailService.sendVerificationEmail(email, otp, fullName);
             
-            if (!emailSent) {
+            if (!emailSent.success) {
                 await User.findByIdAndDelete(newUser._id);
                 return res.status(500).json({
                     success: false,
@@ -301,7 +376,7 @@ router.post('/resend-verification-otp', async (req, res) => {
         // Send new OTP email
         const emailSent = await emailService.sendVerificationEmail(email, otp, user.fullName);
         
-        if (!emailSent) {
+        if (!emailSent.success) {
             return res.status(500).json({
                 success: false,
                 message: 'Failed to send verification email'
@@ -446,7 +521,7 @@ router.post('/forgot-password', async (req, res) => {
         // Send password reset OTP email
         const emailSent = await emailService.sendPasswordResetEmail(email, otp, user.fullName);
         
-        if (!emailSent) {
+        if (!emailSent.success) {
             return res.status(500).json({
                 success: false,
                 message: 'Failed to send password reset email'
@@ -657,7 +732,7 @@ router.get('/verification-status/:email', async (req, res) => {
     }
 });
 
-// ==================== PROTECTED ROUTES (Keep existing) ====================
+// ==================== PROTECTED ROUTES ====================
 
 // View user via /grid/view/:id
 router.get('/grid/view/:id', authMiddleware, async (req, res) => {

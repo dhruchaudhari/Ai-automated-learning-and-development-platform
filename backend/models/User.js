@@ -1,4 +1,3 @@
-// models/User.js - UPDATED
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -187,6 +186,16 @@ userSchema.methods.isOtpValid = function(otp, type = 'email') {
 userSchema.methods.resetVerificationAttempts = function() {
     this.emailVerificationAttempts = 0;
     return this.save();
+};
+
+// Static method to find by mobile number
+userSchema.statics.findByMobile = function(mobile) {
+    return this.findOne({ 
+        mobile: { 
+            $regex: new RegExp(mobile.replace(/[^\d+]/g, '').replace('+', '\\+?')),
+            $options: 'i'
+        }
+    });
 };
 
 // Static method to find by email

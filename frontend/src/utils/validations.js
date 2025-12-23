@@ -43,6 +43,18 @@ export const validateFullName = (name) => {
   return '';
 };
 
+// Helper function to format name (capitalize first letter of each word)
+export const formatName = (name) => {
+  if (!name) return '';
+  
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+    .trim();
+};
+
 export const validateEmail = (email) => {
   if (!email || email.trim().length === 0) {
     return 'Email address is required';
@@ -130,6 +142,12 @@ export const validateEmail = (email) => {
   }
   
   return '';
+};
+
+// Helper function to format email (lowercase)
+export const formatEmail = (email) => {
+  if (!email) return '';
+  return email.toLowerCase().trim();
 };
 
 export const validatePassword = (password, isRegistration = true) => {
@@ -338,6 +356,31 @@ export const validateMobile = (mobile, countryCode = '+91') => {
   }
 };
 
+// Helper function to format mobile number
+export const formatMobile = (mobile, countryCode = '+91') => {
+  if (!mobile) return '';
+  
+  const digitsOnly = mobile.replace(/\D/g, '');
+  
+  if (countryCode === '+1') {
+    // US/Canada format: (XXX) XXX-XXXX
+    if (digitsOnly.length <= 3) return digitsOnly;
+    if (digitsOnly.length <= 6) return `(${digitsOnly.slice(0,3)}) ${digitsOnly.slice(3)}`;
+    return `(${digitsOnly.slice(0,3)}) ${digitsOnly.slice(3,6)}-${digitsOnly.slice(6,10)}`;
+  } else if (countryCode === '+44') {
+    // UK format: XXXXX XXXXXX
+    if (digitsOnly.length <= 5) return digitsOnly;
+    if (digitsOnly.length <= 8) return `${digitsOnly.slice(0,5)} ${digitsOnly.slice(5)}`;
+    return `${digitsOnly.slice(0,5)} ${digitsOnly.slice(5,8)} ${digitsOnly.slice(8,10)}`;
+  } else if (countryCode === '+91') {
+    // India format: XXXXX-XXXXX
+    if (digitsOnly.length <= 5) return digitsOnly;
+    return `${digitsOnly.slice(0,5)}-${digitsOnly.slice(5,10)}`;
+  } else {
+    return digitsOnly;
+  }
+};
+
 export const validateDOB = (date) => {
   if (!date) {
     return 'Date of birth is required';
@@ -523,6 +566,77 @@ export const parseDateInput = (input) => {
   return date;
 };
 
+// Helper function to format date
+export const formatDate = (date) => {
+  if (!date) return '';
+  
+  let dateObj;
+  
+  if (typeof date === 'string') {
+    const parts = date.split(/[/\-\.]/);
+    if (parts.length === 3) {
+      const day = parts[0];
+      const month = parts[1];
+      const year = parts[2];
+      
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthNamesFull = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+      
+      let monthIndex = -1;
+      
+      for (let i = 0; i < monthNames.length; i++) {
+        if (month.toLowerCase() === monthNames[i].toLowerCase() || 
+            month.toLowerCase() === monthNamesFull[i].toLowerCase()) {
+          monthIndex = i;
+          break;
+        }
+      }
+      
+      if (monthIndex !== -1) {
+        dateObj = new Date(year, monthIndex, day);
+      } else if (!isNaN(month)) {
+        dateObj = new Date(year, parseInt(month, 10) - 1, day);
+      } else {
+        dateObj = new Date(date);
+      }
+    } else {
+      dateObj = new Date(date);
+    }
+  } else {
+    dateObj = new Date(date);
+  }
+  
+  if (isNaN(dateObj.getTime())) {
+    return 'Invalid Date';
+  }
+  
+  return dateObj.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).replace(/ /g, '-');
+};
+
+// Alternative format for date
+export const formatDateToDisplay = (date) => {
+  if (!date) return '';
+  
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  
+  if (isNaN(dateObj.getTime())) {
+    return 'Invalid Date';
+  }
+  
+  const day = dateObj.getDate().toString().padStart(2, '0');
+  const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+  const year = dateObj.getFullYear();
+  
+  return `${day}/${month}/${year}`;
+};
+
 export const validateProfileImage = (file) => {
   if (!file) {
     return 'Profile image is required';
@@ -650,59 +764,6 @@ export const validateEditForm = (formData, existingInfo = {}) => {
   return errors;
 };
 
-export const formatDate = (date) => {
-  if (!date) return '';
-  
-  let dateObj;
-  
-  if (typeof date === 'string') {
-    const parts = date.split(/[/\-\.]/);
-    if (parts.length === 3) {
-      const day = parts[0];
-      const month = parts[1];
-      const year = parts[2];
-      
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const monthNamesFull = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-      ];
-      
-      let monthIndex = -1;
-      
-      for (let i = 0; i < monthNames.length; i++) {
-        if (month.toLowerCase() === monthNames[i].toLowerCase() || 
-            month.toLowerCase() === monthNamesFull[i].toLowerCase()) {
-          monthIndex = i;
-          break;
-        }
-      }
-      
-      if (monthIndex !== -1) {
-        dateObj = new Date(year, monthIndex, day);
-      } else if (!isNaN(month)) {
-        dateObj = new Date(year, parseInt(month, 10) - 1, day);
-      } else {
-        dateObj = new Date(date);
-      }
-    } else {
-      dateObj = new Date(date);
-    }
-  } else {
-    dateObj = new Date(date);
-  }
-  
-  if (isNaN(dateObj.getTime())) {
-    return 'Invalid Date';
-  }
-  
-  return dateObj.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  }).replace(/ /g, '-');
-};
-
 export const getValidationStatus = (field, value, additionalData = {}) => {
   switch (field) {
     case 'fullName':
@@ -728,4 +789,137 @@ export const preventPasswordCopyPaste = (e) => {
   e.preventDefault();
   toast.error('Copying/pasting password is not allowed for security reasons');
   return false;
+};
+
+// Helper to mask email for display
+export const maskEmail = (email) => {
+  if (!email || !email.includes('@')) return email || '';
+  
+  const [name, domain] = email.split('@');
+  const maskedName = name.length > 2 
+    ? name.charAt(0) + '*'.repeat(name.length - 2) + name.charAt(name.length - 1)
+    : '*'.repeat(name.length);
+  return `${maskedName}@${domain}`;
+};
+
+// Helper to mask mobile for display
+export const maskMobile = (mobile) => {
+  if (!mobile) return '';
+  
+  const digitsOnly = mobile.replace(/\D/g, '');
+  if (digitsOnly.length <= 6) return '***' + digitsOnly.slice(-3);
+  return digitsOnly.slice(0, 3) + '****' + digitsOnly.slice(-3);
+};
+
+// Helper to calculate age from date of birth
+export const calculateAge = (dob) => {
+  if (!dob) return 0;
+  
+  const birthDate = new Date(dob);
+  const today = new Date();
+  
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  
+  return age;
+};
+
+// Helper to check if password is strong
+export const getPasswordStrength = (password) => {
+  if (!password) return { score: 0, label: 'Empty', color: 'gray' };
+  
+  let score = 0;
+  
+  // Length
+  if (password.length >= 8) score += 20;
+  if (password.length >= 12) score += 10;
+  
+  // Character types
+  if (/[a-z]/.test(password)) score += 15;
+  if (/[A-Z]/.test(password)) score += 15;
+  if (/\d/.test(password)) score += 15;
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) score += 15;
+  
+  // Bonus for combinations
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score += 5;
+  if (/\d/.test(password) && /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) score += 5;
+  
+  // Penalties for weak patterns
+  if (/password|123456|qwerty/i.test(password)) score = Math.max(0, score - 30);
+  if (/(.)\1{4,}/.test(password)) score = Math.max(0, score - 20);
+  
+  score = Math.min(100, Math.max(0, score));
+  
+  let label, color;
+  if (score < 40) {
+    label = 'Weak';
+    color = 'red';
+  } else if (score < 70) {
+    label = 'Fair';
+    color = 'yellow';
+  } else if (score < 90) {
+    label = 'Good';
+    color = 'blue';
+  } else {
+    label = 'Strong';
+    color = 'green';
+  }
+  
+  return { score, label, color };
+};
+
+// In your validations.js file, add this function:
+export const validatePasswordRequirements = (password) => {
+  if (!password) {
+    return {
+      minLength: false,
+      hasUpperCase: false,
+      hasLowerCase: false,
+      hasNumber: false,
+      hasSpecialChar: false,
+      noCommonPatterns: false,
+      noRepeatingChars: false
+    };
+  }
+
+  const requirements = {
+    minLength: password.length >= 8,
+    hasUpperCase: /[A-Z]/.test(password),
+    hasLowerCase: /[a-z]/.test(password),
+    hasNumber: /\d/.test(password),
+    hasSpecialChar: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password),
+    noCommonPatterns: !/password|123456|qwerty|abc123|letmein|welcome|admin|iloveyou|monkey|sunshine/i.test(password),
+    noRepeatingChars: !/(.)\1{4,}/.test(password) // No character repeated 5+ times
+  };
+
+  return requirements;
+};
+
+// Export all functions
+export default {
+  validateFullName,
+  formatName,
+  validateEmail,
+  formatEmail,
+  validatePassword,
+  validateMobile,
+  formatMobile,
+  validateDOB,
+  parseDateInput,
+  formatDate,
+  formatDateToDisplay,
+  validateProfileImage,
+  validateDocument,
+  validateForm,
+  validateEditForm,
+  getValidationStatus,
+  preventPasswordCopyPaste,
+  maskEmail,
+  maskMobile,
+  calculateAge,
+  getPasswordStrength
 };
