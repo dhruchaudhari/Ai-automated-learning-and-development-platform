@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { authAPI, userAPI } from '../utils/api'; // IMPORT BOTH APIs
+import { authAPI, userAPI } from '../utils/api';
 import { toast } from 'react-hot-toast';
 
 const AuthContext = createContext();
@@ -31,7 +31,6 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.verify();
       
       if (response.data && response.data.success) {
-        // Use user from response or from localStorage
         setUser(response.data.user || JSON.parse(userData));
         setIsAuthenticated(true);
       } else {
@@ -59,9 +58,7 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.login(email, password);
       console.log('Login response:', response.data);
       
-      // Check if response has data and token
       if (response.data) {
-        // Handle different response structures
         const token = response.data.token || response.data.accessToken || response.data.jwt;
         const userData = response.data.user || response.data.data;
         
@@ -71,11 +68,9 @@ export const AuthProvider = ({ children }) => {
           return { success: false, error: 'No token received' };
         }
         
-        // Save token to localStorage
         localStorage.setItem('token', token);
         console.log('Token saved to localStorage');
         
-        // Save user info if available
         if (userData) {
           localStorage.setItem('user', JSON.stringify(userData));
           setUser(userData);
@@ -108,10 +103,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // FIXED: Simple logout function
   const logout = async () => {
     try {
-      // Try to call logout API if token exists
       const token = localStorage.getItem('token');
       if (token) {
         await userAPI.logout();
@@ -122,7 +115,7 @@ export const AuthProvider = ({ children }) => {
       clearAuthData();
       toast.success('Logged out successfully');
       
-      // Redirect to login after a short delay
+      // Use window.location for hard redirect
       setTimeout(() => {
         window.location.href = '/login';
       }, 500);

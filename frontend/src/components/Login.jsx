@@ -65,7 +65,7 @@ const Login = () => {
     resetToken: ''
   });
   
-  // Forgot email state - Fixed: Store mobile without country code for validation
+  // Forgot email state
   const [forgotEmailData, setForgotEmailData] = useState({
     mobile: '',
     countryCode: '+91'
@@ -98,6 +98,7 @@ const Login = () => {
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [forgotEmailSuccess, setForgotEmailSuccess] = useState(false);
   const [recoveredEmail, setRecoveredEmail] = useState('');
+  const [canResendOtp, setCanResendOtp] = useState(true);
 
   // Country code options for phone number
   const countryCodes = [
@@ -133,7 +134,6 @@ const Login = () => {
         if (value !== forgotPasswordData.newPassword) return 'Passwords do not match';
         return '';
       case 'mobile':
-        // Pass the country code separately for validation
         return validateMobile(value, forgotEmailData.countryCode);
       default:
         return '';
@@ -171,7 +171,6 @@ const Login = () => {
         }
       } else if (mode === 'forgot-email') {
         if (fieldTouched.mobile || forgotEmailData.mobile) {
-          // Pass mobile number without country code for validation
           newErrors.mobile = await validateField('mobile', forgotEmailData.mobile);
         }
       }
@@ -196,11 +195,20 @@ const Login = () => {
     let timer;
     if (otpCountdown > 0) {
       timer = setTimeout(() => setOtpCountdown(otpCountdown - 1), 1000);
+    } else if (otpCountdown === 0 && mode === 'verify-otp') {
+      setCanResendOtp(true);
     }
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [otpCountdown]);
+  }, [otpCountdown, mode]);
+
+  // Reset canResendOtp when switching modes
+  useEffect(() => {
+    if (mode === 'verify-otp' && otpCountdown === 0) {
+      setCanResendOtp(true);
+    }
+  }, [mode, otpCountdown]);
 
   const calculatePasswordStrength = (password) => {
     if (!password) {
@@ -281,14 +289,10 @@ const Login = () => {
     let newValue = value;
     
     if (name === 'email' || name === 'forgotEmail') {
-      // Convert to lowercase
       newValue = value.toLowerCase();
-      
-      // Remove any invalid characters
       newValue = newValue.replace(/[^a-zA-Z0-9$_.@\-]/g, '');
       
     } else if (name === 'otp') {
-      // Only allow digits, max 6
       newValue = value.replace(/\D/g, '').slice(0, 6);
     } else if (name === 'password' || name === 'newPassword' || name === 'confirmPassword') {
       newValue = value;
@@ -297,10 +301,8 @@ const Login = () => {
         validatePasswordRequirementsList(newValue);
       }
     } else if (name === 'mobile') {
-      // Only allow digits (no plus sign for mobile field)
       newValue = value.replace(/\D/g, '');
       
-      // Remove leading zeros if any
       if (newValue.startsWith('0')) {
         newValue = newValue.substring(1);
       }
@@ -327,12 +329,10 @@ const Login = () => {
   const handleEmailKeyDown = (e) => {
     const allowedChars = /[a-zA-Z0-9$_.@\-]/;
     
-    // Allow control keys
     if (e.ctrlKey || e.altKey || e.metaKey) {
       return;
     }
     
-    // Allow navigation keys
     if ([
       'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 
       'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'
@@ -340,19 +340,16 @@ const Login = () => {
       return;
     }
     
-    // Check if character is allowed
     if (!allowedChars.test(e.key) && e.key.length === 1) {
       e.preventDefault();
       toast.error('Email can only contain letters, numbers, and: $ . _ - @');
     }
     
-    // Check for multiple @ symbols
     if (e.key === '@' && e.target.value.includes('@')) {
       e.preventDefault();
       toast.error('Email can only contain one @ symbol');
     }
     
-    // Prevent spaces
     if (e.key === ' ') {
       e.preventDefault();
       toast.error('Email cannot contain spaces');
@@ -362,7 +359,6 @@ const Login = () => {
   const handleEmailBlur = (e) => {
     const value = e.target.value.trim().toLowerCase();
     
-    // Remove any invalid characters on blur
     const cleanedValue = value.replace(/[^a-zA-Z0-9$_.@\-]/g, '');
     
     if (mode === 'login') {
@@ -387,7 +383,6 @@ const Login = () => {
       return;
     }
     
-    // Allow only digits (no plus sign for mobile field)
     if (!/^\d$/.test(e.key)) {
       e.preventDefault();
       toast.error('Please enter only numbers');
@@ -397,10 +392,8 @@ const Login = () => {
   const handleMobileBlur = () => {
     const mobile = forgotEmailData.mobile;
     
-    // Remove any non-digit characters
     const cleanedMobile = mobile.replace(/\D/g, '');
     
-    // Remove leading zeros
     const finalMobile = cleanedMobile.replace(/^0+/, '');
     
     setForgotEmailData(prev => ({
@@ -485,7 +478,7 @@ const Login = () => {
       
       if (result && result.success) {
         setTimeout(() => {
-          navigate('/grid');
+          navigate('/home');
         }, 300);
       } else if (result && result.requiresVerification) {
         setRequiresVerification(true);
@@ -522,6 +515,7 @@ const Login = () => {
         setMode('verify-otp');
         setOtpCountdown(300); // 5 minutes
         setResendAttempts(0);
+        setCanResendOtp(false);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.message || error.message;
@@ -532,7 +526,6 @@ const Login = () => {
   };
 
   const handleForgotEmail = async () => {
-    // Validate mobile number
     if (!forgotEmailData.mobile) {
       setFieldTouched({ mobile: true });
       setErrors({ mobile: 'Mobile number is required' });
@@ -548,7 +541,6 @@ const Login = () => {
     setLoading(true);
     
     try {
-      // Combine country code and mobile number for API call
       const fullMobileNumber = `${forgotEmailData.countryCode}${forgotEmailData.mobile}`;
       const response = await authAPI.forgotEmail(fullMobileNumber);
       
@@ -598,12 +590,12 @@ const Login = () => {
         toast.success('OTP verified! Set your new password');
         setMode('reset-password');
         setOtpCountdown(0);
+        setCanResendOtp(true);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.message || error.message;
       toast.error(errorMsg || 'OTP verification failed');
       
-      // If attempts exceeded, reset to forgot password
       if (error.response?.status === 429) {
         setMode('forgot-password');
         setForgotPasswordData(prev => ({ ...prev, otp: '' }));
@@ -668,18 +660,48 @@ const Login = () => {
       return;
     }
 
+    if (!canResendOtp) {
+      toast.error('Please wait before resending OTP');
+      return;
+    }
+
+    setLoading(true);
+    
     try {
-      const response = await authAPI.resendVerificationOtp(forgotPasswordData.email);
+      // FIXED: Use the correct API endpoint for resending password reset OTP
+      // Assuming your API has a resendPasswordResetOtp endpoint
+      const response = await authAPI.resendPasswordResetOtp(forgotPasswordData.email);
       
       if (response.data.success) {
         toast.success('New OTP sent!');
         setResendAttempts(prev => prev + 1);
-        setOtpCountdown(300);
+        setOtpCountdown(300); // Reset to 5 minutes
+        setCanResendOtp(false);
       }
     } catch (error) {
       const errorMsg = error.response?.data?.message || error.message;
       toast.error(errorMsg || 'Failed to resend OTP');
+      
+      // If no resendPasswordResetOtp endpoint exists, fall back to forgotPassword
+      if (error.response?.status === 404 || errorMsg?.includes('not found')) {
+        try {
+          // Fallback: Use forgotPassword as resend mechanism
+          const fallbackResponse = await authAPI.forgotPassword(forgotPasswordData.email);
+          
+          if (fallbackResponse.data.success) {
+            toast.success('New OTP sent!');
+            setResendAttempts(prev => prev + 1);
+            setOtpCountdown(300);
+            setCanResendOtp(false);
+          }
+        } catch (fallbackError) {
+          const fallbackErrorMsg = fallbackError.response?.data?.message || fallbackError.message;
+          toast.error(fallbackErrorMsg || 'Failed to resend OTP');
+        }
+      }
     }
+    
+    setLoading(false);
   };
 
   const resetForgotPasswordForm = () => {
@@ -694,6 +716,7 @@ const Login = () => {
     setFieldTouched({});
     setResendAttempts(0);
     setOtpCountdown(0);
+    setCanResendOtp(true);
     setPasswordStrength(0);
     setPasswordRequirements({
       minLength: false,
@@ -1080,7 +1103,7 @@ const Login = () => {
                 </div>
               )}
 
-              {/* Forgot Email Form - Fixed Phone Number Handling */}
+              {/* Forgot Email Form */}
               {mode === 'forgot-email' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
@@ -1108,9 +1131,6 @@ const Login = () => {
                           </option>
                         ))}
                       </select>
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span className="text-gray-400">🌍</span>
-                      </div>
                     </div>
                     <div className="relative flex-1">
                       <input
@@ -1174,8 +1194,8 @@ const Login = () => {
                       <button
                         type="button"
                         onClick={handleResendOtp}
-                        className="text-sm text-primary-600 hover:text-primary-700 flex items-center"
-                        disabled={resendAttempts >= 3}
+                        disabled={!canResendOtp || resendAttempts >= 3 || loading}
+                        className={`text-sm flex items-center ${canResendOtp && resendAttempts < 3 ? 'text-primary-600 hover:text-primary-700' : 'text-gray-400 cursor-not-allowed'}`}
                       >
                         <FaSyncAlt className="mr-1" />
                         Resend OTP {resendAttempts > 0 && `(${3 - resendAttempts} left)`}
@@ -1208,6 +1228,16 @@ const Login = () => {
                   <p className="text-sm text-gray-500 mt-2">
                     Enter the 6-digit code sent to {forgotPasswordData.email}
                   </p>
+                  {otpCountdown === 0 && resendAttempts < 3 && (
+                    <p className="text-sm text-amber-600 mt-2">
+                      OTP has expired. You can resend a new one.
+                    </p>
+                  )}
+                  {resendAttempts >= 3 && (
+                    <p className="text-sm text-red-600 mt-2">
+                      Maximum resend attempts reached. Please try again later.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1313,14 +1343,14 @@ const Login = () => {
                   (mode === 'login' && (Object.keys(errors).length > 0 || !formData.email || !formData.password)) ||
                   (mode === 'forgot-password' && (errors.email || !forgotPasswordData.email)) ||
                   (mode === 'forgot-email' && (errors.mobile || !forgotEmailData.mobile)) ||
-                  (mode === 'verify-otp' && (errors.otp || !forgotPasswordData.otp || otpCountdown === 0)) ||
+                  (mode === 'verify-otp' && (errors.otp || !forgotPasswordData.otp || (otpCountdown === 0 && resendAttempts >= 3))) ||
                   (mode === 'reset-password' && (Object.keys(errors).length > 0 || !forgotPasswordData.newPassword || !forgotPasswordData.confirmPassword))
                 }
                 className={`btn-primary w-full py-4 text-lg ${
                   (mode === 'login' && (Object.keys(errors).length > 0 || !formData.email || !formData.password)) ||
                   (mode === 'forgot-password' && (errors.email || !forgotPasswordData.email)) ||
                   (mode === 'forgot-email' && (errors.mobile || !forgotEmailData.mobile)) ||
-                  (mode === 'verify-otp' && (errors.otp || !forgotPasswordData.otp || otpCountdown === 0)) ||
+                  (mode === 'verify-otp' && (errors.otp || !forgotPasswordData.otp || (otpCountdown === 0 && resendAttempts >= 3))) ||
                   (mode === 'reset-password' && (Object.keys(errors).length > 0 || !forgotPasswordData.newPassword || !forgotPasswordData.confirmPassword))
                     ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
