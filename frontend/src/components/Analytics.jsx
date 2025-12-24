@@ -85,7 +85,7 @@ import {
 } from "recharts";
 import ConfirmationModal from "./ConfirmationModal";
 import { calculateActivationDuration, formatDuration } from "./UserGrid";
-import { UserContext } from "../context/UserContext"; // Updated import
+import { UserContext } from "../context/UserContext";
 
 // Enhanced activation duration calculation for analytics
 const calculateEnhancedActivationDuration = (activationHistory) => {
@@ -228,6 +228,111 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
   };
 };
 
+// Helper function to get today's active sessions
+const getTodayActiveSessions = (activationHistory) => {
+  if (!activationHistory || activationHistory.length === 0) {
+    return [];
+  }
+  
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const sortedHistory = [...activationHistory].sort((a, b) => 
+    new Date(a.timestamp) - new Date(b.timestamp)
+  );
+  
+  const sessions = [];
+  const lastEntry = sortedHistory[sortedHistory.length - 1];
+  const isActiveNow = lastEntry && lastEntry.status === 'active';
+  
+  for (let i = 0; i < sortedHistory.length; i += 2) {
+    const start = sortedHistory[i];
+    const end = sortedHistory[i + 1] || (isActiveNow ? { timestamp: now.toISOString() } : null);
+    
+    if (start.status === 'active' && end) {
+      const startTime = new Date(start.timestamp);
+      const endTime = new Date(end.timestamp);
+      
+      // Check if session overlaps with today
+      if (endTime >= todayStart && startTime <= now) {
+        const sessionStart = startTime < todayStart ? todayStart : startTime;
+        const sessionEnd = endTime > now ? now : endTime;
+        
+        if (sessionStart < sessionEnd) {
+          sessions.push({
+            startTime: sessionStart,
+            endTime: sessionEnd,
+            duration: sessionEnd - sessionStart
+          });
+        }
+      }
+    }
+  }
+  
+  // If currently active, also add the live session
+  if (isActiveNow && lastEntry) {
+    const liveStart = new Date(lastEntry.timestamp);
+    if (liveStart <= now && liveStart >= todayStart) {
+      sessions.push({
+        startTime: liveStart,
+        endTime: now,
+        duration: now - liveStart,
+        isLive: true
+      });
+    }
+  }
+  
+  // Sort sessions by start time
+  return sessions.sort((a, b) => a.startTime - b.startTime);
+};
+
+// Enhanced function to get detailed today's activity
+const getDetailedTodayActivity = (activationHistory) => {
+  const sessions = getTodayActiveSessions(activationHistory);
+  const now = new Date();
+  
+  if (sessions.length === 0) {
+    return {
+      sessions: [],
+      totalDuration: 0,
+      activeNow: false,
+      currentSessionStart: null,
+      formattedSessions: []
+    };
+  }
+  
+  let totalDuration = 0;
+  const formattedSessions = [];
+  
+  sessions.forEach(session => {
+    totalDuration += session.duration;
+    
+    const startTimeStr = format(session.startTime, 'HH:mm:ss');
+    const endTimeStr = session.isLive ? 'Now' : format(session.endTime, 'HH:mm:ss');
+    const durationStr = formatDuration(session.duration);
+    
+    formattedSessions.push({
+      startTime: session.startTime,
+      endTime: session.endTime,
+      startFormatted: startTimeStr,
+      endFormatted: endTimeStr,
+      duration: session.duration,
+      durationFormatted: durationStr,
+      isLive: session.isLive || false
+    });
+  });
+  
+  const lastSession = sessions[sessions.length - 1];
+  const activeNow = lastSession && lastSession.isLive === true;
+  
+  return {
+    sessions: formattedSessions,
+    totalDuration,
+    activeNow,
+    currentSessionStart: activeNow ? lastSession.startTime : null,
+    sessionCount: sessions.length
+  };
+};
+
 // Live Timer Component
 const LiveTimer = ({ startTime, className = "" }) => {
   const [elapsed, setElapsed] = useState(0);
@@ -253,6 +358,137 @@ const LiveTimer = ({ startTime, className = "" }) => {
   );
 };
 
+// Session Details Modal Component
+const SessionDetailsModal = ({ user, isOpen, onClose }) => {
+  if (!isOpen || !user) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-xl font-bold text-gray-800">{user.name}'s Today Activity</h3>
+              <p className="text-gray-600">Detailed session timeline for today ({format(new Date(), 'MMMM d, yyyy')})</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+            >
+              ×
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Total Time Today</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {formatDuration(user.todayDuration)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Session Count</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {user.todayActivity.sessionCount}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Status</p>
+                  <p className={`text-xl font-bold ${user.activeNow ? 'text-green-600' : 'text-gray-600'}`}>
+                    {user.activeNow ? 'Active Now' : 'Inactive'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <h4 className="font-medium text-gray-700">Session Timeline</h4>
+              {user.todayActivity.sessions.length > 0 ? (
+                <div className="space-y-3">
+                  {user.todayActivity.sessions.map((session, idx) => (
+                    <div key={idx} className={`p-3 rounded-lg border ${session.isLive ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${session.isLive ? 'bg-green-500 animate-pulse' : 'bg-blue-500'}`} />
+                          <span className="font-medium text-gray-800">
+                            Session {idx + 1}
+                          </span>
+                          {session.isLive && (
+                            <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full animate-pulse">
+                              Live Now
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-medium text-gray-800">
+                          {session.durationFormatted}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-500">Started</p>
+                          <p className="text-gray-800">
+                            {format(session.startTime, 'HH:mm:ss')}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {format(session.startTime, 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500">Ended</p>
+                          <p className={`${session.isLive ? 'text-green-600 font-medium' : 'text-gray-800'}`}>
+                            {session.isLive ? 'Active Now' : format(session.endTime, 'HH:mm:ss')}
+                          </p>
+                          {!session.isLive && (
+                            <p className="text-xs text-gray-400">
+                              {format(session.endTime, 'MMM d, yyyy')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {session.isLive && (
+                        <div className="mt-3 pt-3 border-t border-green-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <FaClock className="text-green-600 animate-pulse" />
+                              <span className="text-green-700">Current session duration:</span>
+                            </div>
+                            <LiveTimer 
+                              startTime={session.startTime} 
+                              className="text-green-700 font-bold"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <FaClock className="text-4xl mx-auto mb-3 text-gray-300" />
+                  <p>No activity recorded for today</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+          <button
+            onClick={onClose}
+            className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Close Details
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Main Analytics Component
 const Analytics = () => {
   const navigate = useNavigate();
@@ -270,6 +506,8 @@ const Analytics = () => {
     gender: '',
     activationStatus: ''
   });
+  const [selectedUserForDetails, setSelectedUserForDetails] = useState(null);
+  const [showSessionDetails, setShowSessionDetails] = useState(false);
 
   // Auto-refresh every 10 seconds
   useEffect(() => {
@@ -446,6 +684,7 @@ const Analytics = () => {
 
     return filteredUsers.map(user => {
       const activation = calculateEnhancedActivationDuration(user.activationHistory);
+      const todayActivity = getDetailedTodayActivity(user.activationHistory);
       
       return {
         id: user._id,
@@ -458,11 +697,15 @@ const Analytics = () => {
         active: activation.active,
         lastActivation: activation.lastActivation,
         avgSessionDuration: activation.avgSessionDuration,
-        hourlyBreakdown: activation.hourlyBreakdown
+        hourlyBreakdown: activation.hourlyBreakdown,
+        todayActivity: todayActivity,
+        todaySessions: todayActivity.sessions,
+        activeNow: todayActivity.activeNow,
+        currentSessionStart: todayActivity.currentSessionStart
       };
     }).sort((a, b) => {
-      if (a.active && !b.active) return -1;
-      if (!a.active && b.active) return 1;
+      if (a.activeNow && !b.activeNow) return -1;
+      if (!a.activeNow && b.activeNow) return 1;
       return b.totalDuration - a.totalDuration;
     });
   }, [users, selectedAnalyticsUsers, lastUpdate]);
@@ -516,11 +759,10 @@ const Analytics = () => {
     const avgActivationTime = users.length > 0 ? totalActivationTime / users.length : 0;
     const avgSessions = users.length > 0 ? totalSessions / users.length : 0;
     
-    // Peak hour calculation - FIXED
+    // Peak hour calculation
     const hourlyTotals = Array(24).fill(0);
     users.forEach(user => {
       const activation = calculateEnhancedActivationDuration(user.activationHistory);
-      // Check if hourlyBreakdown exists and is an object
       if (activation.hourlyBreakdown && typeof activation.hourlyBreakdown === 'object') {
         Object.keys(activation.hourlyBreakdown).forEach(hourKey => {
           const hourIndex = parseInt(hourKey);
@@ -1312,11 +1554,11 @@ const Analytics = () => {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">User</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Active Time</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Today's Activity</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Sessions</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Avg Session</th>
                       <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Today</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Total Time</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -1325,37 +1567,89 @@ const Analytics = () => {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-medium relative ${
-                              user.active ? 'ring-2 ring-green-500 ring-offset-1' : ''
+                              user.activeNow ? 'ring-2 ring-green-500 ring-offset-1' : ''
                             }`}>
                               {user.name.charAt(0)}
-                              {user.active && (
+                              {user.activeNow && (
                                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
                               )}
                             </div>
                             <div>
                               <p className="text-sm font-medium text-gray-800">{user.name}</p>
                               <p className="text-xs text-gray-500">{user.email}</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {user.gender || 'Not specified'} • Joined {format(new Date(user.id.timestamp || Date.now()), 'MMM dd, yyyy')}
+                              </p>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-gray-800">
-                              {formatTimeValue(user.totalDuration)}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {formatDuration(user.totalDuration)}
-                            </span>
-                            {user.active && user.lastActivation && (
-                              <span className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                <FaClock className="animate-pulse" />
-                                <LiveTimer startTime={user.lastActivation} />
+                          <div className="flex flex-col space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-gray-800">
+                                {formatDuration(user.todayDuration)}
                               </span>
+                              <span className="text-xs text-gray-500">
+                                {user.todayActivity.sessionCount} session{user.todayActivity.sessionCount !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            
+                            {/* Today's sessions timeline */}
+                            {user.todayActivity.sessionCount > 0 ? (
+                              <div className="space-y-1">
+                                {user.todayActivity.sessions.slice(0, 2).map((session, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-2 h-2 rounded-full ${session.isLive ? 'bg-green-500 animate-pulse' : 'bg-blue-500'}`} />
+                                      <span className="text-gray-600">{session.startFormatted}</span>
+                                      <FaArrowRight className="text-gray-400 text-xs" />
+                                      <span className={`${session.isLive ? 'text-green-600 font-medium' : 'text-gray-600'}`}>
+                                        {session.endFormatted}
+                                      </span>
+                                    </div>
+                                    <span className="text-gray-500">{session.durationFormatted}</span>
+                                  </div>
+                                ))}
+                                
+                                {user.todayActivity.sessionCount > 2 && (
+                                  <div className="text-xs text-blue-600 cursor-pointer hover:underline"
+                                    onClick={() => {
+                                      setSelectedUserForDetails(user);
+                                      setShowSessionDetails(true);
+                                    }}
+                                  >
+                                    + {user.todayActivity.sessionCount - 2} more sessions
+                                  </div>
+                                )}
+                                
+                                {user.activeNow && (
+                                  <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <FaClock className="text-green-600 text-xs animate-pulse" />
+                                        <span className="text-xs text-green-700">Currently active for</span>
+                                      </div>
+                                      <LiveTimer 
+                                        startTime={user.currentSessionStart} 
+                                        className="text-green-700 font-semibold"
+                                      />
+                                    </div>
+                                    <div className="text-xs text-green-600 mt-1">
+                                      Started at {format(user.currentSessionStart, 'HH:mm:ss')}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400 italic">No activity today</div>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-gray-700">{user.sessions}</span>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-gray-800">{user.sessions}</span>
+                            <span className="text-xs text-gray-500">total sessions</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-gray-700">
@@ -1364,14 +1658,21 @@ const Analytics = () => {
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
-                            user.active
+                            user.activeNow
                               ? 'bg-green-100 text-green-700'
+                              : user.active
+                              ? 'bg-yellow-100 text-yellow-700'
                               : 'bg-gray-100 text-gray-700'
                           }`}>
-                            {user.active ? (
+                            {user.activeNow ? (
                               <>
                                 <FaToggleOnIcon className="text-green-500 animate-pulse" />
                                 Active Now
+                              </>
+                            ) : user.active ? (
+                              <>
+                                <FaClock className="text-yellow-500" />
+                                Recently Active
                               </>
                             ) : (
                               <>
@@ -1382,9 +1683,19 @@ const Analytics = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-gray-700">
-                            {formatDuration(user.todayDuration)}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-gray-800">
+                              {formatTimeValue(user.totalDuration)}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {formatDuration(user.totalDuration)}
+                            </span>
+                            {user.lastActivation && !user.activeNow && (
+                              <span className="text-xs text-gray-400 mt-1">
+                                Last: {format(user.lastActivation, 'HH:mm')}
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1453,6 +1764,16 @@ const Analytics = () => {
           </div>
         </div>
       </div>
+
+      {/* Session Details Modal */}
+      <SessionDetailsModal
+        user={selectedUserForDetails}
+        isOpen={showSessionDetails}
+        onClose={() => {
+          setShowSessionDetails(false);
+          setSelectedUserForDetails(null);
+        }}
+      />
 
       {/* Logout Confirmation Modal */}
       <ConfirmationModal
