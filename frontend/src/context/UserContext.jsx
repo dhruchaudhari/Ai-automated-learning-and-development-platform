@@ -36,24 +36,26 @@ export const UserContextProvider = ({ children }) => {
 
   const refreshUsers = async () => {
     const token = getToken();
-    
+
     if (!token) {
       console.log("No token available, skipping user refresh");
       return;
     }
-    
+
     try {
       setLoading(true);
-      const res = await userAPI.getAllUsers();
-      const usersWithActivation = res.data.data.map(user => ({
-        ...user,
-        activationHistory: user.activationHistory || []
-      }));
+      const res = await userAPI.getAdminUsers();
+      const usersWithActivation = res.data.data
+        .filter(user => user.role !== 'admin')
+        .map(user => ({
+          ...user,
+          activationHistory: user.activationHistory || []
+        }));
       setUsers(usersWithActivation);
       setLastUpdate(Date.now());
     } catch (err) {
       console.error("Error refreshing users:", err);
-      
+
       if (err.response?.status === 401) {
         toast.error("Session expired. Please login again.");
         logout();
@@ -66,8 +68,8 @@ export const UserContextProvider = ({ children }) => {
   };
 
   const updateUser = (userId, updates) => {
-    setUsers(prevUsers => 
-      prevUsers.map(user => 
+    setUsers(prevUsers =>
+      prevUsers.map(user =>
         user._id === userId ? { ...user, ...updates } : user
       )
     );
@@ -82,7 +84,7 @@ export const UserContextProvider = ({ children }) => {
 
   const updateActivationHistory = (userId, status) => {
     const timestamp = new Date().toISOString();
-    setUsers(prevUsers => 
+    setUsers(prevUsers =>
       prevUsers.map(user => {
         if (user._id === userId) {
           const updatedHistory = [
@@ -113,10 +115,12 @@ export const UserContextProvider = ({ children }) => {
       const interval = setInterval(() => {
         refreshUsers();
       }, 30000);
-      
+
       return () => clearInterval(interval);
     }
   }, []);
+
+  const [isInterviewMode, setIsInterviewMode] = useState(false);
 
   return (
     <UserContext.Provider value={{
@@ -129,7 +133,9 @@ export const UserContextProvider = ({ children }) => {
       deleteUser,
       updateActivationHistory,
       loading,
-      lastUpdate
+      lastUpdate,
+      isInterviewMode,
+      setIsInterviewMode
     }}>
       {children}
     </UserContext.Provider>

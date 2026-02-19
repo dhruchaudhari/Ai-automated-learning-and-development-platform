@@ -9,38 +9,105 @@ const emailService = require('../utils/emailService');
 const authMiddleware = (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-        
+
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
+            return res.status(401).json({
+                success: false,
+                message: 'No token provided'
             });
         }
-        
+
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-for-dev');
         req.userId = decoded.userId;
         req.user = decoded;
         next();
-        
+
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Token expired' 
+            return res.status(401).json({
+                success: false,
+                message: 'Token expired'
             });
         } else if (err.name === 'JsonWebTokenError') {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Invalid token' 
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid token'
             });
         }
-        return res.status(401).json({ 
-            success: false, 
-            message: 'Authentication failed' 
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication failed'
         });
     }
 };
+
+// Admin Middleware - Check if user has admin role
+const adminMiddleware = async (req, res, next) => {
+    try {
+        // First run auth middleware logic
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({
+                success: false,
+                message: 'No token provided'
+            });
+        }
+
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-for-dev');
+        req.userId = decoded.userId;
+        req.user = decoded;
+
+        // Check role from token or fetch from database
+        if (decoded.role === 'admin') {
+            return next();
+        }
+
+        // Double-check from database
+        const user = await User.findById(decoded.userId);
+        if (!user || user.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Admin privileges required.'
+            });
+        }
+
+        next();
+    } catch (err) {
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication failed'
+        });
+    }
+};
+
+// ==================== USER PROFILE ====================
+
+// Get current user profile
+router.get('/profile', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId).select('-password');
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        res.json({
+            success: true,
+            user
+        });
+    } catch (error) {
+        console.error('Get profile error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch profile',
+            error: error.message
+        });
+    }
+});
 
 // ==================== FORGOT EMAIL ====================
 
@@ -57,7 +124,7 @@ router.post('/forgot-email', async (req, res) => {
 
         // Clean mobile number - remove all non-digit characters except plus
         let mobileNumber = mobile.replace(/[^\d+]/g, '');
-        
+
         // If starts with country code, extract just the national number
         let searchMobile = mobileNumber;
         if (mobileNumber.startsWith('+')) {
@@ -69,13 +136,13 @@ router.post('/forgot-email', async (req, res) => {
         }
 
         // Find user by mobile number (exact match)
-        const user = await User.findOne({ 
-            mobile: { 
+        const user = await User.findOne({
+            mobile: {
                 $regex: new RegExp(`^\\+?\\d*${searchMobile}$`),
                 $options: 'i'
             }
         });
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -92,7 +159,7 @@ router.post('/forgot-email', async (req, res) => {
 
         // Send email with registered email address
         const emailSent = await emailService.sendForgotEmail(user.email, user.fullName, user.mobile);
-        
+
         if (!emailSent.success) {
             return res.status(500).json({
                 success: false,
@@ -118,7 +185,207 @@ router.post('/forgot-email', async (req, res) => {
     }
 });
 
-// ==================== REGISTRATION WITH OTP ====================
+// ==================== ENHANCED REGISTRATION WITH ALL FIELDS ====================
+
+router.post(
+    '/register-enhanced',
+    upload.fields([
+        { name: 'profileImage', maxCount: 1 },
+        { name: 'resume', maxCount: 1 },
+        { name: 'tenthMarksheet', maxCount: 1 },
+        { name: 'twelfthMarksheet', maxCount: 1 },
+        { name: 'graduationMarksheet', maxCount: 1 },
+        { name: 'qualifyingMarksheet', maxCount: 1 },
+        { name: 'identityProof', maxCount: 1 }
+    ]),
+    handleUploadError,
+    async (req, res) => {
+        try {
+            console.log('=== ENHANCED REGISTRATION REQUEST ===');
+            console.log('Body fields:', Object.keys(req.body));
+            console.log('Files:', req.files ? Object.keys(req.files) : 'No files');
+
+            const {
+                fullName,
+                fathersName,
+                dob,
+                email,
+                password,
+                confirmPassword,
+                mobile,
+                gender,
+                permanentAddress,
+                state,
+
+                // Education details
+                tenthBoard,
+                tenthPassingYear,
+                tenthPercentage,
+
+                twelfthBoard,
+                twelfthPassingYear,
+                twelfthPercentage,
+
+                graduationDegree,
+                graduationPassingYear,
+                graduationCGPA,
+                graduationPercentage,
+                graduationSpecialization,
+
+                qualifyingDegree,
+                qualifyingPercentage,
+                qualifyingSpecialization
+            } = req.body;
+
+            // Validation
+            if (!fullName || !email || !password || !confirmPassword || !mobile) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Required fields missing: fullName, email, password, confirmPassword, mobile'
+                });
+            }
+
+            if (password !== confirmPassword) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Passwords do not match'
+                });
+            }
+
+            // Check if user already exists
+            const existingUser = await User.findOne({ email: email.toLowerCase() });
+            if (existingUser) {
+                if (existingUser.isEmailVerified) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Email already registered and verified'
+                    });
+                }
+                // If user exists but not verified, allow re-registration
+                await User.findByIdAndDelete(existingUser._id);
+            }
+
+            // Check if mobile already exists
+            const existingMobile = await User.findOne({ mobile });
+            if (existingMobile) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Mobile number already registered'
+                });
+            }
+
+            // Create new user with all fields
+            const newUser = new User({
+                // Personal details
+                fullName,
+                fathersName: fathersName || '',
+                dob,
+                email: email.toLowerCase(),
+                password,
+                mobile,
+                gender: gender || '',
+                permanentAddress: permanentAddress || '',
+                state: state || '',
+                isEmailVerified: false,
+
+                // Education details with marksheet URLs
+                education: {
+                    tenth: {
+                        board: tenthBoard || '',
+                        passingYear: tenthPassingYear || '',
+                        percentage: tenthPercentage || '',
+                        marksheetUrl: req.files?.tenthMarksheet?.[0]?.path || null
+                    },
+                    twelfth: {
+                        board: twelfthBoard || '',
+                        passingYear: twelfthPassingYear || '',
+                        percentage: twelfthPercentage || '',
+                        marksheetUrl: req.files?.twelfthMarksheet?.[0]?.path || null
+                    },
+                    graduation: {
+                        degree: graduationDegree || '',
+                        specialization: graduationSpecialization || '',
+                        passingYear: graduationPassingYear || '',
+                        cgpa: graduationCGPA || '',
+                        percentage: graduationPercentage || '',
+                        marksheetUrl: req.files?.graduationMarksheet?.[0]?.path || null
+                    },
+                    qualifyingDegree: {
+                        degree: qualifyingDegree || '',
+                        specialization: qualifyingSpecialization || '',
+                        percentage: qualifyingPercentage || '',
+                        marksheetUrl: req.files?.qualifyingMarksheet?.[0]?.path || null
+                    }
+                },
+
+                // File paths
+                profileImage: req.files?.profileImage?.[0]?.path || null,
+                resumeUrl: req.files?.resume?.[0]?.path || null,
+                identityProofUrl: req.files?.identityProof?.[0]?.path || null,
+                advertisement: req.body.advertisement || null
+            });
+
+            // Generate and save OTP
+            const otp = newUser.generateOtp();
+            newUser.emailVerificationOtp = otp;
+            newUser.emailVerificationOtpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+            newUser.lastEmailOtpSent = new Date();
+            newUser.emailOtpResendAttempts = 0;
+
+            await newUser.save();
+
+            // Send OTP email
+            const emailSent = await emailService.sendVerificationEmail(email, otp, fullName);
+
+            if (!emailSent.success) {
+                await User.findByIdAndDelete(newUser._id);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Failed to send verification email'
+                });
+            }
+
+            res.status(201).json({
+                success: true,
+                message: 'Registration successful! Please verify your email with the OTP sent.',
+                data: {
+                    userId: newUser._id,
+                    email: newUser.email,
+                    name: newUser.fullName,
+                    otpExpiresIn: '5 minutes'
+                }
+            });
+
+        } catch (error) {
+            console.error('Enhanced registration error:', error);
+
+            if (error.name === 'ValidationError') {
+                const messages = Object.values(error.errors).map(val => val.message);
+                return res.status(400).json({
+                    success: false,
+                    message: 'Validation failed',
+                    errors: messages
+                });
+            }
+
+            if (error.code === 11000) {
+                const field = error.keyPattern?.email ? 'Email' : 'Mobile number';
+                return res.status(400).json({
+                    success: false,
+                    message: `${field} already exists`
+                });
+            }
+
+            res.status(500).json({
+                success: false,
+                message: 'Registration failed',
+                error: error.message
+            });
+        }
+    }
+);
+
+// ==================== ORIGINAL SIMPLE REGISTRATION ====================
 
 router.post(
     '/register',
@@ -129,29 +396,29 @@ router.post(
     handleUploadError,
     async (req, res) => {
         try {
-            const { 
-                fullName, 
-                dob, 
-                email, 
+            const {
+                fullName,
+                dob,
+                email,
                 password,
                 mobile,
                 gender
             } = req.body;
-            
+
             if (!password) {
                 return res.status(400).json({
                     success: false,
                     message: 'Password is required'
                 });
             }
-            
+
             if (!gender) {
                 return res.status(400).json({
                     success: false,
                     message: 'Gender is required'
                 });
             }
-            
+
             // Check if user already exists
             const existingUser = await User.findOne({ email });
             if (existingUser) {
@@ -175,7 +442,8 @@ router.post(
                 gender,
                 isEmailVerified: false,
                 profileImage: req.files?.profileImage?.[0]?.path || null,
-                document: req.files?.document?.[0]?.path || null
+                document: req.files?.document?.[0]?.path || null,
+                advertisement: req.body.advertisement || null
             });
 
             // Generate and save OTP
@@ -189,7 +457,7 @@ router.post(
 
             // Send OTP email
             const emailSent = await emailService.sendVerificationEmail(email, otp, fullName);
-            
+
             if (!emailSent.success) {
                 await User.findByIdAndDelete(newUser._id);
                 return res.status(500).json({
@@ -211,7 +479,7 @@ router.post(
 
         } catch (error) {
             console.error('Registration error:', error);
-            
+
             if (error.name === 'ValidationError') {
                 const messages = Object.values(error.errors).map(val => val.message);
                 return res.status(400).json({
@@ -220,14 +488,14 @@ router.post(
                     errors: messages
                 });
             }
-            
+
             if (error.code === 11000) {
                 return res.status(400).json({
                     success: false,
                     message: 'Email already exists'
                 });
             }
-            
+
             res.status(500).json({
                 success: false,
                 message: 'Registration failed',
@@ -251,7 +519,7 @@ router.post('/verify-email', async (req, res) => {
         }
 
         const user = await User.findOne({ email: email.toLowerCase() });
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -286,9 +554,9 @@ router.post('/verify-email', async (req, res) => {
         if (user.emailVerificationOtp !== otp) {
             user.emailVerificationAttempts += 1;
             await user.save();
-            
+
             const attemptsLeft = 3 - user.emailVerificationAttempts;
-            
+
             return res.status(400).json({
                 success: false,
                 message: `Invalid OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} left.`
@@ -332,7 +600,7 @@ router.post('/resend-verification-otp', async (req, res) => {
         }
 
         const user = await User.findOne({ email: email.toLowerCase() });
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -375,7 +643,7 @@ router.post('/resend-verification-otp', async (req, res) => {
 
         // Send new OTP email
         const emailSent = await emailService.sendVerificationEmail(email, otp, user.fullName);
-        
+
         if (!emailSent.success) {
             return res.status(500).json({
                 success: false,
@@ -414,7 +682,7 @@ router.post('/login', async (req, res) => {
         }
 
         const user = await User.findOne({ email: email.toLowerCase() });
-        
+
         if (!user) {
             return res.status(401).json({
                 success: false,
@@ -434,7 +702,7 @@ router.post('/login', async (req, res) => {
 
         // Check password
         const isPasswordValid = await user.comparePassword(password);
-        
+
         if (!isPasswordValid) {
             return res.status(401).json({
                 success: false,
@@ -442,13 +710,14 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        // Generate JWT token
+        // Generate JWT token with role
         const token = jwt.sign(
-            { 
+            {
                 userId: user._id,
                 email: user.email,
                 fullName: user.fullName,
-                gender: user.gender
+                gender: user.gender,
+                role: user.role || 'user'
             },
             process.env.JWT_SECRET || 'fallback-secret-for-dev',
             { expiresIn: '24h' }
@@ -466,8 +735,11 @@ router.post('/login', async (req, res) => {
                 mobile: user.mobile,
                 dob: user.dob,
                 profileImage: user.profileImage,
-                document: user.document,
-                age: user.age
+                resume: user.resumeUrl,
+                age: user.age,
+                role: user.role || 'user',
+                // Include education details if they exist
+                education: user.education || {}
             }
         });
 
@@ -495,7 +767,7 @@ router.post('/forgot-password', async (req, res) => {
         }
 
         const user = await User.findOne({ email: email.toLowerCase() });
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -520,7 +792,7 @@ router.post('/forgot-password', async (req, res) => {
 
         // Send password reset OTP email
         const emailSent = await emailService.sendPasswordResetEmail(email, otp, user.fullName);
-        
+
         if (!emailSent.success) {
             return res.status(500).json({
                 success: false,
@@ -559,7 +831,7 @@ router.post('/verify-password-reset-otp', async (req, res) => {
         }
 
         const user = await User.findOne({ email: email.toLowerCase() });
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -587,9 +859,9 @@ router.post('/verify-password-reset-otp', async (req, res) => {
         if (user.passwordResetOtp !== otp) {
             user.passwordResetAttempts += 1;
             await user.save();
-            
+
             const attemptsLeft = 3 - user.passwordResetAttempts;
-            
+
             return res.status(400).json({
                 success: false,
                 message: `Invalid OTP. ${attemptsLeft} attempt${attemptsLeft !== 1 ? 's' : ''} left.`
@@ -598,7 +870,7 @@ router.post('/verify-password-reset-otp', async (req, res) => {
 
         // Generate reset token
         const resetToken = jwt.sign(
-            { 
+            {
                 userId: user._id,
                 email: user.email,
                 purpose: 'password_reset'
@@ -663,7 +935,7 @@ router.post('/reset-password', async (req, res) => {
         }
 
         const user = await User.findById(decoded.userId);
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -707,7 +979,7 @@ router.post('/reset-password', async (req, res) => {
 router.get('/verification-status/:email', async (req, res) => {
     try {
         const user = await User.findOne({ email: req.params.email.toLowerCase() });
-        
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -745,11 +1017,11 @@ router.get('/grid/view/:id', authMiddleware, async (req, res) => {
         }
 
         const user = await User.findById(req.params.id, '-password -__v');
-        
+
         if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
             });
         }
 
@@ -759,9 +1031,9 @@ router.get('/grid/view/:id', authMiddleware, async (req, res) => {
         });
     } catch (err) {
         console.error('Error fetching user:', err);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to fetch user' 
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user'
         });
     }
 });
@@ -772,7 +1044,11 @@ router.put(
     authMiddleware,
     upload.fields([
         { name: 'profileImage', maxCount: 1 },
-        { name: 'document', maxCount: 1 }
+        { name: 'resume', maxCount: 1 },
+        { name: 'tenthMarksheet', maxCount: 1 },
+        { name: 'twelfthMarksheet', maxCount: 1 },
+        { name: 'graduationMarksheet', maxCount: 1 },
+        { name: 'qualifyingMarksheet', maxCount: 1 }
     ]),
     handleUploadError,
     async (req, res) => {
@@ -786,19 +1062,51 @@ router.put(
 
             const updateData = {
                 fullName: req.body.fullName,
+                fathersName: req.body.fathersName,
                 dob: req.body.dob,
                 email: req.body.email,
                 mobile: req.body.mobile,
                 gender: req.body.gender,
-                updatedAt: Date.now()
+                permanentAddress: req.body.permanentAddress,
+                state: req.body.state,
+                updatedAt: Date.now(),
+
+                // Education fields
+                'education.tenth.board': req.body.tenthBoard,
+                'education.tenth.passingYear': req.body.tenthPassingYear,
+                'education.tenth.percentage': req.body.tenthPercentage,
+
+                'education.twelfth.board': req.body.twelfthBoard,
+                'education.twelfth.passingYear': req.body.twelfthPassingYear,
+                'education.twelfth.percentage': req.body.twelfthPercentage,
+
+                'education.graduation.degree': req.body.graduationDegree,
+                'education.graduation.passingYear': req.body.graduationPassingYear,
+                'education.graduation.cgpa': req.body.graduationCGPA,
+                'education.graduation.percentage': req.body.graduationPercentage,
+
+                'education.qualifying.degree': req.body.qualifyingDegree,
+                'education.qualifying.percentage': req.body.qualifyingPercentage
             };
 
+            // Handle file updates
             if (req.files?.profileImage) {
                 updateData.profileImage = req.files.profileImage[0].path;
             }
-
-            if (req.files?.document) {
-                updateData.document = req.files.document[0].path;
+            if (req.files?.resume) {
+                updateData.resume = req.files.resume[0].path;
+            }
+            if (req.files?.tenthMarksheet) {
+                updateData.tenthMarksheet = req.files.tenthMarksheet[0].path;
+            }
+            if (req.files?.twelfthMarksheet) {
+                updateData.twelfthMarksheet = req.files.twelfthMarksheet[0].path;
+            }
+            if (req.files?.graduationMarksheet) {
+                updateData.graduationMarksheet = req.files.graduationMarksheet[0].path;
+            }
+            if (req.files?.qualifyingMarksheet) {
+                updateData.qualifyingMarksheet = req.files.qualifyingMarksheet[0].path;
             }
 
             const updatedUser = await User.findByIdAndUpdate(
@@ -808,9 +1116,9 @@ router.put(
             ).select('-password -__v');
 
             if (!updatedUser) {
-                return res.status(404).json({ 
+                return res.status(404).json({
                     success: false,
-                    message: 'User not found' 
+                    message: 'User not found'
                 });
             }
 
@@ -822,9 +1130,9 @@ router.put(
 
         } catch (err) {
             console.error('Update error:', err);
-            res.status(500).json({ 
+            res.status(500).json({
                 success: false,
-                message: 'User update failed' 
+                message: 'User update failed'
             });
         }
     }
@@ -843,9 +1151,9 @@ router.get('/all', authMiddleware, async (req, res) => {
         });
     } catch (err) {
         console.error('Error fetching users:', err);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to fetch users' 
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch users'
         });
     }
 });
@@ -863,9 +1171,9 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         const deletedUser = await User.findByIdAndDelete(req.params.id);
 
         if (!deletedUser) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 success: false,
-                message: 'User not found' 
+                message: 'User not found'
             });
         }
 
@@ -876,9 +1184,586 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
     } catch (err) {
         console.error('Delete error:', err);
-        res.status(500).json({ 
+        res.status(500).json({
             success: false,
-            message: 'User deletion failed' 
+            message: 'User deletion failed'
+        });
+    }
+});
+
+// ==================== ADMIN ENDPOINTS ====================
+
+// Admin: Get all users (admin only)
+router.get('/admin/users', adminMiddleware, async (req, res) => {
+    try {
+        const users = await User.find({ role: { $ne: 'admin' } }, '-password -__v')
+            .populate('advertisement')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: users.length,
+            data: users
+        });
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch users'
+        });
+    }
+});
+
+// Admin: Approve user
+router.put('/admin/users/:id/approve', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { adminNotes } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            id,
+            {
+                status: 'approved',
+                adminNotes: adminNotes || 'Approved by admin'
+            },
+            { new: true, select: '-password -__v' }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User approved successfully',
+            data: user
+        });
+    } catch (err) {
+        console.error('Approve error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to approve user'
+        });
+    }
+});
+
+// Admin: Reject user
+router.put('/admin/users/:id/reject', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { adminNotes } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            id,
+            {
+                status: 'rejected',
+                adminNotes: adminNotes || 'Rejected by admin'
+            },
+            { new: true, select: '-password -__v' }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User rejected',
+            data: user
+        });
+    } catch (err) {
+        console.error('Reject error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reject user'
+        });
+    }
+});
+
+// Admin: Get single user details (admin only)
+router.get('/admin/users/:id', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findById(id, '-password -__v').populate('advertisement');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        console.error('Get user error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get user details'
+        });
+    }
+});
+
+// Admin: Set user status to pending
+router.put('/admin/users/:id/pending', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { adminNotes } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            id,
+            {
+                status: 'pending',
+                adminNotes: adminNotes || 'Status reset to pending by admin'
+            },
+            { new: true, select: '-password -__v' }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User status set to pending',
+            data: user
+        });
+    } catch (err) {
+        console.error('Set pending error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to set user status to pending'
+        });
+    }
+});
+
+// Admin: Set user status to eligible
+router.put('/admin/users/:id/eligible', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { adminNotes } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            id,
+            {
+                status: 'eligible',
+                adminNotes: adminNotes || 'Marked as eligible by admin'
+            },
+            { new: true, select: '-password -__v' }
+        );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User marked as eligible',
+            data: user
+        });
+    } catch (err) {
+        console.error('Set eligible error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to set user as eligible'
+        });
+    }
+});
+
+// Admin: Bulk reject users
+router.post('/admin/users/bulk-reject', adminMiddleware, async (req, res) => {
+    try {
+        const { userIds, adminNotes } = req.body;
+
+        if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'User IDs array is required'
+            });
+        }
+
+        // Validate all IDs
+        const invalidIds = userIds.filter(id => !id.match(/^[0-9a-fA-F]{24}$/));
+        if (invalidIds.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Some user IDs are invalid'
+            });
+        }
+
+        const result = await User.updateMany(
+            { _id: { $in: userIds }, role: { $ne: 'admin' } },
+            {
+                status: 'rejected',
+                adminNotes: adminNotes || 'Bulk rejected - did not meet filter criteria'
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `${result.modifiedCount} users rejected`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (err) {
+        console.error('Bulk reject error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to bulk reject users'
+        });
+    }
+});
+
+// Admin: Bulk eligible users
+router.post('/admin/users/bulk-eligible', adminMiddleware, async (req, res) => {
+    try {
+        const { userIds, adminNotes } = req.body;
+
+        if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'User IDs array is required'
+            });
+        }
+
+        // Validate all IDs
+        const invalidIds = userIds.filter(id => !id.match(/^[0-9a-fA-F]{24}$/));
+        if (invalidIds.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Some user IDs are invalid'
+            });
+        }
+
+        const result = await User.updateMany(
+            { _id: { $in: userIds }, role: { $ne: 'admin' } },
+            {
+                status: 'eligible',
+                adminNotes: adminNotes || 'Bulk marked as eligible by admin'
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `${result.modifiedCount} users marked as eligible`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (err) {
+        console.error('Bulk eligible error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to bulk mark users as eligible'
+        });
+    }
+});
+
+// Admin: Bulk pending users
+router.post('/admin/users/bulk-pending', adminMiddleware, async (req, res) => {
+    try {
+        const { userIds, adminNotes } = req.body;
+
+        if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'User IDs array is required'
+            });
+        }
+
+        // Validate all IDs
+        const invalidIds = userIds.filter(id => !id.match(/^[0-9a-fA-F]{24}$/));
+        if (invalidIds.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Some user IDs are invalid'
+            });
+        }
+
+        const result = await User.updateMany(
+            { _id: { $in: userIds }, role: { $ne: 'admin' } },
+            {
+                status: 'pending',
+                adminNotes: adminNotes || 'Bulk marked as pending by admin'
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `${result.modifiedCount} users marked as pending`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (err) {
+        console.error('Bulk pending error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to bulk mark users as pending'
+        });
+    }
+});
+
+// View user via /grid/view/:id
+router.get('/grid/view/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findById(req.params.id, '-password -__v');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: user
+        });
+    } catch (err) {
+        console.error('Error fetching user:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user'
+        });
+    }
+});
+
+// Edit user via /grid/edit/:id
+router.put(
+    '/grid/edit/:id',
+    authMiddleware,
+    upload.fields([
+        { name: 'profileImage', maxCount: 1 },
+        { name: 'resume', maxCount: 1 },
+        { name: 'tenthMarksheet', maxCount: 1 },
+        { name: 'twelfthMarksheet', maxCount: 1 },
+        { name: 'graduationMarksheet', maxCount: 1 },
+        { name: 'qualifyingMarksheet', maxCount: 1 }
+    ]),
+    handleUploadError,
+    async (req, res) => {
+        try {
+            if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid user ID format'
+                });
+            }
+
+            // Basic fields
+            const updateData = {
+                fullName: req.body.fullName,
+                fathersName: req.body.fathersName,
+                dob: req.body.dob,
+                email: req.body.email,
+                mobile: req.body.mobile,
+                gender: req.body.gender,
+                permanentAddress: req.body.permanentAddress,
+                state: req.body.state,
+                updatedAt: Date.now()
+            };
+
+            // Handle file uploads
+            if (req.files?.profileImage) {
+                updateData.profileImage = req.files.profileImage[0].path;
+            }
+            if (req.files?.resume) {
+                updateData.resumeUrl = req.files.resume[0].path;
+            }
+
+            // Handle education data if provided
+            if (req.body.education) {
+                try {
+                    // Try to parse if it's a string (from FormData)
+                    updateData.education = typeof req.body.education === 'string'
+                        ? JSON.parse(req.body.education)
+                        : req.body.education;
+                } catch (e) {
+                    console.error('Error parsing education data:', e);
+                }
+            } else {
+                // Handle flattened education fields
+                updateData.education = {
+                    tenth: {
+                        board: req.body.tenthBoard,
+                        passingYear: req.body.tenthPassingYear,
+                        percentage: req.body.tenthPercentage,
+                        marksheetUrl: req.files?.tenthMarksheet?.[0]?.path || undefined
+                    },
+                    twelfth: {
+                        board: req.body.twelfthBoard,
+                        passingYear: req.body.twelfthPassingYear,
+                        percentage: req.body.twelfthPercentage,
+                        marksheetUrl: req.files?.twelfthMarksheet?.[0]?.path || undefined
+                    },
+                    graduation: {
+                        degree: req.body.graduationDegree,
+                        passingYear: req.body.graduationPassingYear,
+                        percentage: req.body.graduationPercentage,
+                        cgpa: req.body.graduationCGPA,
+                        marksheetUrl: req.files?.graduationMarksheet?.[0]?.path || undefined
+                    },
+                    qualifyingDegree: {
+                        degree: req.body.qualifyingDegree,
+                        percentage: req.body.qualifyingPercentage,
+                        marksheetUrl: req.files?.qualifyingMarksheet?.[0]?.path || undefined
+                    }
+                };
+            }
+
+            // Clean undefined fields
+            Object.keys(updateData).forEach(key => (updateData[key] === undefined) && delete updateData[key]);
+
+            // Clean undefined nested education fields
+            if (updateData.education) {
+                ['tenth', 'twelfth', 'graduation', 'qualifyingDegree'].forEach(level => {
+                    if (updateData.education[level]) {
+                        Object.keys(updateData.education[level]).forEach(key =>
+                            (updateData.education[level][key] === undefined) && delete updateData.education[level][key]
+                        );
+                        // If level is empty after cleaning, remove it
+                        if (Object.keys(updateData.education[level]).length === 0) {
+                            delete updateData.education[level];
+                        }
+                    }
+                });
+                if (Object.keys(updateData.education).length === 0) {
+                    delete updateData.education;
+                }
+            }
+
+            const updatedUser = await User.findByIdAndUpdate(
+                req.params.id,
+                { $set: updateData },
+                { new: true, runValidators: true }
+            ).select('-password -__v');
+
+            if (!updatedUser) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'User updated successfully',
+                data: updatedUser
+            });
+
+        } catch (err) {
+            console.error('Update error:', err);
+            res.status(500).json({
+                success: false,
+                message: 'User update failed',
+                error: err.message
+            });
+        }
+    }
+);
+
+// Get all users
+router.get('/all', authMiddleware, async (req, res) => {
+    try {
+        const users = await User.find({}, '-password -__v')
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: users.length,
+            data: users
+        });
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch users'
+        });
+    }
+});
+
+// Delete user
+router.delete('/:id', authMiddleware, async (req, res) => {
+    try {
+        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const deletedUser = await User.findByIdAndDelete(req.params.id);
+
+        if (!deletedUser) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User deleted successfully'
+        });
+
+    } catch (err) {
+        console.error('Delete error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'User deletion failed'
         });
     }
 });

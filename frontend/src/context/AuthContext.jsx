@@ -19,7 +19,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
-      
+
       if (!token) {
         setIsAuthenticated(false);
         setUser(null);
@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
 
       // Verify token with backend
       const response = await authAPI.verify();
-      
+
       if (response.data && response.data.success) {
         setUser(response.data.user || JSON.parse(userData));
         setIsAuthenticated(true);
@@ -54,31 +54,31 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       console.log('Attempting login with:', email);
-      
+
       const response = await authAPI.login(email, password);
       console.log('Login response:', response.data);
-      
+
       if (response.data) {
         const token = response.data.token || response.data.accessToken || response.data.jwt;
         const userData = response.data.user || response.data.data;
-        
+
         if (!token) {
           console.error('No token in response:', response.data);
           toast.error('Login failed: No token received');
           return { success: false, error: 'No token received' };
         }
-        
+
         localStorage.setItem('token', token);
         console.log('Token saved to localStorage');
-        
+
         if (userData) {
           localStorage.setItem('user', JSON.stringify(userData));
           setUser(userData);
         }
-        
+
         setIsAuthenticated(true);
         toast.success('Login successful!');
-        
+
         return { success: true };
       } else {
         console.error('Invalid response structure:', response);
@@ -88,17 +88,17 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Login error details:', error);
       console.error('Error response:', error.response?.data);
-      
-      const errorMessage = error.response?.data?.message 
-        || error.response?.data?.error 
-        || error.message 
+
+      const errorMessage = error.response?.data?.message
+        || error.response?.data?.error
+        || error.message
         || 'Login failed';
-      
+
       toast.error(errorMessage);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: errorMessage,
-        status: error.response?.status 
+        status: error.response?.status
       };
     }
   };
@@ -114,7 +114,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       clearAuthData();
       toast.success('Logged out successfully');
-      
+
       // Use window.location for hard redirect
       setTimeout(() => {
         window.location.href = '/login';
@@ -130,7 +130,8 @@ export const AuthProvider = ({ children }) => {
         loading,
         login,
         logout,
-        checkAuth
+        checkAuth,
+        isAdmin: user?.role === 'admin'
       }}
     >
       {children}

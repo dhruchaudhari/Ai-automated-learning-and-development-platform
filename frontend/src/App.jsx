@@ -9,10 +9,12 @@ import UserGrid from './components/UserGrid';
 import ViewUser from './components/ViewUser';
 import EditUser from './components/EditUser';
 import Analytics from './components/Analytics';
+import JobManagement from './components/JobManagement';
 import Home from './components/Home';
 import Sidebar from './components/Sidebar';
 
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import './index.css';
 
 function App() {
@@ -65,10 +67,10 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
 
-              {/* 🔐 Protected routes */}
+              {/* 🔐 Protected routes - All authenticated users */}
               <Route element={<ProtectedRoute />}>
-                <Route 
-                  path="/home" 
+                <Route
+                  path="/home"
                   element={
                     <div className="flex min-h-screen">
                       <Sidebar />
@@ -76,10 +78,14 @@ function App() {
                         <Home />
                       </main>
                     </div>
-                  } 
+                  }
                 />
-                <Route 
-                  path="/grid" 
+              </Route>
+
+              {/* 🛡️ Admin-only routes */}
+              <Route element={<AdminRoute />}>
+                <Route
+                  path="/grid"
                   element={
                     <div className="flex min-h-screen">
                       <Sidebar />
@@ -87,10 +93,10 @@ function App() {
                         <UserGrid />
                       </main>
                     </div>
-                  } 
+                  }
                 />
-                <Route 
-                  path="/grid/view/:id" 
+                <Route
+                  path="/grid/view/:id"
                   element={
                     <div className="flex min-h-screen">
                       <Sidebar />
@@ -98,10 +104,10 @@ function App() {
                         <ViewUser />
                       </main>
                     </div>
-                  } 
+                  }
                 />
-                <Route 
-                  path="/grid/edit/:id" 
+                <Route
+                  path="/grid/edit/:id"
                   element={
                     <div className="flex min-h-screen">
                       <Sidebar />
@@ -109,10 +115,10 @@ function App() {
                         <EditUser />
                       </main>
                     </div>
-                  } 
+                  }
                 />
-                <Route 
-                  path="/analytics" 
+                <Route
+                  path="/analytics"
                   element={
                     <div className="flex min-h-screen">
                       <Sidebar />
@@ -120,7 +126,18 @@ function App() {
                         <Analytics />
                       </main>
                     </div>
-                  } 
+                  }
+                />
+                <Route
+                  path="/jobs"
+                  element={
+                    <div className="flex min-h-screen">
+                      <Sidebar />
+                      <main className="flex-1 ml-0 transition-all duration-300 md:ml-64 p-4 md:p-6 overflow-x-hidden">
+                        <JobManagement />
+                      </main>
+                    </div>
+                  }
                 />
               </Route>
 

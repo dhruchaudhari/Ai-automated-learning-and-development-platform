@@ -44,17 +44,17 @@ import {
   FaCalendarWeek,
   FaCalendarCheck
 } from "react-icons/fa";
-import { 
-  format, 
-  parseISO, 
-  subDays, 
-  startOfDay, 
-  endOfDay, 
-  startOfWeek, 
-  endOfWeek, 
-  startOfMonth, 
-  endOfMonth, 
-  startOfYear, 
+import {
+  format,
+  parseISO,
+  subDays,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
   endOfYear,
   isWithinInterval,
   eachDayOfInterval,
@@ -84,13 +84,13 @@ import {
   ComposedChart
 } from "recharts";
 import ConfirmationModal from "./ConfirmationModal";
-import { calculateActivationDuration, formatDuration } from "./UserGrid";
+import { calculateActivationDuration, formatDuration } from "../utils/durationUtils";
 import { UserContext } from "../context/UserContext";
 
 // Enhanced activation duration calculation for analytics
 const calculateEnhancedActivationDuration = (activationHistory) => {
   if (!activationHistory || activationHistory.length === 0) {
-    return { 
+    return {
       active: false,
       totalDuration: 0,
       sessions: 0,
@@ -103,11 +103,11 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
       avgSessionDuration: 0
     };
   }
-  
-  const sortedHistory = [...activationHistory].sort((a, b) => 
+
+  const sortedHistory = [...activationHistory].sort((a, b) =>
     new Date(a.timestamp) - new Date(b.timestamp)
   );
-  
+
   let totalDuration = 0;
   let sessions = 0;
   const now = new Date();
@@ -116,33 +116,33 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
   const yesterdayEnd = endOfDay(subDays(now, 1));
   const weekStart = startOfWeek(now);
   const monthStart = startOfMonth(now);
-  
+
   let todayDuration = 0;
   let yesterdayDuration = 0;
   let thisWeekDuration = 0;
   let thisMonthDuration = 0;
   const hourlyBreakdown = {};
-  
+
   // Initialize hourly breakdown object
   for (let i = 0; i < 24; i++) {
     hourlyBreakdown[i] = 0;
   }
-  
+
   const lastEntry = sortedHistory[sortedHistory.length - 1];
   const isActiveNow = lastEntry && lastEntry.status === 'active';
-  
+
   for (let i = 0; i < sortedHistory.length; i += 2) {
     const start = sortedHistory[i];
     const end = sortedHistory[i + 1] || (isActiveNow ? { timestamp: now.toISOString() } : null);
-    
+
     if (start.status === 'active' && end) {
       const startTime = new Date(start.timestamp);
       const endTime = new Date(end.timestamp);
       const sessionDuration = endTime - startTime;
-      
+
       totalDuration += sessionDuration;
       sessions++;
-      
+
       // Today's duration
       if (startTime <= now && (isSameDay(startTime, now) || isSameDay(endTime, now))) {
         const sessionStart = startTime < todayStart ? todayStart : startTime;
@@ -151,7 +151,7 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
           todayDuration += sessionEnd - sessionStart;
         }
       }
-      
+
       // Yesterday's duration
       if (startTime <= yesterdayEnd && endTime >= yesterdayStart) {
         const sessionStart = startTime < yesterdayStart ? yesterdayStart : startTime;
@@ -160,7 +160,7 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
           yesterdayDuration += sessionEnd - sessionStart;
         }
       }
-      
+
       // This week's duration
       if (startTime <= now && endTime >= weekStart) {
         const sessionStart = startTime < weekStart ? weekStart : startTime;
@@ -169,7 +169,7 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
           thisWeekDuration += sessionEnd - sessionStart;
         }
       }
-      
+
       // This month's duration
       if (startTime <= now && endTime >= monthStart) {
         const sessionStart = startTime < monthStart ? monthStart : startTime;
@@ -178,42 +178,42 @@ const calculateEnhancedActivationDuration = (activationHistory) => {
           thisMonthDuration += sessionEnd - sessionStart;
         }
       }
-      
+
       // Hourly breakdown for today
       if (startTime <= todayStart && endTime >= todayStart) {
         const sessionStart = startTime < todayStart ? todayStart : startTime;
         const sessionEnd = endTime > now ? now : endTime;
-        
+
         let currentHour = new Date(sessionStart);
         const endHour = new Date(sessionEnd);
-        
+
         while (currentHour < endHour) {
           const hour = currentHour.getHours();
           const nextHour = new Date(currentHour);
           nextHour.setHours(hour + 1, 0, 0, 0);
           const hourDuration = Math.min(endHour - currentHour, nextHour - currentHour);
-          
+
           hourlyBreakdown[hour] += hourDuration;
           currentHour = nextHour;
         }
       }
     }
   }
-  
+
   // Add live duration if currently active
   if (isActiveNow && lastEntry) {
     const liveStart = new Date(lastEntry.timestamp);
     const liveDuration = now - liveStart;
-    
+
     totalDuration += liveDuration;
     todayDuration += liveDuration;
     thisWeekDuration += liveDuration;
     thisMonthDuration += liveDuration;
-    
+
     const currentHour = now.getHours();
     hourlyBreakdown[currentHour] += liveDuration;
   }
-  
+
   return {
     active: isActiveNow,
     totalDuration,
@@ -233,30 +233,30 @@ const getTodayActiveSessions = (activationHistory) => {
   if (!activationHistory || activationHistory.length === 0) {
     return [];
   }
-  
+
   const now = new Date();
   const todayStart = startOfDay(now);
-  const sortedHistory = [...activationHistory].sort((a, b) => 
+  const sortedHistory = [...activationHistory].sort((a, b) =>
     new Date(a.timestamp) - new Date(b.timestamp)
   );
-  
+
   const sessions = [];
   const lastEntry = sortedHistory[sortedHistory.length - 1];
   const isActiveNow = lastEntry && lastEntry.status === 'active';
-  
+
   for (let i = 0; i < sortedHistory.length; i += 2) {
     const start = sortedHistory[i];
     const end = sortedHistory[i + 1] || (isActiveNow ? { timestamp: now.toISOString() } : null);
-    
+
     if (start.status === 'active' && end) {
       const startTime = new Date(start.timestamp);
       const endTime = new Date(end.timestamp);
-      
+
       // Check if session overlaps with today
       if (endTime >= todayStart && startTime <= now) {
         const sessionStart = startTime < todayStart ? todayStart : startTime;
         const sessionEnd = endTime > now ? now : endTime;
-        
+
         if (sessionStart < sessionEnd) {
           sessions.push({
             startTime: sessionStart,
@@ -267,7 +267,7 @@ const getTodayActiveSessions = (activationHistory) => {
       }
     }
   }
-  
+
   // If currently active, also add the live session
   if (isActiveNow && lastEntry) {
     const liveStart = new Date(lastEntry.timestamp);
@@ -280,7 +280,7 @@ const getTodayActiveSessions = (activationHistory) => {
       });
     }
   }
-  
+
   // Sort sessions by start time
   return sessions.sort((a, b) => a.startTime - b.startTime);
 };
@@ -289,7 +289,7 @@ const getTodayActiveSessions = (activationHistory) => {
 const getDetailedTodayActivity = (activationHistory) => {
   const sessions = getTodayActiveSessions(activationHistory);
   const now = new Date();
-  
+
   if (sessions.length === 0) {
     return {
       sessions: [],
@@ -299,17 +299,17 @@ const getDetailedTodayActivity = (activationHistory) => {
       formattedSessions: []
     };
   }
-  
+
   let totalDuration = 0;
   const formattedSessions = [];
-  
+
   sessions.forEach(session => {
     totalDuration += session.duration;
-    
+
     const startTimeStr = format(session.startTime, 'HH:mm:ss');
     const endTimeStr = session.isLive ? 'Now' : format(session.endTime, 'HH:mm:ss');
     const durationStr = formatDuration(session.duration);
-    
+
     formattedSessions.push({
       startTime: session.startTime,
       endTime: session.endTime,
@@ -320,10 +320,10 @@ const getDetailedTodayActivity = (activationHistory) => {
       isLive: session.isLive || false
     });
   });
-  
+
   const lastSession = sessions[sessions.length - 1];
   const activeNow = lastSession && lastSession.isLive === true;
-  
+
   return {
     sessions: formattedSessions,
     totalDuration,
@@ -336,21 +336,21 @@ const getDetailedTodayActivity = (activationHistory) => {
 // Live Timer Component
 const LiveTimer = ({ startTime, className = "" }) => {
   const [elapsed, setElapsed] = useState(0);
-  
+
   useEffect(() => {
     if (!startTime) return;
-    
+
     const updateElapsed = () => {
       const now = new Date();
       const start = new Date(startTime);
       setElapsed(now - start);
     };
-    
+
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
   }, [startTime]);
-  
+
   return (
     <span className={`font-medium ${className}`}>
       {formatDuration(elapsed)}
@@ -361,7 +361,7 @@ const LiveTimer = ({ startTime, className = "" }) => {
 // Session Details Modal Component
 const SessionDetailsModal = ({ user, isOpen, onClose }) => {
   if (!isOpen || !user) return null;
-  
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
@@ -378,7 +378,7 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
               ×
             </button>
           </div>
-          
+
           <div className="space-y-4">
             <div className="bg-blue-50 p-4 rounded-lg">
               <div className="grid grid-cols-3 gap-4">
@@ -402,7 +402,7 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
                 </div>
               </div>
             </div>
-            
+
             <div className="space-y-3">
               <h4 className="font-medium text-gray-700">Session Timeline</h4>
               {user.todayActivity.sessions.length > 0 ? (
@@ -425,7 +425,7 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
                           {session.durationFormatted}
                         </span>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                           <p className="text-gray-500">Started</p>
@@ -448,7 +448,7 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
                           )}
                         </div>
                       </div>
-                      
+
                       {session.isLive && (
                         <div className="mt-3 pt-3 border-t border-green-200">
                           <div className="flex items-center justify-between">
@@ -456,8 +456,8 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
                               <FaClock className="text-green-600 animate-pulse" />
                               <span className="text-green-700">Current session duration:</span>
                             </div>
-                            <LiveTimer 
-                              startTime={session.startTime} 
+                            <LiveTimer
+                              startTime={session.startTime}
                               className="text-green-700 font-bold"
                             />
                           </div>
@@ -475,7 +475,7 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
           <button
             onClick={onClose}
@@ -493,7 +493,7 @@ const SessionDetailsModal = ({ user, isOpen, onClose }) => {
 const Analytics = () => {
   const navigate = useNavigate();
   const { users, refreshUsers } = useContext(UserContext);
-  
+
   const [loading, setLoading] = useState(false);
   const [logoutModal, setLogoutModal] = useState(false);
   const [timeRange, setTimeRange] = useState('last30days');
@@ -516,7 +516,7 @@ const Analytics = () => {
         setLastUpdate(Date.now());
       }
     }, 10000);
-    
+
     return () => clearInterval(interval);
   }, [users]);
 
@@ -549,8 +549,8 @@ const Analytics = () => {
   const getDateRange = useMemo(() => {
     const now = new Date();
     let startDate, endDate;
-    
-    switch(timeRange) {
+
+    switch (timeRange) {
       case 'today':
         startDate = startOfDay(now);
         endDate = endOfDay(now);
@@ -593,16 +593,16 @@ const Analytics = () => {
           endDate = now;
         }
     }
-    
+
     return { startDate, endDate };
   }, [timeRange, users]);
 
   // Prepare registration data
   const registrationData = useMemo(() => {
     const { startDate, endDate } = getDateRange;
-    
+
     const days = eachDayOfInterval({ start: startDate, end: endDate });
-    
+
     const grouped = {};
     days.forEach(day => {
       const key = format(day, 'yyyy-MM-dd');
@@ -621,7 +621,7 @@ const Analytics = () => {
       const key = format(userDate, 'yyyy-MM-dd');
       if (grouped[key]) {
         grouped[key].users++;
-        
+
         const activation = calculateEnhancedActivationDuration(user.activationHistory);
         if (activation.active) grouped[key].activeUsers++;
         grouped[key].totalDuration += activation.todayDuration;
@@ -654,7 +654,7 @@ const Analytics = () => {
     users.forEach(user => {
       const gender = user.gender || 'Not specified';
       const activation = calculateEnhancedActivationDuration(user.activationHistory);
-      
+
       genderStats[gender].count++;
       if (activation.active) genderStats[gender].active++;
       genderStats[gender].totalDuration += activation.totalDuration;
@@ -668,9 +668,9 @@ const Analytics = () => {
         active: stats.active,
         totalDuration: stats.totalDuration,
         percentage: users.length > 0 ? Math.round((stats.count / users.length) * 100) : 0,
-        fill: name === 'Male' ? '#3B82F6' : 
-              name === 'Female' ? '#EC4899' : 
-              name === 'Other' ? '#8B5CF6' : '#6B7280'
+        fill: name === 'Male' ? '#3B82F6' :
+          name === 'Female' ? '#EC4899' :
+            name === 'Other' ? '#8B5CF6' : '#6B7280'
       }));
 
     return result;
@@ -685,7 +685,7 @@ const Analytics = () => {
     return filteredUsers.map(user => {
       const activation = calculateEnhancedActivationDuration(user.activationHistory);
       const todayActivity = getDetailedTodayActivity(user.activationHistory);
-      
+
       return {
         id: user._id,
         name: user.fullName || `User ${user._id?.substring(0, 6)}`,
@@ -713,52 +713,52 @@ const Analytics = () => {
   // Prepare hourly comparison data
   const hourlyComparisonData = useMemo(() => {
     const hours = Array.from({ length: 24 }, (_, i) => i);
-    
+
     return hours.map(hour => {
       const dataPoint = { hour: `${hour.toString().padStart(2, '0')}:00` };
-      
+
       userComparisonData.forEach(user => {
         // Safely get hour duration from hourlyBreakdown object
-        const hourDuration = user.hourlyBreakdown && typeof user.hourlyBreakdown === 'object' 
-          ? (user.hourlyBreakdown[hour] || 0) 
+        const hourDuration = user.hourlyBreakdown && typeof user.hourlyBreakdown === 'object'
+          ? (user.hourlyBreakdown[hour] || 0)
           : 0;
-          
-        dataPoint[user.name] = timeUnit === 'hours' 
+
+        dataPoint[user.name] = timeUnit === 'hours'
           ? hourDuration / (1000 * 60 * 60)
           : timeUnit === 'minutes'
             ? hourDuration / (1000 * 60)
             : hourDuration / 1000;
       });
-      
+
       return dataPoint;
     });
   }, [userComparisonData, timeUnit]);
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const activeUsers = users.filter(user => 
+    const activeUsers = users.filter(user =>
       calculateEnhancedActivationDuration(user.activationHistory).active
     ).length;
-    
+
     const maleUsers = users.filter(user => user.gender === 'Male').length;
     const femaleUsers = users.filter(user => user.gender === 'Female').length;
     const otherUsers = users.filter(user => user.gender === 'Other').length;
-    
+
     const totalActivationTime = users.reduce((sum, user) => {
       return sum + calculateEnhancedActivationDuration(user.activationHistory).totalDuration;
     }, 0);
-    
+
     const totalSessions = users.reduce((sum, user) => {
       return sum + calculateEnhancedActivationDuration(user.activationHistory).sessions;
     }, 0);
-    
+
     const todayActivationTime = users.reduce((sum, user) => {
       return sum + calculateEnhancedActivationDuration(user.activationHistory).todayDuration;
     }, 0);
-    
+
     const avgActivationTime = users.length > 0 ? totalActivationTime / users.length : 0;
     const avgSessions = users.length > 0 ? totalSessions / users.length : 0;
-    
+
     // Peak hour calculation
     const hourlyTotals = Array(24).fill(0);
     users.forEach(user => {
@@ -772,15 +772,15 @@ const Analytics = () => {
         });
       }
     });
-    
-    const peakHourIndex = hourlyTotals.reduce((maxIndex, current, index, arr) => 
+
+    const peakHourIndex = hourlyTotals.reduce((maxIndex, current, index, arr) =>
       current > arr[maxIndex] ? index : maxIndex, 0
     );
-    
+
     // Most active user
     let mostActiveUser = null;
     let maxDuration = 0;
-    
+
     users.forEach(user => {
       const activation = calculateEnhancedActivationDuration(user.activationHistory);
       if (activation.totalDuration > maxDuration) {
@@ -788,7 +788,7 @@ const Analytics = () => {
         mostActiveUser = user;
       }
     });
-    
+
     return {
       totalUsers: users.length,
       activeUsers,
@@ -809,8 +809,8 @@ const Analytics = () => {
   // Format time value based on unit
   const formatTimeValue = (value) => {
     if (!value || value <= 0) return "0";
-    
-    switch(timeUnit) {
+
+    switch (timeUnit) {
       case 'hours':
         return `${(value / (1000 * 60 * 60)).toFixed(2)}h`;
       case 'minutes':
@@ -843,42 +843,39 @@ const Analytics = () => {
               <button
                 onClick={() => navigate("/grid")}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-                title="Go to User Management"
+                title="Go to Application screening for eligibility"
               >
                 <FaArrowLeft />
                 Back to Users
               </button>
-              
+
               <div className="flex bg-gray-100 rounded-lg p-1">
                 <button
                   onClick={() => setViewMode('overview')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    viewMode === 'overview' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'overview'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   <FaChartBar className="inline mr-1" />
                   Overview
                 </button>
                 <button
                   onClick={() => setViewMode('comparison')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    viewMode === 'comparison' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'comparison'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   <FaUserFriends className="inline mr-1" />
                   Compare
                 </button>
                 <button
                   onClick={() => setViewMode('detailed')}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                    viewMode === 'detailed' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'detailed'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-200'
+                    }`}
                 >
                   <FaList className="inline mr-1" />
                   Detailed
@@ -890,7 +887,7 @@ const Analytics = () => {
               <span className="text-sm font-medium text-gray-600">
                 Last updated: {format(new Date(lastUpdate), 'hh:mm:ss a')}
               </span>
-              
+
               <button
                 onClick={handleRefresh}
                 className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -899,7 +896,7 @@ const Analytics = () => {
                 <FaRedo className="text-primary-600" />
                 Refresh
               </button>
-              
+
               <button
                 onClick={() => setLogoutModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
@@ -935,7 +932,7 @@ const Analytics = () => {
                   <option value="all">All Time</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <FaChartBar className="inline mr-2 text-green-500" />
@@ -952,7 +949,7 @@ const Analytics = () => {
                   <option value="composed">Composed Chart</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <FaFilter className="inline mr-2 text-purple-500" />
@@ -969,7 +966,7 @@ const Analytics = () => {
                   <option value="Other">Other</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <FaClock className="inline mr-2 text-orange-500" />
@@ -1000,7 +997,7 @@ const Analytics = () => {
                 <FaUsers className="w-8 h-8 text-blue-500" />
               </div>
             </div>
-            
+
             <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -1025,7 +1022,7 @@ const Analytics = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -1040,7 +1037,7 @@ const Analytics = () => {
                 <FaClock className="w-8 h-8 text-purple-500" />
               </div>
             </div>
-            
+
             <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -1067,7 +1064,7 @@ const Analytics = () => {
                   {selectedAnalyticsUsers.length} users selected for comparison
                 </div>
               </div>
-              
+
               {/* User Selection */}
               <div className="mb-4">
                 <div className="flex flex-wrap gap-2 mb-3">
@@ -1077,11 +1074,10 @@ const Analytics = () => {
                       <button
                         key={user._id}
                         onClick={() => toggleAnalyticsUser(user._id)}
-                        className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
-                          selectedAnalyticsUsers.includes(user._id)
-                            ? 'bg-primary-100 text-primary-700 border border-primary-300'
-                            : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
-                        }`}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${selectedAnalyticsUsers.includes(user._id)
+                          ? 'bg-primary-100 text-primary-700 border border-primary-300'
+                          : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
+                          }`}
                       >
                         <FaUser className="text-gray-500" />
                         {user.fullName || `User ${user._id?.substring(0, 6)}`}
@@ -1095,7 +1091,7 @@ const Analytics = () => {
                     );
                   })}
                 </div>
-                
+
                 {selectedAnalyticsUsers.length > 0 && (
                   <div className="bg-gray-50 p-3 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
@@ -1129,7 +1125,7 @@ const Analytics = () => {
                   </div>
                 )}
               </div>
-              
+
               {/* Comparison Chart */}
               {selectedAnalyticsUsers.length > 0 && (
                 <div className="h-80 mb-6">
@@ -1138,23 +1134,23 @@ const Analytics = () => {
                       <BarChart data={hourlyComparisonData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="hour" stroke="#666" fontSize={12} />
-                        <YAxis 
-                          stroke="#666" 
+                        <YAxis
+                          stroke="#666"
                           fontSize={12}
-                          label={{ 
-                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
-                            angle: -90, 
-                            position: 'insideLeft' 
+                          label={{
+                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1),
+                            angle: -90,
+                            position: 'insideLeft'
                           }}
                         />
-                        <Tooltip 
+                        <Tooltip
                           formatter={(value) => [`${Number(value).toFixed(2)} ${timeUnit}`, 'Duration']}
                         />
                         <Legend />
                         {userComparisonData.map((user, index) => {
                           const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
                           return (
-                            <Bar 
+                            <Bar
                               key={user.id}
                               dataKey={user.name}
                               fill={colors[index % colors.length]}
@@ -1168,23 +1164,23 @@ const Analytics = () => {
                       <LineChart data={hourlyComparisonData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="hour" stroke="#666" fontSize={12} />
-                        <YAxis 
-                          stroke="#666" 
+                        <YAxis
+                          stroke="#666"
                           fontSize={12}
-                          label={{ 
-                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
-                            angle: -90, 
-                            position: 'insideLeft' 
+                          label={{
+                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1),
+                            angle: -90,
+                            position: 'insideLeft'
                           }}
                         />
-                        <Tooltip 
+                        <Tooltip
                           formatter={(value) => [`${Number(value).toFixed(2)} ${timeUnit}`, 'Duration']}
                         />
                         <Legend />
                         {userComparisonData.map((user, index) => {
                           const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
                           return (
-                            <Line 
+                            <Line
                               key={user.id}
                               type="monotone"
                               dataKey={user.name}
@@ -1200,23 +1196,23 @@ const Analytics = () => {
                       <AreaChart data={hourlyComparisonData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="hour" stroke="#666" fontSize={12} />
-                        <YAxis 
-                          stroke="#666" 
+                        <YAxis
+                          stroke="#666"
                           fontSize={12}
-                          label={{ 
-                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
-                            angle: -90, 
-                            position: 'insideLeft' 
+                          label={{
+                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1),
+                            angle: -90,
+                            position: 'insideLeft'
                           }}
                         />
-                        <Tooltip 
+                        <Tooltip
                           formatter={(value) => [`${Number(value).toFixed(2)} ${timeUnit}`, 'Duration']}
                         />
                         <Legend />
                         {userComparisonData.map((user, index) => {
                           const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
                           return (
-                            <Area 
+                            <Area
                               key={user.id}
                               type="monotone"
                               dataKey={user.name}
@@ -1232,23 +1228,23 @@ const Analytics = () => {
                       <ComposedChart data={hourlyComparisonData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="hour" stroke="#666" fontSize={12} />
-                        <YAxis 
-                          stroke="#666" 
+                        <YAxis
+                          stroke="#666"
                           fontSize={12}
-                          label={{ 
-                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1), 
-                            angle: -90, 
-                            position: 'insideLeft' 
+                          label={{
+                            value: timeUnit.charAt(0).toUpperCase() + timeUnit.slice(1),
+                            angle: -90,
+                            position: 'insideLeft'
                           }}
                         />
-                        <Tooltip 
+                        <Tooltip
                           formatter={(value) => [`${Number(value).toFixed(2)} ${timeUnit}`, 'Duration']}
                         />
                         <Legend />
                         {userComparisonData.map((user, index) => {
                           const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
                           return (
-                            <Bar 
+                            <Bar
                               key={`bar-${user.id}`}
                               dataKey={user.name}
                               fill={colors[index % colors.length]}
@@ -1260,7 +1256,7 @@ const Analytics = () => {
                         {userComparisonData.map((user, index) => {
                           const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EC4899'];
                           return (
-                            <Line 
+                            <Line
                               key={`line-${user.id}`}
                               type="monotone"
                               dataKey={user.name}
@@ -1295,23 +1291,23 @@ const Analytics = () => {
                   {chartType === 'bar' ? (
                     <BarChart data={registrationData.slice(-15)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="#666" 
+                      <XAxis
+                        dataKey="date"
+                        stroke="#666"
                         fontSize={12}
                         angle={-45}
                         textAnchor="end"
                         height={50}
                       />
                       <YAxis stroke="#666" fontSize={12} />
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value) => [`${value} users`, 'Registrations']}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
-                      <Bar 
-                        dataKey="users" 
-                        name="Daily Registrations" 
-                        fill="#3B82F6" 
+                      <Bar
+                        dataKey="users"
+                        name="Daily Registrations"
+                        fill="#3B82F6"
                         radius={[4, 4, 0, 0]}
                         barSize={20}
                       />
@@ -1319,23 +1315,23 @@ const Analytics = () => {
                   ) : chartType === 'line' ? (
                     <LineChart data={registrationData.slice(-15)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="#666" 
+                      <XAxis
+                        dataKey="date"
+                        stroke="#666"
                         fontSize={12}
                         angle={-45}
                         textAnchor="end"
                         height={50}
                       />
                       <YAxis stroke="#666" fontSize={12} />
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value) => [`${value} users`, 'Registrations']}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
-                      <Line 
+                      <Line
                         type="monotone"
-                        dataKey="users" 
-                        stroke="#3B82F6" 
+                        dataKey="users"
+                        stroke="#3B82F6"
                         strokeWidth={2}
                         dot={{ strokeWidth: 2, r: 4 }}
                         activeDot={{ r: 6 }}
@@ -1344,23 +1340,23 @@ const Analytics = () => {
                   ) : chartType === 'area' ? (
                     <AreaChart data={registrationData.slice(-15)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="#666" 
+                      <XAxis
+                        dataKey="date"
+                        stroke="#666"
                         fontSize={12}
                         angle={-45}
                         textAnchor="end"
                         height={50}
                       />
                       <YAxis stroke="#666" fontSize={12} />
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value) => [`${value} users`, 'Registrations']}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
-                      <Area 
+                      <Area
                         type="monotone"
-                        dataKey="users" 
-                        stroke="#3B82F6" 
+                        dataKey="users"
+                        stroke="#3B82F6"
                         fill="#3B82F6"
                         fillOpacity={0.3}
                         strokeWidth={2}
@@ -1369,31 +1365,31 @@ const Analytics = () => {
                   ) : (
                     <ComposedChart data={registrationData.slice(-15)}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="#666" 
+                      <XAxis
+                        dataKey="date"
+                        stroke="#666"
                         fontSize={12}
                         angle={-45}
                         textAnchor="end"
                         height={50}
                       />
                       <YAxis stroke="#666" fontSize={12} />
-                      <Tooltip 
+                      <Tooltip
                         formatter={(value) => [`${value} users`, 'Registrations']}
                         labelFormatter={(label) => `Date: ${label}`}
                       />
-                      <Bar 
-                        dataKey="users" 
-                        name="Daily Registrations" 
-                        fill="#3B82F6" 
+                      <Bar
+                        dataKey="users"
+                        name="Daily Registrations"
+                        fill="#3B82F6"
                         fillOpacity={0.6}
                         barSize={20}
                       />
-                      <Line 
+                      <Line
                         type="monotone"
-                        dataKey="cumulative" 
-                        name="Cumulative Total" 
-                        stroke="#10B981" 
+                        dataKey="cumulative"
+                        name="Cumulative Total"
+                        stroke="#10B981"
                         strokeWidth={2}
                       />
                     </ComposedChart>
@@ -1435,7 +1431,7 @@ const Analytics = () => {
                         <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value, name, props) => {
                         const payload = props.payload;
                         return [`${value} users (${payload?.percentage || 0}%)`, name];
@@ -1496,7 +1492,7 @@ const Analytics = () => {
                     <Cell key="active" fill="#10B981" />
                     <Cell key="inactive" fill="#6B7280" />
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     formatter={(value, name) => {
                       const percentage = stats.totalUsers > 0 ? Math.round((value / stats.totalUsers) * 100) : 0;
                       return [`${value} users (${percentage}%)`, name];
@@ -1548,7 +1544,7 @@ const Analytics = () => {
                   Showing top {Math.min(10, users.length)} users
                 </div>
               </div>
-              
+
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
@@ -1566,9 +1562,8 @@ const Analytics = () => {
                       <tr key={user.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-medium relative ${
-                              user.activeNow ? 'ring-2 ring-green-500 ring-offset-1' : ''
-                            }`}>
+                            <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center text-white font-medium relative ${user.activeNow ? 'ring-2 ring-green-500 ring-offset-1' : ''
+                              }`}>
                               {user.name.charAt(0)}
                               {user.activeNow && (
                                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
@@ -1593,7 +1588,7 @@ const Analytics = () => {
                                 {user.todayActivity.sessionCount} session{user.todayActivity.sessionCount !== 1 ? 's' : ''}
                               </span>
                             </div>
-                            
+
                             {/* Today's sessions timeline */}
                             {user.todayActivity.sessionCount > 0 ? (
                               <div className="space-y-1">
@@ -1610,7 +1605,7 @@ const Analytics = () => {
                                     <span className="text-gray-500">{session.durationFormatted}</span>
                                   </div>
                                 ))}
-                                
+
                                 {user.todayActivity.sessionCount > 2 && (
                                   <div className="text-xs text-blue-600 cursor-pointer hover:underline"
                                     onClick={() => {
@@ -1621,7 +1616,7 @@ const Analytics = () => {
                                     + {user.todayActivity.sessionCount - 2} more sessions
                                   </div>
                                 )}
-                                
+
                                 {user.activeNow && (
                                   <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
                                     <div className="flex items-center justify-between">
@@ -1629,8 +1624,8 @@ const Analytics = () => {
                                         <FaClock className="text-green-600 text-xs animate-pulse" />
                                         <span className="text-xs text-green-700">Currently active for</span>
                                       </div>
-                                      <LiveTimer 
-                                        startTime={user.currentSessionStart} 
+                                      <LiveTimer
+                                        startTime={user.currentSessionStart}
                                         className="text-green-700 font-semibold"
                                       />
                                     </div>
@@ -1657,13 +1652,12 @@ const Analytics = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
-                            user.activeNow
-                              ? 'bg-green-100 text-green-700'
-                              : user.active
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${user.activeNow
+                            ? 'bg-green-100 text-green-700'
+                            : user.active
                               ? 'bg-yellow-100 text-yellow-700'
                               : 'bg-gray-100 text-gray-700'
-                          }`}>
+                            }`}>
                             {user.activeNow ? (
                               <>
                                 <FaToggleOnIcon className="text-green-500 animate-pulse" />
@@ -1722,7 +1716,7 @@ const Analytics = () => {
                 Highest user activity
               </p>
             </div>
-            
+
             <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
               <div className="flex items-center gap-3 mb-2">
                 <FaUserCheck className="text-green-600" />
@@ -1737,7 +1731,7 @@ const Analytics = () => {
                     {stats.mostActiveUser.fullName || `User ${stats.mostActiveUser._id?.substring(0, 6)}`}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
-                    {formatDuration(stats.mostActiveUser.activationHistory ? 
+                    {formatDuration(stats.mostActiveUser.activationHistory ?
                       calculateEnhancedActivationDuration(stats.mostActiveUser.activationHistory).totalDuration : 0)}
                   </p>
                 </>
@@ -1745,7 +1739,7 @@ const Analytics = () => {
                 <p className="text-gray-500">No data available</p>
               )}
             </div>
-            
+
             <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
               <div className="flex items-center gap-3 mb-2">
                 <FaUsersCog className="text-purple-600" />

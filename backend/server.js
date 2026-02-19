@@ -21,14 +21,22 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/mernapp',
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })
-.then(() => console.log('MongoDB Connected'))
-.catch(err => console.error('MongoDB Connection Error:', err));
+    .then(() => console.log('MongoDB Connected'))
+    .catch(err => console.error('MongoDB Connection Error:', err));
 
 // Routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const departmentRoutes = require('./routes/departments');
+const jobDescriptionRoutes = require('./routes/jobDescriptions');
+const degreeOptionRoutes = require('./routes/degreeOptions');
+const advertisementRoutes = require('./routes/advertisements');
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/job-descriptions', jobDescriptionRoutes);
+app.use('/api/degree-options', degreeOptionRoutes);
+app.use('/api/advertisements', advertisementRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

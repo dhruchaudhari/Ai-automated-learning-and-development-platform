@@ -5,14 +5,18 @@ import {
   HomeIcon,
   UsersIcon,
   ArrowLeftOnRectangleIcon,
-  ChartPieIcon,
+  UserCircleIcon,
+  BriefcaseIcon,
 } from '@heroicons/react/24/outline';
+
+import { useUserContext } from '../context/UserContext';
 
 const Sidebar = () => {
   const [userData, setUserData] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
+  const { isInterviewMode } = useUserContext();
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -26,23 +30,37 @@ const Sidebar = () => {
     }
   }, []);
 
-  const menuItems = [
+  // Menu items for regular users
+  const userMenuItems = [
+    {
+      name: 'Profile Details',
+      path: '/home',
+      icon: <UserCircleIcon className="w-5 h-5" />,
+    },
+  ];
+
+  // Admin-only menu items
+  const adminMenuItems = [
     {
       name: 'Dashboard',
       path: '/home',
       icon: <HomeIcon className="w-5 h-5" />,
     },
     {
-      name: 'User Management',
+      name: isInterviewMode ? 'Interview Scheduling for Eligible Candidates' : 'Application screening for eligibility',
       path: '/grid',
       icon: <UsersIcon className="w-5 h-5" />,
     },
     {
-      name: 'Analytics',
-      path: '/analytics',
-      icon: <ChartPieIcon className="w-5 h-5" />,
+      name: 'Department & Job Descriptions',
+      path: '/jobs',
+      icon: <BriefcaseIcon className="w-5 h-5" />,
     },
   ];
+
+  // Combine menu items based on role
+  // Using a clean assignment to avoid any leftover ReferenceErrors
+  const menuItems = isAdmin ? adminMenuItems : userMenuItems;
 
   const isActive = (path) => {
     return location.pathname === path;
@@ -106,11 +124,10 @@ const Sidebar = () => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center p-3 space-x-3 rounded-lg transition-all duration-200 ${
-                isActive(item.path)
-                  ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-md'
-                  : 'text-primary-200 hover:bg-primary-800/50 hover:text-white'
-              }`}
+              className={`flex items-center p-3 space-x-3 rounded-lg transition-all duration-200 ${isActive(item.path)
+                ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-md'
+                : 'text-primary-200 hover:bg-primary-800/50 hover:text-white'
+                }`}
             >
               <div className={`${isActive(item.path) ? 'text-white' : 'text-primary-300'}`}>
                 {item.icon}
@@ -136,7 +153,7 @@ const Sidebar = () => {
             Logout
           </span>
         </button>
-        
+
         {/* User info */}
         {userData && (
           <div className="mt-3 pt-3 border-t border-primary-700/20">
