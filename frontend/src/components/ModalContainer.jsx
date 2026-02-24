@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaTimes } from 'react-icons/fa';
 
-const ModalContainer = ({ isOpen, onClose, title, children, size = "large" }) => {
+const ModalContainer = ({ isOpen, onClose, title, children, size = "large", footer }) => {
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -35,16 +35,22 @@ const ModalContainer = ({ isOpen, onClose, title, children, size = "large" }) =>
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-gray-200 bg-white sticky bottom-0">
-          <div className="flex justify-end">
-            <button
-              onClick={onClose}
-              className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              Close
-            </button>
+        {footer !== null && (
+          <div className="p-4 border-t border-gray-200 bg-white sticky bottom-0">
+            {footer ? (
+              footer
+            ) : (
+              <div className="flex justify-end">
+                <button
+                  onClick={onClose}
+                  className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

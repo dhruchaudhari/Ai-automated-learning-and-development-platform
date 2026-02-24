@@ -34,9 +34,155 @@ import {
   FaEnvelope,
   FaCheckCircle,
   FaTrashAlt,
-  FaTimesCircle
+  FaTimesCircle,
+  FaClipboardList,
+  FaPaperPlane,
+  FaClock,
+  FaInfoCircle,
+  FaGraduationCap,
+  FaChartLine,
+  FaThList,
+  FaCalendar,
+  FaLightbulb,
+  FaBriefcase,
+  FaBuilding,
+  FaUserTie,
+  FaPhone
 } from "react-icons/fa";
 import { format, parseISO, isWithinInterval } from "date-fns";
+
+// Stabilized Sub-components
+const EmailDraftPreview = ({ user, form }) => {
+  if (!user) return null;
+  const formattedDate = user.interviewSchedule?.scheduledDate
+    ? new Date(user.interviewSchedule.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+    : 'Not scheduled';
+
+  return (
+    <div className="border border-indigo-100 rounded-[2.5rem] overflow-hidden bg-white flex flex-col h-full shadow-2xl shadow-indigo-200/40 sticky top-0 border-t-4 border-t-indigo-600">
+      <div className="bg-gradient-to-br from-indigo-700 via-indigo-600 to-indigo-800 p-8 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-400/20 rounded-full -ml-12 -mb-12 blur-xl"></div>
+
+        <div className="relative flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/20 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/30 shadow-inner">
+              <FaEnvelope className="text-white text-xl" />
+            </div>
+            <div>
+              <h4 className="font-bold text-lg tracking-tight leading-none mb-1.5">Invitation Preview</h4>
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-pulse"></span>
+                <p className="text-[11px] text-indigo-100 font-bold tracking-wider opacity-90">Official Correspondence</p>
+              </div>
+            </div>
+          </div>
+          <span className="px-4 py-1.5 bg-white/20 backdrop-blur-xl rounded-full text-[10px] font-bold tracking-widest border border-white/20 shadow-sm">Candidate View</span>
+        </div>
+      </div>
+
+      <div className="p-8 overflow-y-auto max-h-[600px] text-gray-800 text-sm leading-relaxed font-sans scrollbar-thin scrollbar-thumb-gray-200">
+        <div className="text-center mb-6 relative">
+          <h2 className="mt-6 font-bold text-3xl text-slate-900 tracking-tight">{user.fullName}</h2>
+          <div className="flex items-center justify-center gap-3 mt-2">
+            <p className="text-[11px] text-indigo-500 font-bold tracking-[0.2em]">Interview Candidate</p>
+            <span className="h-[2px] w-10 bg-indigo-100 rounded-full"></span>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <p className="text-slate-900 font-bold text-base italic">Dear {user.fullName},</p>
+            <p className="text-slate-600 leading-relaxed font-medium text-[15px]">
+              We are thrilled to extend an official invitation for your upcoming interview. Your background uniquely positions you for success within our dynamic team.
+            </p>
+          </div>
+
+          <div className="bg-indigo-50/40 p-8 rounded-[2rem] border border-indigo-100 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
+              <FaCalendarAlt className="text-6xl text-indigo-900" />
+            </div>
+            <h5 className="text-[11px] font-bold text-indigo-600 tracking-[0.15em] mb-6 flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.5)]"></span> Appointment Logistics
+            </h5>
+
+            <div className="grid grid-cols-1 gap-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white border border-indigo-100 flex items-center justify-center shadow-sm shrink-0">
+                  <FaBriefcase className="text-indigo-500 text-sm" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">Target Position</span>
+                  <span className="text-base font-bold text-slate-900">{user.advertisements?.map(ad => ad.title || 'N/A').join(', ') || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-100 shrink-0">
+                  <FaClock className="text-white text-sm" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">Interview Window</span>
+                  <span className="text-base font-bold text-indigo-600">{formattedDate}</span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white border border-indigo-100 flex items-center justify-center shadow-sm shrink-0">
+                  <FaBuilding className="text-indigo-500 text-sm" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">Corporate Venue</span>
+                  <div className={`text-[15px] font-semibold leading-snug ${form.location ? 'text-slate-800' : 'text-rose-500 italic opacity-60 underline decoration-dotted'}`}>
+                    {form.location || 'Pending venue confirmation by coordinator...'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-indigo-950 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group border border-indigo-900">
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="absolute bottom-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full -mr-20 -mb-20 blur-3xl"></div>
+
+            <div className="relative flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold text-indigo-300 tracking-widest mb-3">Concierge Support</p>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/10 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
+                    <FaPhone className="text-indigo-300" />
+                  </div>
+                  <div>
+                    <span className={`text-2xl font-bold tracking-tight block ${form.helpline ? 'text-white' : 'text-indigo-800/40 italic'}`}>
+                      {form.helpline || 'Not assigned'}
+                    </span>
+                    <span className="text-[10px] text-indigo-400 font-bold tracking-widest mt-1 block">Primary Assistance Line</span>
+                  </div>
+                </div>
+              </div>
+              <div className="opacity-10 group-hover:opacity-30 transition-all duration-700 -rotate-12 group-hover:rotate-0">
+                <FaLightbulb className="text-5xl" />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-12 pt-10 border-t border-indigo-50 text-center">
+            <div className="inline-block px-6 py-2 rounded-full bg-indigo-50/50 border border-indigo-100 mb-4 shadow-sm hover:shadow-md transition-shadow">
+              <p className="text-[11px] text-indigo-600 font-bold tracking-wide">By Lavya Workshop</p>
+            </div>
+            <div className="flex items-center justify-center gap-6 text-[10px] text-slate-300 font-bold tracking-[0.2em]">
+              <span className="hover:text-indigo-400 transition-colors cursor-default">Verified</span>
+              <span className="w-1 h-1 rounded-full bg-indigo-100"></span>
+              <span className="hover:text-indigo-400 transition-colors cursor-default">Encrypted</span>
+              <span className="w-1 h-1 rounded-full bg-indigo-100"></span>
+              <span className="hover:text-indigo-400 transition-colors cursor-default">Priority</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 import ConfirmationModal from "./ConfirmationModal";
 import PreviewModal from "./PreviewModal";
 import ModalContainer from "./ModalContainer";
@@ -50,6 +196,8 @@ import { useUserContext } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import ManagePanelsModal from "./ManagePanelsModal";
 import PanelDisplay from "./PanelDisplay";
+import InterviewCalendarView from "./InterviewCalendarView";
+import InterviewTimelineView from "./InterviewTimelineView";
 
 
 // Helper functions
@@ -287,7 +435,7 @@ const UserGrid = () => {
   const navigate = useNavigate();
 
   // Use the custom hook to access context
-  const { users, setUsers, selectedUsers, setSelectedUsers, refreshUsers, isInterviewMode, setIsInterviewMode } = useUserContext();
+  const { users, setUsers, selectedUsers, setSelectedUsers, refreshUsers, isInterviewMode, setIsInterviewMode, isMeritMode, setIsMeritMode } = useUserContext();
   const { isAdmin } = useAuth();
 
   const [filteredUsers, setFilteredUsers] = useState([]);
@@ -311,8 +459,55 @@ const UserGrid = () => {
   const [loadingPanels, setLoadingPanels] = useState(false);
   const [managePanelModal, setManagePanelModal] = useState(false);
   const [assignPanelModal, setAssignPanelModal] = useState({ show: false, user: null });
-  const [selectedAdId, setSelectedAdId] = useState("");
-  const [selectedPanelId, setSelectedPanelId] = useState("");
+  const [assignmentMap, setAssignmentMap] = useState({}); // { [adId]: panelId }
+  const [assignmentErrors, setAssignmentErrors] = useState({}); // { [adId]: boolean }
+  const [showExpertsMap, setShowExpertsMap] = useState({}); // { [adId]: boolean }
+
+  // Interview mode modals
+  const [scheduleModal, setScheduleModal] = useState({ show: false, user: null });
+  const [scheduleDateInput, setScheduleDateInput] = useState("");
+  const [emailConfirmModal, setEmailConfirmModal] = useState({ show: false, user: null });
+  const [emailForm, setEmailForm] = useState({ location: '', helpline: '' });
+  const [emailFormErrors, setEmailFormErrors] = useState({ location: '', helpline: '' });
+  const [interviewDetailsModal, setInterviewDetailsModal] = useState({ show: false, user: null });
+  // Merit mode modals
+  const [assignMarksModal, setAssignMarksModal] = useState({ show: false, user: null, advertisement: null });
+  const [marksInput, setMarksInput] = useState("");
+  const [isSubmittingMarks, setIsSubmittingMarks] = useState(false);
+  const [interviewViewMode, setInterviewViewMode] = useState('grid'); // 'grid' | 'calendar' | 'timeline'
+  const [selectedAdsToSchedule, setSelectedAdsToSchedule] = useState([]);
+  const [selectedAdsToEmail, setSelectedAdsToEmail] = useState([]);
+
+  // Validation functions for Indian Context
+  const validateIndiaPhone = (phone) => {
+    if (!phone) return "Helpline number is required";
+    if (phone.length !== 10) return "Helpline must be exactly 10 digits";
+    if (!/^[6-9]/.test(phone)) return "Indian numbers must start with 6, 7, 8, or 9";
+    return "";
+  };
+
+  const validateIndiaAddress = (address) => {
+    if (!address) return "Interview location is required";
+    if (address.length < 15) return "Address must be at least 15 characters";
+
+    // Check for 6-digit Indian PIN code
+    const pinRegex = /\b[1-9][0-9]{5}\b/;
+    if (!pinRegex.test(address)) {
+      return "Address must include a valid 6-digit Indian PIN code";
+    }
+    return "";
+  };
+
+  // Update errors as form changes
+  useEffect(() => {
+    if (emailConfirmModal.show) {
+      setEmailFormErrors({
+        location: validateIndiaAddress(emailForm.location),
+        helpline: validateIndiaPhone(emailForm.helpline)
+      });
+    }
+  }, [emailForm.location, emailForm.helpline, emailConfirmModal.show]);
+
 
 
   // Dynamic degree specialization map
@@ -418,7 +613,38 @@ const UserGrid = () => {
   useEffect(() => {
     let result = applyFilters(users, searchTerm, filters);
 
-    if (isInterviewMode) {
+    if (isMeritMode) {
+      // Flatten eligible users into multiple rows — one row per advertisement
+      const flattenedResult = [];
+      result.forEach(user => {
+        if (user.status === 'eligible') {
+          const userAds = user.advertisements || [];
+          if (userAds.length > 0) {
+            userAds.forEach(ad => {
+              const adId = (ad._id || ad).toString();
+              const adMark = user.advertisementMarks?.find(am =>
+                (am.advertisementId?._id || am.advertisementId)?.toString() === adId
+              );
+              flattenedResult.push({
+                ...user,
+                currentAdvertisement: ad,
+                currentAdMark: adMark || null,
+                meritRowId: `${user._id}_${adId}`
+              });
+            });
+          } else {
+            // User has no advertisements — show single row
+            flattenedResult.push({
+              ...user,
+              currentAdvertisement: null,
+              currentAdMark: null,
+              meritRowId: `${user._id}_no_ad`
+            });
+          }
+        }
+      });
+      result = flattenedResult;
+    } else if (isInterviewMode) {
       result = result.filter(user => user.status === 'eligible');
     }
 
@@ -453,7 +679,7 @@ const UserGrid = () => {
 
     setFilteredUsers(result);
     setPage(1);
-  }, [users, searchTerm, filters, sortBy, isInterviewMode]);
+  }, [users, searchTerm, filters, sortBy, isInterviewMode, isMeritMode]);
 
   // Discover unique skills from user data
   const availableSkills = useMemo(() => {
@@ -663,11 +889,11 @@ const UserGrid = () => {
     }
   };
 
-  const handleViewUser = async (userId) => {
+  const handleViewUser = async (userId, advertisementId = null) => {
     try {
       const response = await userAPI.getUserById(userId);
       setSelectedUserData(response.data.data);
-      setViewModal({ show: true, userId });
+      setViewModal({ show: true, userId, advertisementId });
     } catch (error) {
       console.error("Error fetching user for view:", error);
       toast.error("Failed to load user details");
@@ -897,18 +1123,73 @@ const UserGrid = () => {
 
   const handleAssignPanelClick = (user) => {
     setAssignPanelModal({ show: true, user });
+
+    // Initialize assignment map from user's current assignments
+    const initialMap = {};
     const ads = user.advertisements && user.advertisements.length > 0
       ? user.advertisements
       : (user.advertisement ? [user.advertisement] : []);
-    setSelectedAdId(ads.length > 0 ? ads[0]._id : "");
-    setSelectedPanelId("");
+
+    ads.forEach(ad => {
+      const existing = user.panelAssignments?.find(pa =>
+        (pa.advertisementId?._id || pa.advertisementId)?.toString() === ad._id?.toString()
+      );
+      initialMap[ad._id] = existing?.panelId?._id || existing?.panelId || "";
+    });
+
+    setAssignmentMap(initialMap);
+    setAssignmentErrors({});
+    setShowExpertsMap({});
   };
 
-  const handleAssignPanel = async (userId, adId, panelId) => {
+  const handlePanelChange = (adId, panelId) => {
+    setAssignmentMap(prev => ({
+      ...prev,
+      [adId]: panelId
+    }));
+
+    // Update errors instantly: if panelId is empty, set error; otherwise clear it
+    setAssignmentErrors(prev => {
+      const newErrors = { ...prev };
+      if (!panelId) {
+        newErrors[adId] = true;
+      } else {
+        delete newErrors[adId];
+      }
+      return newErrors;
+    });
+  };
+
+  const handleAssignPanel = async (userId) => {
+    // Validate: every advertisement must have a panel assigned
+    const newErrors = {};
+    const ads = assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
+      ? assignPanelModal.user.advertisements
+      : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : []);
+
+    let hasError = false;
+    ads.forEach(ad => {
+      if (!assignmentMap[ad._id]) {
+        newErrors[ad._id] = true;
+        hasError = true;
+      }
+    });
+
+    if (hasError) {
+      setAssignmentErrors(newErrors);
+      toast.error("Please assign a panel for all advertisements");
+      return;
+    }
+
     try {
-      const response = await userAPI.assignPanel(userId, { advertisementId: adId, panelId });
+      const assignments = Object.entries(assignmentMap).map(([adId, panelId]) => ({
+        advertisementId: adId,
+        panelId: panelId
+      }));
+
+      const response = await userAPI.assignPanelsBulk(userId, assignments);
       if (response.data.success) {
-        toast.success(`Panel assigned successfully!`);
+        toast.success(response.data.message || 'Panels assigned successfully!');
         // Update user in context
         setUsers(prev => prev.map(u =>
           u._id === userId ? response.data.user : u
@@ -916,8 +1197,61 @@ const UserGrid = () => {
         setAssignPanelModal({ show: false, user: null });
       }
     } catch (err) {
-      console.error('Assign panel error:', err);
-      toast.error(err.response?.data?.message || 'Failed to assign panel');
+      console.error('Assign panels error:', err);
+      toast.error(err.response?.data?.message || 'Failed to assign panels');
+    }
+  };
+
+  // Schedule interview for a user
+  const handleScheduleInterview = async (userId, scheduledDate, advertisementIds = []) => {
+    try {
+      const response = await userAPI.scheduleInterview(userId, {
+        scheduledDate,
+        advertisementIds: advertisementIds.length > 0 ? advertisementIds : undefined
+      });
+      if (response.data.success) {
+        toast.success('Interview scheduled successfully!');
+        setUsers(prev => prev.map(u =>
+          u._id === userId ? {
+            ...u,
+            interviewSchedule: response.data.user.interviewSchedule,
+            advertisementMarks: response.data.user.advertisementMarks
+          } : u
+        ));
+        setScheduleModal({ show: false, user: null });
+        setScheduleDateInput("");
+        setSelectedAdsToSchedule([]);
+      }
+    } catch (err) {
+      console.error('Schedule interview error:', err);
+      toast.error(err.response?.data?.message || 'Failed to schedule interview');
+    }
+  };
+
+  // Send interview email
+  const handleSendInterviewEmail = async (userId, location, helpline, advertisementIds = []) => {
+    try {
+      const response = await userAPI.sendInterviewEmail(userId, {
+        location,
+        helpline,
+        advertisementIds: advertisementIds.length > 0 ? advertisementIds : undefined
+      });
+      if (response.data.success) {
+        toast.success('Interview invite email sent successfully!');
+        setUsers(prev => prev.map(u =>
+          u._id === userId ? {
+            ...u,
+            interviewEmailSent: response.data.user.interviewEmailSent,
+            advertisementMarks: response.data.user.advertisementMarks
+          } : u
+        ));
+        setEmailConfirmModal({ show: false, user: null });
+        setEmailForm({ location: '', helpline: '' });
+        setSelectedAdsToEmail([]);
+      }
+    } catch (err) {
+      console.error('Send interview email error:', err);
+      toast.error(err.response?.data?.message || 'Failed to send interview email');
     }
   };
 
@@ -949,6 +1283,28 @@ const UserGrid = () => {
     } catch (err) {
       console.error('Bulk reject error:', err);
       toast.error('Failed to bulk reject users');
+    }
+  };
+
+  // Assign marks for a user and advertisement
+  const handleAssignMarks = async (userId, advertisementId, marks) => {
+    try {
+      setIsSubmittingMarks(true);
+      const response = await userAPI.assignMarks(userId, { marks, advertisementId });
+      if (response.data.success) {
+        toast.success('Marks assigned successfully!');
+        // Update user in local state
+        setUsers(prev => prev.map(u =>
+          u._id === userId ? { ...u, advertisementMarks: response.data.user.advertisementMarks, interviewMarks: response.data.user.interviewMarks } : u
+        ));
+        setAssignMarksModal({ show: false, user: null, advertisement: null });
+        setMarksInput("");
+      }
+    } catch (err) {
+      console.error('Assign marks error:', err);
+      toast.error(err.response?.data?.message || 'Failed to assign marks');
+    } finally {
+      setIsSubmittingMarks(false);
     }
   };
 
@@ -1085,12 +1441,21 @@ const UserGrid = () => {
     };
   }, [users, filteredUsers]);
 
+  const meritStats = useMemo(() => {
+    const eligibleUsers = users.filter(u => u.status === 'eligible');
+    const emailSentUsers = eligibleUsers.filter(u => u.interviewEmailSent?.sent);
+    return {
+      sent: emailSentUsers.length,
+      total: eligibleUsers.length
+    };
+  }, [users]);
+
   return (
     <div className="min-h-screen py-8 px-4 animate-fade-in">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-10 animate-slide-down">
           <h1 className="text-4xl md:text-5xl font-normal text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
-            {isInterviewMode ? "Interview Scheduling for Eligible Candidates" : "Application screening for eligibility"}
+            {isMeritMode ? "Merit list and individual fitness generation" : isInterviewMode ? "Interview Scheduling for Eligible Candidates" : "Application screening for eligibility"}
           </h1>
           {/* <p className="text-gray-600 text-lg">Application screening for eligibility</p> */}
         </div>
@@ -1244,8 +1609,12 @@ const UserGrid = () => {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => {
-                    setIsInterviewMode(false);
-                    setIsGridCollapsed(false);
+                    if (isMeritMode) {
+                      setIsMeritMode(false);
+                    } else {
+                      setIsInterviewMode(false);
+                      setIsGridCollapsed(false);
+                    }
                   }}
                   className="flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-200 font-normal text-sm shadow-md focus:outline-none focus:ring-4 focus:ring-red-500/20 active:scale-95 border-2 border-transparent select-none cursor-pointer"
                   style={{
@@ -1268,51 +1637,130 @@ const UserGrid = () => {
                   }}
                 >
                   <FaArrowRight className="rotate-180" />
-                  Return
+                  {isMeritMode ? "Return" : "Return"}
                 </button>
                 <div className="h-8 w-px bg-blue-200 hidden md:block"></div>
                 <div className="flex items-center gap-2 text-sm text-blue-800 font-normal">
-                  <span className="px-2 py-1 bg-blue-100 rounded-md border border-blue-200 font-normal">
-                    {stats.totalByStatus.eligible} Eligible
-                  </span>
-                  <span className="font-normal opacity-70">from</span>
-                  <span className="px-2 py-1 bg-white rounded-md border border-blue-100 font-normal">
-                    {stats.total} Total
-                  </span>
+                  {isMeritMode ? (
+                    <>
+                      <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 font-bold">
+                        {meritStats.sent}
+                      </span>
+                      <span className="font-normal opacity-70">Candidates based on email</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="px-2 py-1 bg-blue-100 rounded-md border border-blue-200 font-normal">
+                        {stats.totalByStatus.eligible} Eligible
+                      </span>
+                      <span className="font-normal opacity-70">from</span>
+                      <span className="px-2 py-1 bg-white rounded-md border border-blue-100 font-normal">
+                        {stats.total} Total
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setManagePanelModal(true)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-normal text-sm border-2 border-transparent shadow-md active:scale-95 cursor-pointer"
-                  title="Manage Interview Panels"
-                >
-                  <FaUsers />
-                  Panels
-                </button>
-                <button
-                  onClick={() => setIsGridCollapsed(!isGridCollapsed)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary-700 rounded-lg hover:bg-primary-50 transition-all font-normal text-sm border border-primary-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
-                >
-                  {isGridCollapsed ? <FaChevronDown /> : <FaChevronUp />}
-                  {isGridCollapsed ? "Expand List" : "Collapse List"}
-                </button>
+                {!isMeritMode && (
+                  <>
+                    <button
+                      onClick={() => setManagePanelModal(true)}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-normal text-sm border-2 border-transparent shadow-md active:scale-95 cursor-pointer"
+                      title="Manage Interview Panels"
+                    >
+                      <FaUsers />
+                      Panels
+                    </button>
+
+                    {/* View Mode Toggle */}
+                    <div className="flex items-center bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+                      {[
+                        { key: 'grid', icon: FaThList, label: 'Grid' },
+                        { key: 'calendar', icon: FaCalendar, label: 'Calendar' },
+                        { key: 'timeline', icon: FaChartLine, label: 'Timeline' },
+                      ].map(({ key, icon: Icon, label }) => (
+                        <button
+                          key={key}
+                          onClick={() => {
+                            setInterviewViewMode(key);
+                            if (key !== 'grid') setIsGridCollapsed(false);
+                          }}
+                          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all cursor-pointer ${interviewViewMode === key
+                            ? 'bg-indigo-600 text-white shadow-inner'
+                            : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700'
+                            }`}
+                        >
+                          <Icon className="text-xs" />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {interviewViewMode === 'grid' && (
+                  <button
+                    onClick={() => setIsGridCollapsed(!isGridCollapsed)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary-700 rounded-lg hover:bg-primary-50 transition-all font-normal text-sm border border-primary-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
+                  >
+                    {isGridCollapsed ? <FaChevronDown /> : <FaChevronUp />}
+                    {isGridCollapsed ? "Expand List" : "Collapse List"}
+                  </button>
+                )}
               </div>
             </div>
           )}
 
-          {isInterviewMode && (
+          {isInterviewMode && !isMeritMode && interviewViewMode === 'grid' && (
             <PanelDisplay panels={panels} loading={loadingPanels} />
           )}
 
-          {!isGridCollapsed && (
+          {isInterviewMode && interviewViewMode === 'calendar' && (
+            <InterviewCalendarView
+              filteredUsers={filteredUsers}
+              panels={panels}
+              onViewUser={(user) => setInterviewDetailsModal({ show: true, user })}
+            />
+          )}
+
+          {isInterviewMode && interviewViewMode === 'timeline' && (
+            <InterviewTimelineView
+              filteredUsers={filteredUsers}
+              panels={panels}
+              onViewUser={(user) => setInterviewDetailsModal({ show: true, user })}
+            />
+          )}
+
+          {(!isInterviewMode || interviewViewMode === 'grid') && !isGridCollapsed && (
             <>
               <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="w-full">
                   <thead className="bg-gradient-to-r from-primary-100 to-secondary-100">
                     <tr>
-                      {isInterviewMode ? (
+                      {isMeritMode ? (
+                        <>
+                          <th className="py-4 px-4 text-center w-12 font-normal">
+                            <input
+                              type="checkbox"
+                              checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
+                              onChange={selectAllVisible}
+                              className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                            />
+                          </th>
+                          <th className="py-4 px-6 text-left w-[240px] font-normal">Details</th>
+                          {isMeritMode && (
+                            <th className="py-4 px-6 text-left w-[220px] font-normal">Advertisement</th>
+                          )}
+                          <th className="py-4 px-6 text-left font-normal">10th Marks</th>
+                          <th className="py-4 px-6 text-left w-[120px] font-normal">12th %</th>
+                          <th className="py-4 px-6 text-left w-[180px] font-normal">Graduation % & CPI</th>
+                          <th className="py-4 px-6 text-left w-[180px] font-normal">PG % & CPI</th>
+                          <th className="py-4 px-6 text-left w-[150px] font-normal">Interview Marks</th>
+                          <th className="py-4 px-6 text-left w-[200px] font-normal">Actions</th>
+                        </>
+                      ) : isInterviewMode ? (
                         <>
                           <th className="py-4 px-4 text-center w-12 font-normal">
                             <input
@@ -1327,6 +1775,7 @@ const UserGrid = () => {
                           <th className="py-4 px-6 text-left w-[240px] font-normal">Skillset</th>
                           <th className="py-4 px-6 text-left w-[240px] font-normal">Advertisement</th>
                           <th className="py-4 px-6 text-left w-[240px] font-normal">Panels</th>
+                          <th className="py-4 px-6 text-left w-[260px] font-normal">Schedule & Email</th>
                           <th className="py-4 px-6 text-left w-[240px] font-normal">Actions</th>
                         </>
                       ) : (
@@ -1356,18 +1805,18 @@ const UserGrid = () => {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={isInterviewMode ? 7 : 10} className="py-12 text-center text-gray-500 font-normal">
-                          <div className="flex flex-col items-center justify-center">
-                            <FaSpinner className="w-8 h-8 text-primary-600 animate-spin mb-4" />
-                            <p>Loading users...</p>
+                        <td colSpan={isMeritMode ? 8 : (isInterviewMode ? 8 : 10)} className="py-12 text-center text-gray-500 font-normal">
+                          <div className="flex flex-col items-center justify-center gap-3">
+                            <FaSpinner className="animate-spin text-primary-500 text-2xl" />
+                            <span>Loading users...</span>
                           </div>
                         </td>
                       </tr>
                     ) : paginatedUsers.length === 0 ? (
                       <tr>
-                        <td colSpan={isInterviewMode ? 7 : 10} className="py-12 text-center text-gray-500 font-normal">
-                          <div className="flex flex-col items-center justify-center">
-                            <FaUser className="w-12 h-12 text-gray-400 mb-4" />
+                        <td colSpan={isMeritMode ? 8 : (isInterviewMode ? 8 : 10)} className="py-12 text-center text-gray-500 font-normal">
+                          <div className="flex flex-col items-center justify-center gap-3">
+                            <FaUsers className="text-gray-300 text-4xl" />
                             <p className="text-lg mb-2">No users found</p>
                             <p>
                               {searchTerm || Object.values(filters).some(f => f) ?
@@ -1388,22 +1837,152 @@ const UserGrid = () => {
                     ) : (
                       paginatedUsers.map((user) => {
                         const registrationDate = formatDateTime(user.createdAt);
+                        const rowId = isMeritMode ? user.meritRowId : user._id;
                         return (
                           <tr
-                            key={user._id}
+                            key={rowId}
                             className="border-t border-gray-200 transition-all duration-300 hover:bg-gray-50 font-normal"
                           >
                             {/* 1. Checkbox Column */}
                             <td className="py-4 px-4 text-center">
                               <input
                                 type="checkbox"
-                                checked={isUserSelected(user._id)}
-                                onChange={() => toggleUserSelection(user._id)}
+                                checked={isUserSelected(rowId)}
+                                onChange={() => toggleUserSelection(rowId)}
                                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer"
                               />
                             </td>
 
-                            {isInterviewMode ? (
+                            {isMeritMode ? (
+                              <>
+                                {/* 1. Details */}
+                                <td className="py-4 px-6 min-w-[280px]">
+                                  <div className="flex items-center gap-4">
+                                    <div className="relative group/avatar">
+                                      {user.profileImage ? (
+                                        <div
+                                          onClick={() => openImagePreview(user.profileImage)}
+                                          className="w-12 h-12 rounded-full overflow-hidden border-2 border-indigo-100 cursor-pointer hover:border-indigo-400 transition-all shadow-md group"
+                                        >
+                                          <img
+                                            src={user.profileImage}
+                                            alt="Profile"
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-dashed border-gray-200 flex items-center justify-center shadow-inner">
+                                          <FaUser className="w-5 h-5 text-gray-300" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                      <p
+                                        onClick={() => setInterviewDetailsModal({ show: true, user })}
+                                        className="text-gray-900 text-sm font-bold leading-none mb-1 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                                      >
+                                        {user.fullName}
+                                      </p>
+                                      <p className="text-[10px] text-gray-500 truncate font-medium">{user.email}</p>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* 1.5 Advertisement (Merit Mode Only) */}
+                                {isMeritMode && (
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-bold text-gray-800">
+                                        {user.currentAdvertisement?.title || 'N/A'}
+                                      </span>
+                                      <span className="text-[10px] text-gray-500 font-medium">
+                                        ID: {user.currentAdvertisement?._id?.toString().slice(-6) || 'N/A'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                )}
+
+                                {/* 2. 10th % */}
+                                <td className="py-4 px-6">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {user.education?.tenth?.percentage ? `${user.education.tenth.percentage}%` : 'N/A'}
+                                  </span>
+                                </td>
+
+                                {/* 3. 12th % */}
+                                <td className="py-4 px-6">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {user.education?.twelfth?.percentage ? `${user.education.twelfth.percentage}%` : 'N/A'}
+                                  </span>
+                                </td>
+
+                                {/* 4. Graduation % & CPI */}
+                                <td className="py-4 px-6">
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-indigo-700">
+                                      {user.education?.graduation?.percentage ? `${user.education.graduation.percentage}%` : 'N/A'}
+                                    </span>
+                                    {user.education?.graduation?.cgpa && (
+                                      <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.graduation.cgpa}</span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* 5. PG % & CPI */}
+                                <td className="py-4 px-6">
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-purple-700">
+                                      {user.education?.qualifyingDegree?.percentage ? `${user.education.qualifyingDegree.percentage}%` : 'N/A'}
+                                    </span>
+                                    {user.education?.qualifyingDegree?.cgpa && (
+                                      <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.qualifyingDegree.cgpa}</span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* 6. Interview Marks */}
+                                <td className="py-4 px-6">
+                                  <div className="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm">
+                                    <span className="text-sm font-bold">
+                                      {user.currentAdMark?.marks !== undefined ? parseFloat(user.currentAdMark.marks).toFixed(2) : (user.interviewMarks !== undefined ? parseFloat(user.interviewMarks).toFixed(2) : "00.00")}
+                                    </span>
+                                    <span className="text-[10px] ml-1 opacity-70">/ 100</span>
+                                  </div>
+                                </td>
+
+                                {/* 7. Actions */}
+                                <td className="py-4 px-6">
+                                  <div className="grid grid-cols-2 gap-2 min-w-[160px]">
+                                    <button
+                                      onClick={() => handleViewUser(user._id, user.currentAdvertisement?._id)}
+                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
+                                      title="View Details"
+                                    >
+                                      <FaEye className="size-3 group-hover:scale-110 transition-transform" />
+                                      <span className="text-[10px] font-semibold tracking-tight">View</span>
+                                    </button>
+
+                                    {isMeritMode && isAdmin && (
+                                      <button
+                                        onClick={() => {
+                                          setMarksInput(user.currentAdMark?.interviewMarks || "");
+                                          setAssignMarksModal({
+                                            show: true,
+                                            user: user,
+                                            advertisement: user.currentAdvertisement
+                                          });
+                                        }}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-all border border-pink-200 cursor-pointer shadow-sm group"
+                                        title="Assign Marks"
+                                      >
+                                        <FaClipboardList className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">Assign Marks</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </>
+                            ) : isInterviewMode ? (
                               <>
                                 {/* 2. Personal Details (Interview Mode) */}
                                 <td className="py-4 px-6">
@@ -1555,43 +2134,123 @@ const UserGrid = () => {
                                   </div>
                                 </td>
 
-                                {/* 6. Actions (Interview Mode) */}
+                                {/* 6. Schedule & Email (Interview Mode) */}
+                                <td className="py-4 px-6">
+                                  <div className="flex flex-col gap-2.5 max-w-[240px]">
+                                    {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => {
+                                      const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                                      const scheduledDate = adMark?.interviewSchedule?.scheduledDate || user.interviewSchedule?.scheduledDate;
+                                      const emailSent = adMark?.interviewEmailSent?.sent || user.interviewEmailSent?.sent;
+
+                                      return (
+                                        <div key={`status-${ad._id || idx}`} className="flex flex-col gap-1.5 p-2 rounded-xl border border-gray-50 bg-white/50 min-h-[42px]">
+                                          {/* Scheduled Date */}
+                                          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all duration-200 ${scheduledDate
+                                            ? 'bg-pink-50 border-pink-100 shadow-sm'
+                                            : 'bg-slate-50 border-slate-200'
+                                            }`}>
+                                            <FaCalendarAlt className={`text-[9px] ${scheduledDate ? 'text-pink-500' : 'text-slate-400'}`} />
+                                            <span className={`text-[9px] font-normal whitespace-nowrap ${scheduledDate ? 'text-pink-600' : 'text-black italic'}`}>
+                                              {scheduledDate
+                                                ? new Date(scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                : 'Not Scheduled'
+                                              }
+                                            </span>
+                                          </div>
+                                          {/* Email Status */}
+                                          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all duration-200 ${emailSent
+                                            ? 'bg-emerald-50 border-emerald-100 shadow-sm'
+                                            : 'bg-amber-50 border-amber-100'
+                                            }`}>
+                                            <FaEnvelope className={`text-[9px] ${emailSent ? 'text-emerald-500' : 'text-amber-500'}`} />
+                                            <span className={`text-[9px] font-normal whitespace-nowrap ${emailSent ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                              {emailSent ? 'Email Sent ✓' : 'Email Pending'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
+                                      <div className="h-full border border-dashed border-gray-100 rounded-xl bg-gray-50/30"></div>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* 7. Actions (Interview Mode) */}
                                 <td className="py-4 px-6">
                                   <div className="grid grid-cols-2 gap-2 min-w-[180px]">
                                     <button
-                                      onClick={() => handleViewUser(user._id)}
+                                      onClick={() => setInterviewDetailsModal({ show: true, user })}
                                       className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
-                                      title="View Profile"
+                                      title="View Details"
                                     >
-                                      <FaEye className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">View</span>
+                                      <FaInfoCircle className="size-3 group-hover:scale-110 transition-transform" />
+                                      <span className="text-[10px] font-semibold tracking-tight">View Details</span>
+                                    </button>
+
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => handleAssignPanelClick(user)}
+                                        disabled={user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent}
+                                        className={`flex flex-col items-center justify-center gap-1 py-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all border border-purple-200 cursor-pointer shadow-sm group ${(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        title={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? "Cannot change panel after all emails sent" : (user.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel")}
+                                      >
+                                        <FaClipboardList className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">
+                                          {user.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel"}
+                                        </span>
+                                      </button>
+                                    )}
+
+                                    <button
+                                      onClick={() => {
+                                        setScheduleModal({ show: true, user });
+                                        setScheduleDateInput(user.interviewSchedule?.scheduledDate
+                                          ? new Date(user.interviewSchedule.scheduledDate).toISOString().split('T')[0]
+                                          : ""
+                                        );
+                                        // Auto-select all ads that haven't been scheduled yet, or all ads if none scheduled
+                                        const userAds = user.advertisements || (user.advertisement ? [user.advertisement] : []);
+                                        setSelectedAdsToSchedule(userAds.map(ad => ad._id));
+                                      }}
+                                      disabled={user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent}
+                                      className={`flex flex-col items-center justify-center gap-1 py-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-all border border-pink-200 cursor-pointer shadow-sm group ${(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      title={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? "Cannot reschedule after all emails sent" : (user.interviewSchedule?.scheduledDate ? "Reschedule Interview" : "Schedule Interview")}
+                                    >
+                                      <FaClock className="size-3 group-hover:scale-110 transition-transform" />
+                                      <span className="text-[10px] font-semibold tracking-tight">
+                                        {user.interviewSchedule?.scheduledDate ? "Reschedule" : "Schedule"}
+                                      </span>
                                     </button>
 
                                     <button
-                                      onClick={() => handleMarkEligible(user._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer shadow-sm group"
-                                      title="Mark Eligible"
+                                      onClick={() => {
+                                        setEmailConfirmModal({ show: true, user });
+                                        const userAds = user.advertisements || (user.advertisement ? [user.advertisement] : []);
+                                        // Auto-select ads that have schedule and panel but email not sent
+                                        const eligibleAds = userAds.filter(ad => {
+                                          const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                                          const hasPanel = user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
+                                          return adMark?.interviewSchedule?.scheduledDate && hasPanel && !adMark?.interviewEmailSent?.sent;
+                                        });
+                                        setSelectedAdsToEmail(eligibleAds.length > 0 ? eligibleAds.map(ad => ad._id) : userAds.map(ad => ad._id));
+                                      }}
+                                      disabled={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) || (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate)) || !user.panelAssignments?.length}
+                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
+                                      title={
+                                        (user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent)
+                                          ? "All emails already sent"
+                                          : (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate) && !user.panelAssignments?.length
+                                            ? "Assign panel and schedule interview first"
+                                            : (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate))
+                                              ? "Schedule interview first"
+                                              : !user.panelAssignments?.length
+                                                ? "Assign panel first"
+                                                : "Send Interview Email")
+                                      }
                                     >
-                                      <FaCheckCircle className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Eligible</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleRejectUser(user._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all border border-rose-200 cursor-pointer shadow-sm group"
-                                      title="Reject Candidate"
-                                    >
-                                      <FaTimesCircle className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Reject</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleDeleteUser(user._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-red-50 text-[#8b0000] rounded-xl hover:bg-red-100 transition-all border border-red-200 cursor-pointer shadow-sm group"
-                                      title="Delete Candidate"
-                                    >
-                                      <FaTrashAlt className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Delete</span>
+                                      <FaPaperPlane className="size-3 group-hover:scale-110 transition-transform" />
+                                      <span className="text-[10px] font-semibold tracking-tight">Send Mail</span>
                                     </button>
                                   </div>
                                 </td>
@@ -1801,6 +2460,32 @@ const UserGrid = () => {
             </>
           )}
 
+          {isInterviewMode && !isMeritMode && (
+            <div className="mt-8 flex flex-col items-center gap-4 animate-slide-up">
+              <div className="flex flex-col items-center gap-2">
+                <div
+                  className="flex items-center gap-2 text-sm text-gray-500 font-normal cursor-help"
+                  title="Based on the email send"
+                >
+                  <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 font-normal">
+                    {meritStats.sent} Candidates
+                  </span>
+                  <span className="font-normal">from</span>
+                  <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md border border-gray-100 font-normal">
+                    {meritStats.total} Total
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsMeritMode(true)}
+                className="px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 bg-gradient-to-r from-indigo-700 to-indigo-900 text-white hover:from-indigo-600 hover:to-indigo-800 focus:ring-indigo-500"
+              >
+                Merit Procedure
+              </button>
+            </div>
+          )}
+
           {!isInterviewMode && (
             <div className="mt-8 flex flex-col items-center gap-4">
               <div className="flex items-center gap-2 text-sm text-gray-500 font-normal">
@@ -1904,11 +2589,16 @@ const UserGrid = () => {
         {selectedUserData && (
           <ViewUser
             user={selectedUserData}
+            advertisementId={viewModal.advertisementId}
             onClose={handleViewModalClose}
             onApprove={handleApproveUser}
             onReject={handleRejectUser}
             onViewDocument={openDocumentPreview}
             onViewImage={openImagePreview}
+            onAssignPanel={isAdmin ? () => {
+              handleViewModalClose();
+              handleAssignPanelClick(selectedUserData);
+            } : null}
           />
         )}
       </ModalContainer>
@@ -1918,6 +2608,7 @@ const UserGrid = () => {
         onClose={handleEditModalClose}
         title="Edit User"
         size="large"
+        footer={null}
       >
         {selectedUserData && (
           <EditUser
@@ -1931,83 +2622,221 @@ const UserGrid = () => {
       <ModalContainer
         isOpen={assignPanelModal.show}
         onClose={() => setAssignPanelModal({ show: false, user: null })}
-        title="Assign Interview Panel"
-        size="medium"
+        title="Assign Interview Panels"
+        size="large"
+        footer={
+          <div className="flex justify-end gap-3 items-center w-full">
+            <div className="flex-1 hidden md:flex items-center gap-3">
+              {Object.values(assignmentMap).filter(Boolean).length > 0 && (
+                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-bold shadow-sm shadow-emerald-100">
+                  {Object.values(assignmentMap).filter(Boolean).length}
+                </div>
+              )}
+              <p className="text-xs text-gray-500 font-medium">
+                {Object.values(assignmentMap).filter(Boolean).length === (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))
+                  ? "✓ All panels assigned"
+                  : `Assign panels to all ${(assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))} ads.`
+                }
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleAssignPanel(assignPanelModal.user._id)}
+                disabled={Object.values(assignmentMap).filter(Boolean).length !== (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))}
+                className="px-10 py-2.5 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl font-bold hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm shadow-lg shadow-primary-100"
+              >
+                Assign
+              </button>
+              <button
+                onClick={() => setAssignPanelModal({ show: false, user: null })}
+                className="px-8 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer text-sm border-2 border-transparent"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        }
       >
         {assignPanelModal.user && (
-          <div className="p-4">
-            <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-bold text-xl">
-                {assignPanelModal.user.fullName?.charAt(0)}
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900">{assignPanelModal.user.fullName}</h3>
-                <p className="text-sm text-gray-500">{assignPanelModal.user.email}</p>
+          <div className="p-0 flex flex-col max-h-[85vh]">
+            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex items-center gap-4">
+                {assignPanelModal.user.profileImage ? (
+                  <img
+                    src={assignPanelModal.user.profileImage}
+                    alt="Profile"
+                    className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary-100 border-2 border-white"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-primary-100">
+                    {assignPanelModal.user.fullName?.charAt(0)}
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{assignPanelModal.user.fullName}</h3>
+                  <p className="text-sm text-gray-500 font-medium">{assignPanelModal.user.email}</p>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-6">
-              {/* Select Advertisement */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Advertisement</label>
-                <div className="grid grid-cols-1 gap-3">
-                  {(assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
-                    ? assignPanelModal.user.advertisements
-                    : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : [])
-                  ).map((ad) => (
-                    <div
-                      key={ad._id}
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedAdId === ad._id
-                        ? "border-primary-500 bg-primary-50"
-                        : "border-gray-100 bg-white hover:border-primary-200"
-                        }`}
-                      onClick={() => setSelectedAdId(ad._id)}
-                    >
-                      <p className="font-medium text-gray-800">{ad.title}</p>
-                    </div>
-                  ))}
-                </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-primary-500 rounded-full"></span>
+                  Advertisement Panel Assignments
+                </h4>
+                <span className="px-3 py-1 rounded-full bg-primary-50 text-xs font-bold text-primary-600 border border-primary-100">
+                  {(assignPanelModal.user.advertisements?.length || (assignPanelModal.user.advertisement ? 1 : 0))} Total Ads
+                </span>
               </div>
 
-              {/* Select Panel */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Interview Panel</label>
-                <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2">
-                  {panels.map((panel) => (
-                    <div
-                      key={panel._id}
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${selectedPanelId === panel._id
-                        ? "border-secondary-500 bg-secondary-50"
-                        : "border-gray-100 bg-white hover:border-secondary-200"
-                        }`}
-                      onClick={() => setSelectedPanelId(panel._id)}
-                    >
-                      <p className="font-medium text-gray-800">{panel.name}</p>
-                      <p className="text-xs text-gray-500">{panel.experts?.length || 0} Experts</p>
-                    </div>
-                  ))}
-                  {panels.length === 0 && (
-                    <p className="text-center py-4 text-gray-500 italic">No panels found. Please create a panel first.</p>
-                  )}
-                </div>
-              </div>
+              <div className="grid grid-cols-1 gap-6">
+                {(assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
+                  ? assignPanelModal.user.advertisements
+                  : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : [])
+                ).map((ad) => (
+                  <div
+                    key={ad._id}
+                    className={`group relative flex flex-col md:flex-row gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${assignmentErrors[ad._id]
+                      ? "border-rose-200 bg-rose-50/30 ring-4 ring-rose-50"
+                      : assignmentMap[ad._id]
+                        ? "border-emerald-100 bg-emerald-50/10"
+                        : "border-gray-100 bg-white hover:border-primary-100"
+                      }`}
+                  >
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <FaBullhorn className={`mt-1 flex-shrink-0 ${assignmentErrors[ad._id] ? "text-rose-500" : "text-primary-500"}`} />
+                        <h5 className="font-bold text-gray-800 leading-tight">
+                          {ad.title}
+                        </h5>
+                      </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => handleAssignPanel(assignPanelModal.user._id, selectedAdId, selectedPanelId)}
-                  disabled={!selectedAdId || !selectedPanelId}
-                  className="flex-1 py-3 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  Confirm Assignment
-                </button>
-                <button
-                  onClick={() => setAssignPanelModal({ show: false, user: null })}
-                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer font-normal"
-                >
-                  Cancel
-                </button>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 uppercase">
+                          <FaCalendarAlt className="text-gray-400" />
+                          Deadline: <span className="text-gray-700">{ad.lastDateToApply ? new Date(ad.lastDateToApply).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleViewAd(ad); }}
+                            className="text-[10px] px-2 py-1 rounded-md bg-primary-50 text-primary-600 font-bold hover:bg-primary-100 transition-colors flex items-center gap-1"
+                          >
+                            <FaInfoCircle className="size-2.5" /> Details
+                          </button>
+                          {ad.detail && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openDocumentPreview(ad.detail, 'pdf'); }}
+                              className="text-[10px] px-2 py-1 rounded-md bg-amber-50 text-amber-600 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1"
+                            >
+                              <FaFilePdf className="size-2.5" /> PDF
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 font-bold uppercase">
+                          ID: {ad._id.slice(-6)}
+                        </span>
+                        {ad.department && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold uppercase">
+                            {ad.department}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-[320px] flex flex-col gap-2">
+                      <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide ml-1">
+                        Select Interview Panel
+                      </label>
+                      <div className="relative group/select">
+                        <select
+                          value={assignmentMap[ad._id] || ""}
+                          onChange={(e) => handlePanelChange(ad._id, e.target.value)}
+                          className={`w-full h-12 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium border-2 appearance-none transition-all outline-none cursor-pointer ${assignmentErrors[ad._id]
+                            ? "border-rose-300 bg-white text-rose-600 focus:border-rose-500"
+                            : assignmentMap[ad._id]
+                              ? "border-emerald-200 bg-white text-emerald-700 focus:border-emerald-500"
+                              : "border-gray-200 bg-gray-50/50 text-gray-700 hover:border-primary-300 focus:border-primary-500 focus:bg-white"
+                            }`}
+                        >
+                          <option value="">-- Choose a Panel --</option>
+                          {panels.map((panel) => (
+                            <option key={panel._id} value={panel._id}>
+                              {panel.name} ({panel.experts?.length || 0} Experts)
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/select:text-primary-500 transition-colors">
+                          <FaChevronDown className="size-3" />
+                        </div>
+                      </div>
+                      {assignmentErrors[ad._id] && (
+                        <p className="text-[10px] font-bold text-rose-500 mt-1 flex items-center gap-1.5 ml-1">
+                          <FaTimesCircle className="size-2.5" />
+                          Requires panel assignment
+                        </p>
+                      )}
+
+                      {/* View Experts Toggle */}
+                      {assignmentMap[ad._id] && (
+                        <div className="mt-3 ml-1">
+                          <button
+                            onClick={() => setShowExpertsMap(prev => ({ ...prev, [ad._id]: !prev[ad._id] }))}
+                            className={`flex items-center gap-2 text-[11px] font-medium transition-all outline-none text-pink-500 hover:text-red-600 active:text-emerald-600 focus:text-emerald-600 ${showExpertsMap[ad._id] ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                          >
+                            <FaUsers className="size-3" />
+                            {showExpertsMap[ad._id] ? 'Hide expert details' : 'View expert details'}
+                            {showExpertsMap[ad._id] ? <FaChevronUp className="size-2.5" /> : <FaChevronDown className="size-2.5" />}
+                          </button>
+
+                          {/* Expert Info Display */}
+                          {showExpertsMap[ad._id] && (() => {
+                            const selectedPanel = panels.find(p => p._id === assignmentMap[ad._id]);
+                            if (!selectedPanel) return null;
+
+                            return (
+                              <div className="mt-3 space-y-3 animate-slide-down">
+                                <div className="grid grid-cols-1 gap-2.5">
+                                  {selectedPanel.experts?.map((expert, eIdx) => (
+                                    <div key={eIdx} className="bg-gray-50/50 rounded-xl p-3.5 border border-gray-100 flex items-start gap-3.5 hover:bg-white hover:shadow-md hover:border-primary-100 transition-all duration-300 group/expert">
+                                      <div className="w-9 h-9 rounded-xl bg-white border border-primary-50 flex items-center justify-center text-primary-500 shrink-0 shadow-sm group-hover/expert:bg-primary-500 group-hover/expert:text-white transition-all duration-300">
+                                        <FaUserTie className="size-4.5" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-center mb-1">
+                                          <p className="text-[13px] font-semibold text-gray-800 truncate">{expert.name}</p>
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium whitespace-nowrap border border-primary-100">
+                                            {expert.seniority} years experience
+                                          </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                          <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                            <FaBriefcase className="size-3 text-gray-400" />
+                                            {expert.role}
+                                          </span>
+                                          <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                            <FaBuilding className="size-3 text-gray-400" />
+                                            {expert.department}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
+
           </div>
         )}
       </ModalContainer>
@@ -2029,6 +2858,610 @@ const UserGrid = () => {
         advertisement={adViewModal.ad}
         onViewDocument={openDocumentPreview}
       />
+
+      {/* Assign Marks Modal */}
+      <ModalContainer
+        isOpen={assignMarksModal.show}
+        onClose={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
+        title="Assign Interview Marks"
+        size="medium"
+        footer={
+          assignMarksModal.user && (
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => handleAssignMarks(assignMarksModal.user._id, assignMarksModal.advertisement?._id, marksInput)}
+                disabled={isSubmittingMarks || marksInput === "" || isNaN(parseFloat(marksInput))}
+                className="flex-1 py-3 bg-gradient-to-r from-pink-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isSubmittingMarks ? <FaSpinner className="animate-spin inline mr-2" /> : <FaClipboardList className="inline mr-2" />}
+                Save Marks
+              </button>
+              <button
+                onClick={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          )
+        }
+      >
+        {assignMarksModal.user && (
+          <div className="p-6">
+            <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              {assignMarksModal.user.profileImage ? (
+                <img
+                  src={assignMarksModal.user.profileImage}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                  {assignMarksModal.user.fullName?.charAt(0)}
+                </div>
+              )}
+              <div>
+                <h3 className="font-bold text-gray-900">{assignMarksModal.user.fullName}</h3>
+                <p className="text-sm text-gray-500">{assignMarksModal.user.email}</p>
+                {assignMarksModal.advertisement && (
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
+                    {assignMarksModal.advertisement.title || assignMarksModal.advertisement.advtNo}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Interview Marks (0-100)
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={marksInput}
+                    onChange={(e) => setMarksInput(e.target.value)}
+                    placeholder="Enter marks"
+                    className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all font-bold text-lg text-primary-900"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
+                    / 100
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 italic">
+                  * Marks will be assigned specifically for the {assignMarksModal.advertisement?.title || 'selected'} advertisement.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </ModalContainer>
+
+      {/* Interview Details Modal */}
+      <ModalContainer
+        isOpen={interviewDetailsModal.show}
+        onClose={() => setInterviewDetailsModal({ show: false, user: null })}
+        title="Candidate Interview Details"
+        size="large"
+      >
+        {interviewDetailsModal.user && (() => {
+          const u = interviewDetailsModal.user;
+          const ads = u.advertisements && u.advertisements.length > 0 ? u.advertisements : (u.advertisement ? [u.advertisement] : []);
+          return (
+            <div className="p-6 space-y-6">
+              {/* Personal Info */}
+              <div className="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl p-5 border border-primary-100">
+                <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaUser className="text-primary-500" /> Personal Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><span className="text-xs text-gray-500">Full Name</span><p className="text-sm font-medium text-gray-800">{u.fullName || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Email</span><p className="text-sm font-medium text-gray-800">{u.email || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Mobile</span><p className="text-sm font-medium text-gray-800">{u.mobile || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Gender</span><p className="text-sm font-medium text-gray-800">{u.gender || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Father's Name</span><p className="text-sm font-medium text-gray-800">{u.fathersName || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Date of Birth</span><p className="text-sm font-medium text-gray-800">{u.dob ? new Date(u.dob).toLocaleDateString('en-IN') : 'N/A'}</p></div>
+                </div>
+              </div>
+
+              {/* Education */}
+              <div className="bg-blue-50 rounded-xl p-5 border border-blue-100">
+                <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaGraduationCap className="text-blue-500" /> Education</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><span className="text-xs text-gray-500">Degree</span><p className="text-sm font-medium text-gray-800">{u.education?.qualifyingDegree?.degree || u.education?.graduation?.degree || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Specialization</span><p className="text-sm font-medium text-gray-800">{u.education?.qualifyingDegree?.specialization || u.education?.graduation?.specialization || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Passing Year</span><p className="text-sm font-medium text-gray-800">{u.education?.graduation?.passingYear || 'N/A'}</p></div>
+                  <div><span className="text-xs text-gray-500">Percentage/CGPA</span><p className="text-sm font-medium text-gray-800">{u.education?.graduation?.percentage || u.education?.graduation?.cgpa || 'N/A'}</p></div>
+                </div>
+              </div>
+
+              {/* Skillsets */}
+              {u.skillSets && Object.values(u.skillSets).flat().length > 0 && (
+                <div className="bg-purple-50 rounded-xl p-5 border border-purple-100">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaLightbulb className="text-purple-500" /> Skills</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(u.skillSets).map(([category, skills]) =>
+                      skills?.map((skill, i) => (
+                        <span key={`${category}-${i}`} className="px-2 py-1 rounded-md text-xs bg-white border border-purple-200 text-purple-700 font-medium">
+                          {skill}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Advertisement & Panel */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-amber-50 rounded-xl p-5 border border-amber-100">
+                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaBullhorn className="text-amber-500" /> Advertisements</h3>
+                  {ads.length > 0 ? ads.map((ad, i) => (
+                    <p key={i} className="text-sm text-gray-700 font-medium">{ad.title}</p>
+                  )) : <p className="text-sm text-gray-400 italic">No advertisement</p>}
+                </div>
+                <div className="bg-emerald-50 rounded-xl p-5 border border-emerald-100">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><FaUsers className="text-emerald-500" /> Assigned Panel</h3>
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setInterviewDetailsModal({ show: false, user: null });
+                          handleAssignPanelClick(u);
+                        }}
+                        disabled={u.interviewEmailSent?.sent}
+                        className="text-[10px] px-2 py-1 bg-white border border-emerald-200 text-emerald-600 rounded-md font-bold hover:bg-emerald-50 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={u.interviewEmailSent?.sent ? "Cannot change panel after email sent" : (u.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel")}
+                      >
+                        {u.panelAssignments?.length > 0 ? "Change" : "Assign"}
+                      </button>
+                    )}
+                  </div>
+                  {u.panelAssignments?.length > 0 ? u.panelAssignments.map((pa, i) => {
+                    const panelInfo = panels.find(p => p._id === pa.panelId);
+                    return <p key={i} className="text-sm text-gray-700 font-medium">{panelInfo?.name || 'Unknown Panel'}</p>;
+                  }) : <p className="text-sm text-gray-400 italic">No panel assigned</p>}
+                </div>
+              </div>
+
+              {/* Schedule & Email Status */}
+              <div className="bg-indigo-50 rounded-xl p-5 border border-indigo-100">
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><FaCalendarAlt className="text-indigo-500" /> Interview Schedule</h3>
+                  {isAdmin && (
+                    <button
+                      onClick={() => {
+                        setInterviewDetailsModal({ show: false, user: null });
+                        setScheduleModal({ show: true, user: u });
+                        setScheduleDateInput(u.interviewSchedule?.scheduledDate
+                          ? new Date(u.interviewSchedule.scheduledDate).toISOString().split('T')[0]
+                          : ""
+                        );
+                      }}
+                      disabled={u.interviewEmailSent?.sent}
+                      className="text-[10px] px-2 py-1 bg-white border border-pink-200 text-pink-600 rounded-md font-bold hover:bg-pink-50 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={u.interviewEmailSent?.sent ? "Cannot reschedule after email sent" : (u.interviewSchedule?.scheduledDate ? "Reschedule Interview" : "Schedule Interview")}
+                    >
+                      {u.interviewSchedule?.scheduledDate ? "Reschedule" : "Schedule"}
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-xs text-gray-500">Scheduled Date</span>
+                    <p className={`text-sm font-medium ${u.interviewSchedule?.scheduledDate ? 'text-indigo-700' : 'text-gray-400 italic'}`}>
+                      {u.interviewSchedule?.scheduledDate
+                        ? new Date(u.interviewSchedule.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
+                        : 'Not Scheduled'
+                      }
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500">Email Status</span>
+                    <p className={`text-sm font-medium ${u.interviewEmailSent?.sent ? 'text-emerald-700' : 'text-amber-600'}`}>
+                      {u.interviewEmailSent?.sent ? '✓ Email Sent' : 'Not Sent'}
+                      {u.interviewEmailSent?.sentAt && (
+                        <span className="text-xs text-gray-400 ml-2">
+                          ({new Date(u.interviewEmailSent.sentAt).toLocaleDateString('en-IN')})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </ModalContainer>
+
+      {/* Schedule Interview Modal */}
+      <ModalContainer
+        isOpen={scheduleModal.show}
+        onClose={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
+        title="Schedule Interview"
+        size="medium"
+        footer={
+          scheduleModal.user && (
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => handleScheduleInterview(scheduleModal.user._id, scheduleDateInput, selectedAdsToSchedule)}
+                disabled={!scheduleDateInput || selectedAdsToSchedule.length === 0}
+                className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {scheduleModal.user.interviewSchedule?.scheduledDate ? "Update Schedule" : "Confirm Schedule"}
+              </button>
+              <button
+                onClick={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          )
+        }
+      >
+        {scheduleModal.user && (
+          <div className="p-6">
+            <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              {scheduleModal.user.profileImage ? (
+                <img
+                  src={scheduleModal.user.profileImage}
+                  alt="Profile"
+                  className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                  {scheduleModal.user.fullName?.charAt(0)}
+                </div>
+              )}
+              <div>
+                <h3 className="font-bold text-gray-900">{scheduleModal.user.fullName}</h3>
+                <p className="text-sm text-gray-500">{scheduleModal.user.email}</p>
+              </div>
+            </div>
+
+            {/* Show latest ad deadline info */}
+            {(() => {
+              const ads = scheduleModal.user.advertisements || [];
+              if (ads.length > 0) {
+                const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
+                return (
+                  <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <p className="text-xs text-amber-700">
+                      <strong>Note:</strong> Interview date must be after the last advertisement deadline:
+                      <span className="font-bold ml-1">{latestDeadline.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Interview Date</label>
+                <input
+                  type="date"
+                  value={scheduleDateInput}
+                  onChange={(e) => setScheduleDateInput(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                  min={(() => {
+                    const ads = scheduleModal.user.advertisements || [];
+                    if (ads.length > 0) {
+                      const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
+                      const minDate = new Date(latestDeadline);
+                      minDate.setDate(minDate.getDate() + 1);
+                      return minDate.toISOString().split('T')[0];
+                    }
+                    return new Date().toISOString().split('T')[0];
+                  })()}
+                />
+              </div>
+
+              {/* Advertisement Selection */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
+                  <span>Select Advertisements to Schedule</span>
+                  <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">Required</span>
+                </label>
+                <div className="space-y-2.5 max-h-[220px] overflow-y-auto p-1 custom-scrollbar">
+                  {(scheduleModal.user.advertisements || (scheduleModal.user.advertisement ? [scheduleModal.user.advertisement] : [])).map((ad) => {
+                    const isSelected = selectedAdsToSchedule.includes(ad._id);
+                    const adMark = scheduleModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                    const currentSchedule = adMark?.interviewSchedule?.scheduledDate;
+
+                    return (
+                      <div
+                        key={ad._id}
+                        onClick={() => {
+                          setSelectedAdsToSchedule(prev =>
+                            prev.includes(ad._id)
+                              ? prev.filter(id => id !== ad._id)
+                              : [...prev, ad._id]
+                          );
+                        }}
+                        className={`group flex items-center gap-4 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
+                          ? 'bg-indigo-50/50 border-indigo-200'
+                          : 'bg-white border-gray-100 hover:border-indigo-100 shadow-sm'
+                          }`}
+                      >
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                          ? 'bg-indigo-600 border-indigo-600'
+                          : 'border-gray-200 group-hover:border-indigo-300'
+                          }`}>
+                          {isSelected && <FaCheckCircle className="text-white text-[10px]" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-bold text-gray-800 truncate leading-snug group-hover:text-indigo-600 transition-colors">{ad.title}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{ad.advtNo}</span>
+                            {currentSchedule && (
+                              <>
+                                <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
+                                <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                                  Scheduled: {new Date(currentSchedule).toLocaleDateString('en-IN')}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+      </ModalContainer>
+
+      {/* Send Email Confirmation Modal */}
+      <ModalContainer
+        isOpen={emailConfirmModal.show}
+        onClose={() => {
+          setEmailConfirmModal({ show: false, user: null });
+          setEmailForm({ location: '', helpline: '' });
+          setEmailFormErrors({ location: '', helpline: '' });
+        }}
+        title="Send Interview Invitation Email"
+        size="large"
+        footer={
+          emailConfirmModal.user && (
+            <div className="flex gap-4 justify-end px-8 py-6 bg-white border-t border-indigo-50">
+              <button
+                onClick={() => {
+                  setEmailConfirmModal({ show: false, user: null });
+                  setEmailForm({ location: '', helpline: '' });
+                  setEmailFormErrors({ location: '', helpline: '' });
+                }}
+                className="px-6 py-3 bg-slate-50 text-slate-500 rounded-2xl font-bold border border-slate-100 hover:bg-slate-100 transition-all cursor-pointer shadow-sm active:scale-95 text-sm"
+              >
+                Cancel Draft
+              </button>
+              <button
+                onClick={() => handleSendInterviewEmail(emailConfirmModal.user._id, emailForm.location, emailForm.helpline, selectedAdsToEmail)}
+                disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0}
+                className="px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm"
+              >
+                <FaPaperPlane className="text-[11px]" /> Dispatch Invitation
+              </button>
+            </div>
+          )
+        }
+      >
+        {emailConfirmModal.user && (
+          <div className="flex flex-col lg:flex-row h-full overflow-hidden min-h-[550px] bg-white">
+            {/* Left Column: Form Section */}
+            <div className="lg:w-1/2 p-0 lg:border-r border-indigo-50 overflow-y-auto bg-white/50 backdrop-blur-sm scrollbar-thin scrollbar-thumb-indigo-100">
+              <div className="p-10 space-y-10">
+                {/* Refined Candidate Profile Card - Above Address/Helpline */}
+                <div className="relative p-8 bg-gradient-to-br from-indigo-500/10 via-white to-indigo-50/30 rounded-[2.5rem] border border-indigo-100 shadow-sm overflow-hidden group">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform duration-700"></div>
+
+                  <div className="flex items-center gap-8 relative z-10">
+                    <div className="relative shrink-0">
+                      {emailConfirmModal.user.profileImage ? (
+                        <img
+                          src={emailConfirmModal.user.profileImage.startsWith('http') ? emailConfirmModal.user.profileImage : `http://localhost:5000${emailConfirmModal.user.profileImage}`}
+                          alt={emailConfirmModal.user.fullName}
+                          className="w-20 h-20 rounded-[1.8rem] border-4 border-white object-cover shadow-xl group-hover:rotate-3 transition-all duration-500 shadow-indigo-100"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 rounded-[1.8rem] bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold text-3xl border-4 border-white shadow-xl">
+                          {emailConfirmModal.user.fullName?.charAt(0)}
+                        </div>
+                      )}
+                      <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg border border-indigo-50">
+                        <FaCheckCircle className="text-emerald-500 text-lg" />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-indigo-50 rounded-lg shadow-sm">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                          <span className="text-[9px] text-slate-500 font-bold tracking-wider">Interview Status</span>
+                        </div>
+                      </div>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight truncate leading-tight mb-1">{emailConfirmModal.user.fullName}</h3>
+                      <div className="flex items-center gap-2 text-slate-500 font-bold text-[13px] opacity-80 overflow-hidden">
+                        <FaEnvelope className="text-indigo-400 shrink-0 text-xs" />
+                        <span className="truncate">{emailConfirmModal.user.email}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Advertisement Selection for Email */}
+                <div>
+                  <label className="flex items-center justify-between mb-4">
+                    <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Target Advertisements
+                    </span>
+                    <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+                      Select for Mailing
+                    </span>
+                  </label>
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                    {(emailConfirmModal.user.advertisements || (emailConfirmModal.user.advertisement ? [emailConfirmModal.user.advertisement] : [])).map((ad) => {
+                      const isSelected = selectedAdsToEmail.includes(ad._id);
+                      const adMark = emailConfirmModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                      const hasSchedule = !!adMark?.interviewSchedule?.scheduledDate;
+                      const hasPanel = emailConfirmModal.user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
+                      const emailSent = !!adMark?.interviewEmailSent?.sent;
+                      const isEligible = hasSchedule && hasPanel;
+
+                      return (
+                        <div
+                          key={ad._id}
+                          onClick={() => {
+                            if (!isEligible) return;
+                            setSelectedAdsToEmail(prev =>
+                              prev.includes(ad._id)
+                                ? prev.filter(id => id !== ad._id)
+                                : [...prev, ad._id]
+                            );
+                          }}
+                          className={`group relative p-4 rounded-[2rem] border-2 transition-all duration-300 ${isEligible
+                            ? (isSelected ? 'bg-indigo-50/30 border-indigo-200 shadow-md' : 'bg-white border-slate-50 hover:border-indigo-100 cursor-pointer shadow-sm')
+                            : 'bg-slate-50/50 border-slate-100 opacity-60 cursor-not-allowed'
+                            }`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={`w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${isSelected
+                              ? 'bg-indigo-600 border-indigo-600'
+                              : 'bg-white border-slate-200 group-hover:border-indigo-300'
+                              }`}>
+                              {isSelected && <FaCheckCircle className="text-white text-xs" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{ad.title}</p>
+                                {emailSent && (
+                                  <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg border border-emerald-200">SENT</span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                {!hasSchedule && (
+                                  <span className="text-[9px] text-rose-500 font-bold flex items-center gap-1"><FaClock className="text-[8px]" /> Missing Schedule</span>
+                                )}
+                                {!hasPanel && (
+                                  <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><FaUsers className="text-[8px]" /> Panel Pending</span>
+                                )}
+                                {hasSchedule && (
+                                  <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1">
+                                    <FaCalendarAlt className="text-[8px]" /> {new Date(adMark.interviewSchedule.scheduledDate).toLocaleDateString('en-IN')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <label className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Interview Location / Venue
+                    </span>
+                    {emailForm.location && !emailFormErrors.location && (
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
+                        <FaCheckCircle className="text-[9px]" /> India Standard Address
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative group">
+                    <textarea
+                      placeholder="Enter precise office/venue address including 6-digit PIN code..."
+                      value={emailForm.location}
+                      onChange={(e) => setEmailForm(prev => ({ ...prev, location: e.target.value }))}
+                      className={`w-full px-5 py-5 rounded-3xl border-2 transition-all duration-300 outline-none text-[15px] min-h-[140px] resize-none leading-relaxed shadow-sm ${emailFormErrors.location && emailForm.location ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
+                        }`}
+                    />
+                    <div className="absolute right-5 top-5 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
+                      <FaBuilding className="text-lg" />
+                    </div>
+                  </div>
+                  {emailFormErrors.location && emailForm.location ? (
+                    <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
+                      {emailFormErrors.location}
+                    </p>
+                  ) : (
+                    <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                      <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
+                      <p>Please specify Floor No. and Building properly. Example: Sector 2, Gandhinagar 382010</p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Support Helpline Number
+                    </span>
+                    {emailForm.helpline && !emailFormErrors.helpline && (
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
+                        <FaCheckCircle className="text-[9px]" /> Verified Format
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative group">
+                    <input
+                      type="text"
+                      placeholder="9XXXXXXXXX (10 Digit Mobile)"
+                      value={emailForm.helpline}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                        setEmailForm(prev => ({ ...prev, helpline: val }));
+                      }}
+                      className={`w-full px-5 py-5 rounded-full border-2 transition-all duration-300 outline-none text-[15px] shadow-sm ${emailFormErrors.helpline && emailForm.helpline ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
+                        }`}
+                    />
+                    <div className="absolute right-6 top-1/2 -translate-y-1/2 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
+                      <FaPhone />
+                    </div>
+                  </div>
+                  {!emailForm.helpline && (
+                    <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                      <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
+                      <p>Enter a 10-digit Indian number. It will be displayed as the primary support line.</p>
+                    </div>
+                  )}
+                  {emailFormErrors.helpline && emailForm.helpline && (
+                    <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
+                      {emailFormErrors.helpline}
+                    </p>
+                  )}
+                </div>
+
+                {emailConfirmModal.user.interviewEmailSent?.sent && (
+                  <div className="p-5 bg-amber-50 rounded-[1.5rem] border border-amber-200 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-8 -mt-8"></div>
+                    <div className="flex items-center gap-4 relative">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center border border-amber-200 shadow-sm">
+                        <FaInfoCircle className="text-amber-600 text-lg" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-amber-900 font-bold">Resending Invitation</p>
+                        <p className="text-[11px] text-amber-700/80 font-bold mt-0.5">Last transmission detected: {new Date(emailConfirmModal.user.interviewEmailSent.at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column: Live Preview Section */}
+            <div className="lg:w-1/2 p-8 bg-slate-50/50 overflow-y-auto max-h-[750px] scrollbar-none">
+              <EmailDraftPreview user={emailConfirmModal.user} form={emailForm} />
+            </div>
+          </div>
+        )}
+      </ModalContainer >
     </div >
   );
 };

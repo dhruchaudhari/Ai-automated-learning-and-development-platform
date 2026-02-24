@@ -121,6 +121,7 @@ export const UserContextProvider = ({ children }) => {
   }, []);
 
   const [isInterviewMode, setIsInterviewMode] = useState(false);
+  const [isMeritMode, setIsMeritMode] = useState(false);
 
   return (
     <UserContext.Provider value={{
@@ -135,7 +136,9 @@ export const UserContextProvider = ({ children }) => {
       loading,
       lastUpdate,
       isInterviewMode,
-      setIsInterviewMode
+      setIsInterviewMode,
+      isMeritMode,
+      setIsMeritMode
     }}>
       {children}
     </UserContext.Provider>

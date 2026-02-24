@@ -534,11 +534,131 @@ const sendForgotEmail = async (email, name, mobile) => {
   }
 };
 
+// Send interview invite email
+const sendInterviewInviteEmail = async (email, name, scheduledDate, panelName, advertisementTitle, location, helpline, userDetails = {}) => {
+  try {
+    const formattedDate = new Date(scheduledDate).toLocaleDateString('en-IN', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const formattedDob = userDetails.dob ? new Date(userDetails.dob).toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }) : 'N/A';
+
+    const serverUrl = process.env.BASE_URL || 'http://localhost:5000';
+    const profileImageUrl = userDetails.profileImage
+      ? (userDetails.profileImage.startsWith('http') ? userDetails.profileImage : `${serverUrl}${userDetails.profileImage}`)
+      : null;
+
+    const mailOptions = {
+      from: `"Lavya Workshop - Interview Team" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Interview Invitation - ${advertisementTitle || 'Position'}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 40px; overflow: hidden; box-shadow: 0 40px 100px rgba(79, 70, 229, 0.15); border: 2px solid #eef2ff;">
+          <!-- Vibrant Premium Header -->
+          <div style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #4338ca 100%); padding: 60px 40px; text-align: center; position: relative;">
+            <!-- Decorative Elements -->
+            <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
+            <div style="position: absolute; bottom: -30px; left: -30px; width: 100px; height: 100px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
+            
+            <h1 style="color: #ffffff; margin: 0; font-size: 36px; font-weight: 800; letter-spacing: -0.04em; text-shadow: 0 4px 12px rgba(0,0,0,0.15);">Interview Invitation</h1>
+            <p style="color: #e0e7ff; margin: 15px 0 0 0; font-size: 17px; font-weight: 600; letter-spacing: 0.02em;">Shape your professional journey with Lavya Workshop</p>
+          </div>
+          
+          <div style="padding: 50px 40px; background: linear-gradient(to bottom, #ffffff, #f8faff);">
+            <!-- Profile Section -->
+            <div style="text-align: center; margin-bottom: 40px;">
+              <h2 style="margin: 0 0 8px 0; color: #0f172a; font-size: 28px; font-weight: 800; letter-spacing: -0.03em;">${name}</h2>
+              <div style="display: inline-block; padding: 6px 16px; background: #eef2ff; border-radius: 100px; border: 1px solid #e0e7ff;">
+                 <p style="margin: 0; color: #4338ca; font-size: 11px; font-weight: 800; letter-spacing: 0.15em;">Interview Candidate</p>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 40px;">
+              <p style="font-size: 18px; margin-bottom: 20px; color: #1e293b; font-weight: 700; font-style: italic;">Dear ${name},</p>
+              <p style="font-size: 16px; color: #475569; margin-bottom: 0; line-height: 1.8; font-weight: 500;">
+                We are thrilled to extend an official invitation for your upcoming interview. Your background uniquely positions you for success within our dynamic team, and we look forward to exploring your potential contributions.
+              </p>
+            </div>
+            
+            <!-- Logistics Card -->
+            <div style="background: #ffffff; padding: 35px; border-radius: 30px; margin: 40px 0; border: 1px solid #eef2ff; box-shadow: 0 15px 40px rgba(79, 70, 229, 0.05);">
+              <div style="margin-bottom: 30px; border-bottom: 1px solid #f0f4ff; padding-bottom: 15px;">
+                <h3 style="color: #4f46e5; margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.2em; display: inline-block;">
+                  Appointment Logistics
+                </h3>
+              </div>
+              
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; width: 150px; font-weight: 800; letter-spacing: 0.1em;">Target Position</td>
+                  <td style="padding: 15px 0; color: #1e293b; font-weight: 800; font-size: 16px;">${advertisementTitle || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;">Interview Window</td>
+                  <td style="padding: 15px 0; color: #4f46e5; font-weight: 900; font-size: 20px;">${formattedDate}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;">Corporate Venue</td>
+                  <td style="padding: 15px 0; color: #0f172a; font-weight: 700; font-size: 15px; line-height: 1.6;">${location || 'To be announced'}</td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Concierge Support Card -->
+            <div style="background: #0f172a; padding: 35px; border-radius: 30px; color: #ffffff; margin: 40px 0; box-shadow: 0 25px 50px rgba(15, 23, 42, 0.2); position: relative; overflow: hidden;">
+               <div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: rgba(79, 70, 229, 0.1); border-radius: 50%; blur: 40px;"></div>
+               <p style="margin: 0 0 15px 0; color: #6366f1; font-size: 11px; font-weight: 800; letter-spacing: 0.2em;">Concierge Support</p>
+               <table style="width: 100%;">
+                 <tr>
+                   <td style="width: 60px;">
+                      <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; text-align: center; line-height: 50px; font-size: 20px;">📞</div>
+                   </td>
+                   <td>
+                      <span style="font-size: 26px; font-weight: 800; display: block; letter-spacing: -0.01em; color: #ffffff;">${helpline || 'Not assigned'}</span>
+                      <span style="font-size: 10px; color: #475569; font-weight: 700; letter-spacing: 0.15em;">Primary Assistance Line</span>
+                   </td>
+                 </tr>
+               </table>
+            </div>
+
+            
+            <div style="padding-top: 40px; text-align: center; border-top: 1px solid #f0f4ff;">
+              <div style="display: inline-block; padding: 8px 20px; background: #f8faff; border-radius: 100px; border: 1px solid #eef2ff; margin-bottom: 15px;">
+                <p style="margin: 0; color: #6366f1; font-size: 10px; font-weight: 800; letter-spacing: 0.2em;">By Lavya Workshop</p>
+              </div>
+              <p style="color: #64748b; font-size: 12px; margin: 0; font-weight: 600;">Automated Priority Correspondence</p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; padding: 40px; background: #f8faff; color: #64748b; font-size: 12px; border-top: 1px solid #eef2ff;">
+            <p style="margin: 0; font-weight: 600;">© ${new Date().getFullYear()} Lavya Workshop</p>
+          </div>
+        </div>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Interview invite email sent to ${email} `);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`❌ Error sending interview invite email to ${email}: `, error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendVerificationEmail,
   sendRegistrationConfirmation,
   sendStatusUpdateEmail,
   sendPasswordResetEmail,
   sendForgotEmail,
+  sendInterviewInviteEmail,
   transporter
 };

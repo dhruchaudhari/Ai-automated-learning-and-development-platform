@@ -297,7 +297,23 @@ export const userAPI = {
 
   // Assign panel to user for specific advertisement (admin only)
   assignPanel: (id, data) =>
-    api.put(`/users/admin/users/${id}/assign-panel`, data)
+    api.put(`/users/admin/users/${id}/assign-panel`, data),
+
+  // Bulk assign panels - one per advertisement (admin only)
+  assignPanelsBulk: (id, assignments) =>
+    api.put(`/users/admin/users/${id}/assign-panels-bulk`, { assignments }),
+
+  // Schedule interview for a user (admin only)
+  scheduleInterview: (id, data) =>
+    api.put(`/users/admin/users/${id}/schedule-interview`, data),
+
+  // Send interview invite email to a user (admin only)
+  sendInterviewEmail: (id, data) =>
+    api.post(`/users/admin/users/${id}/send-interview-email`, data),
+
+  // Assign interview marks for a specific advertisement (admin only)
+  assignMarks: (id, data) =>
+    api.put(`/users/admin/users/${id}/assign-marks`, data)
 };
 
 // ==================== DEPARTMENT API CALLS ====================

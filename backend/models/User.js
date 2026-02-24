@@ -117,6 +117,11 @@ const educationSchema = new mongoose.Schema({
       trim: true,
       default: ''
     },
+    cgpa: {
+      type: Number,
+      min: 0,
+      max: 10
+    },
     percentage: {
       type: Number,
       min: 0,
@@ -351,6 +356,71 @@ const userSchema = new mongoose.Schema({
     panelId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Panel'
+    },
+    assignedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
+  interviewSchedule: {
+    scheduledDate: {
+      type: Date,
+      default: null
+    },
+    scheduledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    scheduledAt: {
+      type: Date,
+      default: null
+    }
+  },
+
+  interviewEmailSent: {
+    sent: {
+      type: Boolean,
+      default: false
+    },
+    sentAt: {
+      type: Date,
+      default: null
+    },
+    sentBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }
+  },
+
+  interviewMarks: {
+    type: Number,
+    min: 0,
+    max: 100,
+    default: 0
+  },
+
+  advertisementMarks: [{
+    advertisementId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Advertisement',
+      required: true
+    },
+    marks: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0
+    },
+    interviewSchedule: {
+      scheduledDate: { type: Date, default: null },
+      scheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      scheduledAt: { type: Date, default: null }
+    },
+    interviewEmailSent: {
+      sent: { type: Boolean, default: false },
+      sentAt: { type: Date, default: null },
+      sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     },
     assignedAt: {
       type: Date,

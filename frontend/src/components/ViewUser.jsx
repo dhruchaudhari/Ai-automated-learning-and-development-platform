@@ -24,10 +24,13 @@ import {
   FaLightbulb,
   FaPuzzlePiece,
   FaWrench,
-  FaShieldAlt
+  FaShieldAlt,
+  FaClipboardList,
+  FaUsers,
+  FaBullhorn
 } from "react-icons/fa";
 
-const ViewUser = ({ user, onClose, onApprove, onReject, onSetPending, onViewDocument, onViewImage }) => {
+const ViewUser = ({ user, advertisementId, onClose, onApprove, onReject, onSetPending, onViewDocument, onViewImage, onAssignPanel }) => {
   const [imageLoading, setImageLoading] = useState(true);
 
   const formatDate = (dateString) => {
@@ -237,38 +240,52 @@ const ViewUser = ({ user, onClose, onApprove, onReject, onSetPending, onViewDocu
             {user.advertisements && user.advertisements.length > 0 && (
               <div className="bg-purple-50 rounded-xl p-5 border border-purple-100 md:col-span-2">
                 <p className="text-xs text-purple-600 uppercase font-bold tracking-wide mb-3 flex items-center gap-2">
-                  <FaBullhorn /> Applied Advertisements ({user.advertisements.length})
+                  <FaBullhorn /> {advertisementId ? "Applied Advertisement Details" : `Applied Advertisements (${user.advertisements.length})`}
                 </p>
                 <div className="space-y-4">
-                  {user.advertisements.map((ad, idx) => (
-                    <div key={ad._id || idx} className={`${idx !== 0 ? 'pt-4 border-t border-purple-100' : ''}`}>
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-gray-800 font-bold">{ad.title || (typeof ad === 'string' ? 'ID: ' + ad : 'N/A')}</p>
-                            {ad.lastDateToApply && new Date(ad.lastDateToApply) < new Date().setHours(0, 0, 0, 0) && (
-                              <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black uppercase rounded-lg border border-red-200">
-                                Closed
-                              </span>
+                  {user.advertisements
+                    .filter(ad => !advertisementId || ad._id === advertisementId)
+                    .map((ad, idx) => (
+                      <div key={ad._id || idx} className={`${idx !== 0 ? 'pt-4 border-t border-purple-100' : ''}`}>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-gray-800 font-bold">{ad.title || (typeof ad === 'string' ? 'ID: ' + ad : 'N/A')}</p>
+                              {ad.lastDateToApply && new Date(ad.lastDateToApply) < new Date().setHours(0, 0, 0, 0) && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black uppercase rounded-lg border border-red-200">
+                                  Closed
+                                </span>
+                              )}
+                            </div>
+                            {ad.lastDateToApply && (
+                              <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
+                                <FaClock className="text-xs" /> Apply by: {formatDate(ad.lastDateToApply)}
+                              </p>
                             )}
+                            {/* Show interview marks if available for this ad */}
+                            {(() => {
+                              const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                              if (adMark?.interviewMarks !== undefined) {
+                                return (
+                                  <div className="mt-2 inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded border border-amber-200 uppercase tracking-tighter">
+                                    Interview Marks: {parseFloat(adMark.interviewMarks).toFixed(2)} / 100
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
-                          {ad.lastDateToApply && (
-                            <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5">
-                              <FaClock className="text-xs" /> Apply by: {formatDate(ad.lastDateToApply)}
-                            </p>
+                          {ad.detail && (
+                            <button
+                              onClick={() => onViewDocument(ad.detail)}
+                              className="flex items-center justify-center gap-2 px-4 py-1.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-200 hover:bg-purple-200 transition-all w-fit"
+                            >
+                              <FaFilePdf /> View Ad PDF
+                            </button>
                           )}
                         </div>
-                        {ad.detail && (
-                          <button
-                            onClick={() => onViewDocument(ad.detail)}
-                            className="flex items-center justify-center gap-2 px-4 py-1.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-lg border border-purple-200 hover:bg-purple-200 transition-all w-fit"
-                          >
-                            <FaFilePdf /> View Ad PDF
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </div>
             )}
@@ -295,6 +312,55 @@ const ViewUser = ({ user, onClose, onApprove, onReject, onSetPending, onViewDocu
             )}
           </div>
         </div>
+
+        {/* Interview & Panel Assignment - Only show if onAssignPanel is provided (Admin/Interview Mode context) */}
+        {onAssignPanel && (
+          <div className="bg-emerald-50 rounded-xl p-5 border border-emerald-100">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <FaUsers className="text-emerald-600" />
+                Interview Panel Assignment
+              </h3>
+              <button
+                onClick={onAssignPanel}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all text-sm font-bold shadow-md active:scale-95"
+              >
+                <FaClipboardList />
+                {user.panelAssignments?.length > 0 ? "Change Panel Assignment" : "Assign Interview Panel"}
+              </button>
+            </div>
+
+            {user.panelAssignments?.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {user.panelAssignments.map((pa, idx) => (
+                  <div key={idx} className="bg-white rounded-lg p-4 border border-emerald-50 shadow-sm">
+                    <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-2">Panel for Advertisement</p>
+                    <p className="text-sm text-gray-800 font-bold mb-1 truncate">
+                      {pa.advertisementId?.title || "Advertisement ID: " + (pa.advertisementId?._id || pa.advertisementId || "N/A")}
+                    </p>
+                    <div className="flex items-center gap-2 mt-3 p-2 bg-emerald-50/50 rounded-lg border border-emerald-100">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-xs">
+                        P
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-gray-500 font-bold uppercase leading-none mb-1">Assigned Panel</p>
+                        <p className="text-sm text-emerald-700 font-black leading-none">
+                          {pa.panelId?.name || "Panel ID: " + (pa.panelId?._id || pa.panelId || "Assigned")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 bg-white/50 rounded-xl border border-dashed border-emerald-200">
+                <FaClipboardList className="w-10 h-10 text-emerald-200 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 font-medium">No interview panels assigned yet.</p>
+                <p className="text-xs text-gray-400 mt-1">Recommended for candidates marked as ELIGIBLE.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Contact Information */}
         <div className="bg-gray-50 rounded-xl p-5">

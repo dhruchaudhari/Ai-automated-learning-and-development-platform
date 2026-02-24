@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { upload, handleUploadError } = require('../middleware/upload');
 const User = require('../models/User');
+const Advertisement = require('../models/Advertisement');
+const Panel = require('../models/Panel');
 const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailService');
 
@@ -1873,6 +1875,394 @@ router.put('/:id/assign-panel', adminMiddleware, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to assign panel',
+            error: err.message
+        });
+    }
+});
+
+// Admin: Bulk assign panels - one panel per advertisement
+router.put('/admin/users/:id/assign-panels-bulk', adminMiddleware, async (req, res) => {
+    try {
+        const { assignments } = req.body; // [{ advertisementId, panelId }]
+
+        if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Assignments array is required and must not be empty'
+            });
+        }
+
+        // Validate each assignment has both fields
+        const errors = [];
+        assignments.forEach((a, idx) => {
+            if (!a.advertisementId) errors.push(`Assignment ${idx + 1}: Advertisement ID is missing`);
+            if (!a.panelId) errors.push(`Assignment ${idx + 1}: Panel ID is missing`);
+        });
+
+        if (errors.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors
+            });
+        }
+
+        const user = await User.findById(req.params.id).populate('advertisements');
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Validate that all advertisement IDs belong to this user
+        const userAdIds = new Set(
+            (user.advertisements || []).filter(Boolean).map(ad => ad._id.toString())
+        );
+        const invalidAds = assignments.filter(a => {
+            if (!a.advertisementId) return true;
+            return !userAdIds.has(a.advertisementId.toString());
+        });
+
+        if (invalidAds.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Some advertisements do not belong to this user or are invalid'
+            });
+        }
+
+        // Validate that all panel IDs exist
+        const panelIds = assignments.map(a => a.panelId);
+        const existingPanels = await Panel.find({ _id: { $in: panelIds } });
+        if (existingPanels.length !== new Set(panelIds).size) {
+            return res.status(400).json({
+                success: false,
+                message: 'One or more panels do not exist'
+            });
+        }
+
+        // Replace all panel assignments
+        user.panelAssignments = assignments.map(a => ({
+            advertisementId: a.advertisementId,
+            panelId: a.panelId,
+            assignedAt: Date.now()
+        }));
+
+        await user.save();
+
+        const updatedUser = await User.findById(req.params.id)
+            .populate('advertisements')
+            .populate('panelAssignments.advertisementId')
+            .populate('panelAssignments.panelId');
+
+        if (!updatedUser) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found after update'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `${assignments.length} panel(s) assigned successfully`,
+            user: updatedUser
+        });
+
+    } catch (err) {
+        console.error('Bulk assign panels error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to bulk assign panels',
+            error: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
+    }
+});
+
+// Admin: Schedule interview for a user
+router.put('/admin/users/:id/schedule-interview', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { scheduledDate, advertisementId, advertisementIds } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        if (!scheduledDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Scheduled date is required'
+            });
+        }
+
+        const user = await User.findById(id).populate('advertisements');
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Validate scheduled date is after the last advertisement deadline
+        const ads = user.advertisements || [];
+        if (ads.length > 0) {
+            const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
+            const schedDate = new Date(scheduledDate);
+            // Compare date-only (ignore time)
+            const deadlineDateOnly = new Date(latestDeadline.getFullYear(), latestDeadline.getMonth(), latestDeadline.getDate());
+            const scheduleDateOnly = new Date(schedDate.getFullYear(), schedDate.getMonth(), schedDate.getDate());
+
+            if (scheduleDateOnly <= deadlineDateOnly) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Interview date must be after the last advertisement deadline (${latestDeadline.toLocaleDateString('en-IN')})`
+                });
+            }
+        }
+
+        const scheduleData = {
+            scheduledDate: new Date(scheduledDate),
+            scheduledBy: req.userId,
+            scheduledAt: new Date()
+        };
+
+        const targetAdIds = advertisementIds || (advertisementId ? [advertisementId] : []);
+
+        if (targetAdIds.length > 0) {
+            // Update individual advertisementMarks
+            targetAdIds.forEach(adId => {
+                const adIndex = user.advertisementMarks.findIndex(am => am.advertisementId.toString() === adId.toString());
+                if (adIndex !== -1) {
+                    user.advertisementMarks[adIndex].interviewSchedule = scheduleData;
+                } else {
+                    user.advertisementMarks.push({
+                        advertisementId: adId,
+                        interviewSchedule: scheduleData
+                    });
+                }
+            });
+            await user.save();
+        } else {
+            // Backward compatibility / Global schedule (update only if no specific ads target)
+            user.interviewSchedule = scheduleData;
+            await user.save();
+        }
+
+        const updatedUser = await User.findById(id).populate('advertisements').select('-password -__v');
+
+        res.json({
+            success: true,
+            message: 'Interview scheduled successfully',
+            user: updatedUser
+        });
+    } catch (err) {
+        console.error('Schedule interview error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to schedule interview',
+            error: err.message
+        });
+    }
+});
+
+// Admin: Send interview invite email to a user
+router.post('/admin/users/:id/send-interview-email', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { location, helpline, advertisementId, advertisementIds } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        const user = await User.findById(id).populate('advertisements');
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User find failed'
+            });
+        }
+
+        const targetAdIds = advertisementIds || (advertisementId ? [advertisementId] : []);
+        let scheduleInfo;
+        let selectedAds = [];
+
+        if (targetAdIds.length > 0) {
+            selectedAds = user.advertisements.filter(ad => targetAdIds.some(id => id.toString() === ad._id.toString()));
+
+            // For email content, we'll use the schedule from the first selected ad if multi-ad
+            // (Assuming they are scheduled for the same time if sent together)
+            const firstAdMark = user.advertisementMarks.find(am => am.advertisementId.toString() === targetAdIds[0].toString());
+            scheduleInfo = firstAdMark?.interviewSchedule;
+        } else {
+            scheduleInfo = user.interviewSchedule;
+            selectedAds = user.advertisements;
+        }
+
+        if (!scheduleInfo?.scheduledDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Interview must be scheduled before sending an email'
+            });
+        }
+
+        if (!location || !helpline) {
+            return res.status(400).json({
+                success: false,
+                message: 'Interview location and helpline contact are required'
+            });
+        }
+
+        // Validate panel assignment for selected ads
+        for (const adId of targetAdIds) {
+            const hasPanel = user.panelAssignments && user.panelAssignments.some(pa => pa.advertisementId.toString() === adId.toString());
+            if (!hasPanel) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Advertisement "${user.advertisements.find(a => a._id.toString() === adId.toString())?.title}" must have an assigned panel.`
+                });
+            }
+        }
+
+        // Get panel name (from first ad for simplicity in email)
+        let panelName = null;
+        if (targetAdIds.length > 0) {
+            const firstAssignment = user.panelAssignments.find(pa => pa.advertisementId.toString() === targetAdIds[0].toString());
+            if (firstAssignment?.panelId) {
+                const panel = await Panel.findById(firstAssignment.panelId);
+                panelName = panel?.name;
+            }
+        } else if (user.panelAssignments?.length > 0) {
+            const panel = await Panel.findById(user.panelAssignments[0].panelId);
+            panelName = panel?.name;
+        }
+
+        const adTitles = selectedAds.map(ad => ad.title).join(', ');
+
+        const emailResult = await emailService.sendInterviewInvitation(
+            user.email,
+            {
+                fullName: user.fullName,
+                scheduledDate: scheduleInfo.scheduledDate,
+                location,
+                helpline,
+                advertisementTitle: adTitles,
+                panelName
+            }
+        );
+
+        if (!emailResult.success) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to send interview email',
+                error: emailResult.error
+            });
+        }
+
+        const emailSentData = {
+            sent: true,
+            sentAt: new Date(),
+            sentBy: req.userId
+        };
+
+        if (targetAdIds.length > 0) {
+            targetAdIds.forEach(adId => {
+                const adIndex = user.advertisementMarks.findIndex(am => am.advertisementId.toString() === adId.toString());
+                if (adIndex !== -1) {
+                    user.advertisementMarks[adIndex].interviewEmailSent = emailSentData;
+                } else {
+                    user.advertisementMarks.push({
+                        advertisementId: adId,
+                        interviewEmailSent: emailSentData
+                    });
+                }
+            });
+        } else {
+            user.interviewEmailSent = emailSentData;
+        }
+
+        await user.save();
+        const updatedUser = await User.findById(id).populate('advertisements').select('-password -__v');
+
+        res.json({
+            success: true,
+            message: 'Interview invite email sent successfully',
+            user: updatedUser
+        });
+    } catch (err) {
+        console.error('Send interview email error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to send interview email',
+            error: err.message
+        });
+    }
+});
+
+// Admin: Assign interview marks for a specific advertisement
+router.put('/admin/users/:id/assign-marks', adminMiddleware, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { marks, advertisementId } = req.body;
+
+        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format'
+            });
+        }
+
+        if (marks === undefined || !advertisementId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Marks and advertisementId are required'
+            });
+        }
+
+        const user = await User.findById(id);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const adIndex = user.advertisementMarks.findIndex(am => am.advertisementId.toString() === advertisementId);
+
+        if (adIndex !== -1) {
+            user.advertisementMarks[adIndex].marks = marks;
+            user.advertisementMarks[adIndex].assignedAt = new Date();
+        } else {
+            user.advertisementMarks.push({
+                advertisementId,
+                marks,
+                assignedAt: new Date()
+            });
+        }
+
+        // Keep root level marks updated for backward compatibility
+        user.interviewMarks = marks;
+
+        await user.save();
+        const updatedUser = await User.findById(id).select('-password -__v').populate('advertisements');
+
+        res.json({
+            success: true,
+            message: 'Marks assigned successfully',
+            user: updatedUser
+        });
+    } catch (err) {
+        console.error('Assign marks error:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to assign marks',
             error: err.message
         });
     }

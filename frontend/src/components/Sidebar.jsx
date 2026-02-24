@@ -16,7 +16,7 @@ const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, isAdmin } = useAuth();
-  const { isInterviewMode } = useUserContext();
+  const { isInterviewMode, isMeritMode } = useUserContext();
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -47,12 +47,12 @@ const Sidebar = () => {
       icon: <HomeIcon className="w-5 h-5" />,
     },
     {
-      name: isInterviewMode ? 'Interview Scheduling for Eligible Candidates' : 'Application screening for eligibility',
+      name: isMeritMode ? 'Merit list and individual fitness generation' : isInterviewMode ? 'Interview Scheduling for Eligible Candidates' : 'Application screening for eligibility',
       path: '/grid',
       icon: <UsersIcon className="w-5 h-5" />,
     },
     {
-      name: 'Department & Job Descriptions',
+      name: 'Jobs, Departments & Roles superintendence',
       path: '/jobs',
       icon: <BriefcaseIcon className="w-5 h-5" />,
     },
