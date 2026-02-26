@@ -108,10 +108,10 @@ const PanelDisplay = ({ panels, loading }) => {
                                                 </div>
                                                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
                                                     <div className="flex items-center gap-1 text-[9px] text-gray-500 font-medium">
-                                                        <FaBuilding className={`${color.icon} w-2.5`} /> {expert.department}
+                                                        <FaBuilding className={`${color.icon} w-2.5`} /> {expert.department?.name || expert.department || 'N/A'}
                                                     </div>
                                                     <div className="flex items-center gap-1 text-[9px] text-gray-500 font-medium">
-                                                        <FaBriefcase className={`${color.icon} w-2.5`} /> {expert.role}
+                                                        <FaBriefcase className={`${color.icon} w-2.5`} /> {expert.role || 'N/A'}
                                                     </div>
                                                     <div className="flex items-center gap-1 text-[9px] text-gray-700 font-semibold">
                                                         <FaClock className={`${color.icon} w-2.5`} /> {expert.seniority}Y Exp

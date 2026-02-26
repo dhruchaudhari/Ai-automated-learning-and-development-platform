@@ -34,7 +34,7 @@ export const UserContextProvider = ({ children }) => {
     navigate('/login');
   };
 
-  const refreshUsers = async () => {
+  const refreshUsers = async (silent = false) => {
     const token = getToken();
 
     if (!token) {
@@ -43,9 +43,15 @@ export const UserContextProvider = ({ children }) => {
     }
 
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await userAPI.getAdminUsers();
-      const usersWithActivation = res.data.data
+      const usersData = res.data?.data;
+      if (!Array.isArray(usersData)) {
+        console.warn("Unexpected response format from admin users API");
+        if (!silent) toast.error("Unexpected response from server");
+        return;
+      }
+      const usersWithActivation = usersData
         .filter(user => user.role !== 'admin')
         .map(user => ({
           ...user,
@@ -59,11 +65,11 @@ export const UserContextProvider = ({ children }) => {
       if (err.response?.status === 401) {
         toast.error("Session expired. Please login again.");
         logout();
-      } else {
+      } else if (!silent) {
         toast.error("Failed to refresh users");
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -105,7 +111,7 @@ export const UserContextProvider = ({ children }) => {
   useEffect(() => {
     const token = getToken();
     if (token) {
-      refreshUsers();
+      refreshUsers(); // Initial load — non-silent, shows errors
     }
   }, []);
 
@@ -113,7 +119,7 @@ export const UserContextProvider = ({ children }) => {
     const token = getToken();
     if (token) {
       const interval = setInterval(() => {
-        refreshUsers();
+        refreshUsers(true); // Background poll — silent, suppresses error toasts
       }, 30000);
 
       return () => clearInterval(interval);

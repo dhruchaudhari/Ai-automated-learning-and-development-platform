@@ -46,11 +46,11 @@ const ConfirmationModal = ({
   const styles = getTypeStyles();
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto animate-fade-in">
+    <div className="fixed inset-0 z-[100] overflow-y-auto animate-fade-in">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         {/* Overlay */}
-        <div 
-          className="fixed inset-0 transition-opacity bg-black bg-opacity-70" 
+        <div
+          className="fixed inset-0 transition-opacity bg-black bg-opacity-70"
           onClick={onClose}
         />
 
@@ -66,7 +66,7 @@ const ConfirmationModal = ({
                 <FaTimes className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="flex flex-col items-center text-center py-4">
               {/* ✅ ADDED: Custom icon support */}
               {icon ? (
@@ -78,7 +78,7 @@ const ConfirmationModal = ({
                   {styles.icon}
                 </div>
               )}
-              
+
               <p className="text-gray-600 mb-6">{message}</p>
             </div>
           </div>

@@ -28,18 +28,20 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/mernapp',
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const departmentRoutes = require('./routes/departments');
-const jobDescriptionRoutes = require('./routes/jobDescriptions');
+const jobRoutes = require('./routes/jobs');
 const degreeOptionRoutes = require('./routes/degreeOptions');
 const advertisementRoutes = require('./routes/advertisements');
 const panelRoutes = require('./routes/panels');
+const roleRoutes = require('./routes/roles');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
-app.use('/api/job-descriptions', jobDescriptionRoutes);
+app.use('/api/jobs', jobRoutes);
 app.use('/api/degree-options', degreeOptionRoutes);
 app.use('/api/advertisements', advertisementRoutes);
 app.use('/api/panels', panelRoutes);
+app.use('/api/roles', roleRoutes);
 
 
 const PORT = process.env.PORT || 5000;

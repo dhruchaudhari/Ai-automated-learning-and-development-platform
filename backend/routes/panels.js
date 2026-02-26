@@ -8,7 +8,9 @@ const { auth, admin } = require('../middleware/auth');
 // @access  Private/Admin
 router.get('/', [auth, admin], async (req, res) => {
     try {
-        const panels = await Panel.find().sort({ createdAt: -1 });
+        const panels = await Panel.find()
+            .populate('experts.department', 'name')
+            .sort({ createdAt: -1 });
         res.json({ success: true, count: panels.length, data: panels });
     } catch (err) {
         console.error('Error fetching panels:', err.message);
@@ -33,6 +35,8 @@ router.post('/', [auth, admin], async (req, res) => {
 
         const newPanel = new Panel({ name, experts });
         await newPanel.save();
+
+        await newPanel.populate('experts.department', 'name');
 
         res.status(201).json({ success: true, data: newPanel });
     } catch (err) {
@@ -69,7 +73,7 @@ router.put('/:id', [auth, admin], async (req, res) => {
             req.params.id,
             { name, experts },
             { new: true, runValidators: true }
-        );
+        ).populate('experts.department', 'name');
 
         res.json({ success: true, data: panel });
     } catch (err) {

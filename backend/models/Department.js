@@ -1,19 +1,35 @@
-const mongoose = require('mongoose');
+// models/Department.js
+
+const mongoose = require("mongoose");
 
 const departmentSchema = new mongoose.Schema({
+
     name: {
         type: String,
-        required: [true, 'Department name is required'],
-        unique: true,
-        trim: true
+        required: true,
+        trim: true,
+        unique: true
     },
+
+    code: {
+        type: String,
+        required: true,
+        uppercase: true,
+        unique: true,
+        index: true
+    },
+
     description: {
         type: String,
-        default: '',
         trim: true
-    }
-}, {
-    timestamps: true
-});
+    },
 
-module.exports = mongoose.model('Department', departmentSchema);
+    parentDepartment: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Department",
+        default: null
+    }
+
+}, { timestamps: true });
+
+module.exports = mongoose.model("Department", departmentSchema);

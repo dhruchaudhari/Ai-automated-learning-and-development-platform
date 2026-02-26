@@ -589,7 +589,12 @@ const UserGrid = () => {
         setLoading(true);
         // Use admin API to get all users
         const res = await userAPI.getAdminUsers();
-        const usersWithActivation = res.data.data
+        const rawData = res.data?.data;
+        if (!Array.isArray(rawData)) {
+          console.warn("Unexpected response format from admin users API in UserGrid");
+          return;
+        }
+        const usersWithActivation = rawData
           .filter(user => user.role !== 'admin')
           .map(user => ({
             ...user,
@@ -598,7 +603,9 @@ const UserGrid = () => {
         setUsers(usersWithActivation);
       } catch (err) {
         console.error("Error fetching users:", err);
-        toast.error("Failed to load users. You may not have admin access.");
+        if (err.response?.status !== 401) {
+          toast.error("Failed to load users. You may not have admin access.");
+        }
       } finally {
         setLoading(false);
       }
@@ -1444,9 +1451,23 @@ const UserGrid = () => {
   const meritStats = useMemo(() => {
     const eligibleUsers = users.filter(u => u.status === 'eligible');
     const emailSentUsers = eligibleUsers.filter(u => u.interviewEmailSent?.sent);
+
+    // Check if ALL eligible users have at least one advertisement with both scheduled + email sent
+    const allReady = eligibleUsers.length > 0 && eligibleUsers.every(user => {
+      const adMarks = user.advertisementMarks || [];
+      // User must have at least one ad where interview is scheduled AND email is sent
+      return adMarks.some(am =>
+        am.interviewSchedule?.scheduledDate && am.interviewEmailSent?.sent
+      ) || (
+          // Backward compatibility: check global fields
+          user.interviewSchedule?.scheduledDate && user.interviewEmailSent?.sent
+        );
+    });
+
     return {
       sent: emailSentUsers.length,
-      total: eligibleUsers.length
+      total: eligibleUsers.length,
+      canProceedToMerit: allReady
     };
   }, [users]);
 
@@ -2478,8 +2499,19 @@ const UserGrid = () => {
               </div>
 
               <button
-                onClick={() => setIsMeritMode(true)}
-                className="px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 bg-gradient-to-r from-indigo-700 to-indigo-900 text-white hover:from-indigo-600 hover:to-indigo-800 focus:ring-indigo-500"
+                onClick={() => {
+                  if (!meritStats.canProceedToMerit) {
+                    toast.error('All eligible candidates must have interview scheduled and email sent for at least one advertisement before proceeding to merit.');
+                    return;
+                  }
+                  setIsMeritMode(true);
+                }}
+                disabled={!meritStats.canProceedToMerit}
+                className={`px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${meritStats.canProceedToMerit
+                    ? 'bg-gradient-to-r from-indigo-700 to-indigo-900 text-white hover:from-indigo-600 hover:to-indigo-800 hover:shadow-xl active:scale-95 focus:ring-indigo-500 cursor-pointer'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                title={!meritStats.canProceedToMerit ? 'All eligible candidates must have interview scheduled and email sent for at least one advertisement' : 'Proceed to Merit Procedure'}
               >
                 Merit Procedure
               </button>
@@ -2815,11 +2847,11 @@ const UserGrid = () => {
                                         <div className="flex flex-wrap gap-x-4 gap-y-1">
                                           <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
                                             <FaBriefcase className="size-3 text-gray-400" />
-                                            {expert.role}
+                                            {expert.role || 'N/A'}
                                           </span>
                                           <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
                                             <FaBuilding className="size-3 text-gray-400" />
-                                            {expert.department}
+                                            {expert.department?.name || expert.department || 'N/A'}
                                           </span>
                                         </div>
                                       </div>
@@ -3128,7 +3160,7 @@ const UserGrid = () => {
                 return (
                   <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <p className="text-xs text-amber-700">
-                      <strong>Note:</strong> Interview date must be after the last advertisement deadline:
+                      <strong>Note:</strong> Interview date must be at least 5 days after the last advertisement deadline:
                       <span className="font-bold ml-1">{latestDeadline.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                     </p>
                   </div>
@@ -3150,7 +3182,7 @@ const UserGrid = () => {
                     if (ads.length > 0) {
                       const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
                       const minDate = new Date(latestDeadline);
-                      minDate.setDate(minDate.getDate() + 1);
+                      minDate.setDate(minDate.getDate() + 5); // Minimum 5 days after deadline
                       return minDate.toISOString().split('T')[0];
                     }
                     return new Date().toISOString().split('T')[0];

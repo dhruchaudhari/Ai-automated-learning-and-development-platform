@@ -2007,19 +2007,21 @@ router.put('/admin/users/:id/schedule-interview', adminMiddleware, async (req, r
             });
         }
 
-        // Validate scheduled date is after the last advertisement deadline
+        // Validate scheduled date is at least 5 days after the last advertisement deadline
         const ads = user.advertisements || [];
         if (ads.length > 0) {
             const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
             const schedDate = new Date(scheduledDate);
             // Compare date-only (ignore time)
             const deadlineDateOnly = new Date(latestDeadline.getFullYear(), latestDeadline.getMonth(), latestDeadline.getDate());
+            const minAllowedDate = new Date(deadlineDateOnly);
+            minAllowedDate.setDate(minAllowedDate.getDate() + 5); // Must be at least 5 days after
             const scheduleDateOnly = new Date(schedDate.getFullYear(), schedDate.getMonth(), schedDate.getDate());
 
-            if (scheduleDateOnly <= deadlineDateOnly) {
+            if (scheduleDateOnly < minAllowedDate) {
                 return res.status(400).json({
                     success: false,
-                    message: `Interview date must be after the last advertisement deadline (${latestDeadline.toLocaleDateString('en-IN')})`
+                    message: `Interview date must be at least 5 days after the last advertisement deadline (${latestDeadline.toLocaleDateString('en-IN')})`
                 });
             }
         }

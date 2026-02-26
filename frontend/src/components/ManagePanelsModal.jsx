@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { panelAPI } from '../utils/api';
+import React, { useState, useEffect } from 'react';
+import { panelAPI, departmentAPI } from '../utils/api';
 import { toast } from 'react-hot-toast';
 import {
     FaTimes,
@@ -41,9 +41,23 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
     // Delete confirmation
     const [deleteId, setDeleteId] = useState(null);
 
+    const [departments, setDepartments] = useState([]);
+
     useEffect(() => {
-        if (isOpen) fetchPanels();
+        if (isOpen) {
+            fetchPanels();
+            fetchDepartments();
+        }
     }, [isOpen]);
+
+    const fetchDepartments = async () => {
+        try {
+            const res = await departmentAPI.getAll();
+            setDepartments(res.data.data || []);
+        } catch (err) {
+            console.error('Failed to fetch departments', err);
+        }
+    };
 
     const fetchPanels = async () => {
         try {
@@ -73,8 +87,8 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                 const num = Number(seniorVal);
                 if (isNaN(num)) {
                     errors.seniority = 'Must be a number';
-                } else if (num < 5) {
-                    errors.seniority = 'Minimum 5 years required';
+                } else if (num < 1) {
+                    errors.seniority = 'Minimum 1 year required';
                 }
             }
             return errors;
@@ -148,7 +162,13 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
     // ─── Edit Panel Logic ──────────────────────
     const startEdit = (panel) => {
         setEditId(panel._id);
-        const expertsCopy = JSON.parse(JSON.stringify(panel.experts));
+        const expertsCopy = panel.experts.map(e => ({
+            ...e,
+            department: e.department?._id || e.department,
+            role: e.role?.title || e.role || ''
+        }));
+
+
         setEditData({ name: panel.name || '', experts: expertsCopy });
         setEditErrors(validateExperts(expertsCopy));
         setEditNameError(validatePanelName(panel.name || ''));
@@ -317,13 +337,16 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                                                         </div>
                                                         <div>
                                                             <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Department <span className="text-red-500">*</span></label>
-                                                            <input
-                                                                type="text"
-                                                                placeholder="e.g. Engineering"
+                                                            <select
                                                                 value={expert.department}
                                                                 onChange={e => handleNewExpertChange(idx, 'department', e.target.value)}
                                                                 className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:bg-white focus:ring-2 outline-none transition-all ${newPanelErrors[idx]?.department ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:ring-blue-100'}`}
-                                                            />
+                                                            >
+                                                                <option value="">Select Department</option>
+                                                                {departments.map(dept => (
+                                                                    <option key={dept._id} value={dept._id}>{dept.name}</option>
+                                                                ))}
+                                                            </select>
                                                             {newPanelErrors[idx]?.department && (
                                                                 <p className="text-[11px] text-red-500 mt-1 ml-1 flex items-center gap-1">
                                                                     <FaExclamationCircle className="text-[10px]" /> {newPanelErrors[idx].department}
@@ -331,10 +354,10 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Role <span className="text-red-500">*</span></label>
+                                                            <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Role / Designation <span className="text-red-500">*</span></label>
                                                             <input
                                                                 type="text"
-                                                                placeholder="e.g. Tech Lead"
+                                                                placeholder="e.g. Professor, HOD, Sr. Engineer"
                                                                 value={expert.role}
                                                                 onChange={e => handleNewExpertChange(idx, 'role', e.target.value)}
                                                                 className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:bg-white focus:ring-2 outline-none transition-all ${newPanelErrors[idx]?.role ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:ring-blue-100'}`}
@@ -349,8 +372,8 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                                                             <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Exp (years) <span className="text-red-500">*</span></label>
                                                             <input
                                                                 type="number"
-                                                                placeholder="5"
-                                                                min="5"
+                                                                placeholder="1"
+                                                                min="1"
                                                                 value={expert.seniority}
                                                                 onChange={e => handleNewExpertChange(idx, 'seniority', e.target.value)}
                                                                 className={`w-full px-4 py-2 bg-gray-50 border rounded-lg text-sm focus:bg-white focus:ring-2 outline-none transition-all ${newPanelErrors[idx]?.seniority ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:ring-blue-100'}`}
@@ -511,18 +534,23 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                                                                                 </div>
                                                                                 <div>
                                                                                     <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Department <span className="text-red-500">*</span></label>
-                                                                                    <input
-                                                                                        type="text"
+                                                                                    <select
                                                                                         value={expert.department}
                                                                                         onChange={e => handleEditExpertChange(idx, 'department', e.target.value)}
                                                                                         className={`w-full px-4 py-2 border rounded-lg text-sm focus:ring-2 outline-none transition-all ${editErrors[idx]?.department ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:ring-blue-100'}`}
-                                                                                    />
+                                                                                    >
+                                                                                        <option value="">Select Department</option>
+                                                                                        {departments.map(dept => (
+                                                                                            <option key={dept._id} value={dept._id}>{dept.name}</option>
+                                                                                        ))}
+                                                                                    </select>
                                                                                     {editErrors[idx]?.department && <p className="text-[11px] text-red-500 mt-1 ml-1 flex items-center gap-1"><FaExclamationCircle className="text-[10px]" /> {editErrors[idx].department}</p>}
                                                                                 </div>
                                                                                 <div>
-                                                                                    <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Role <span className="text-red-500">*</span></label>
+                                                                                    <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Role / Designation <span className="text-red-500">*</span></label>
                                                                                     <input
                                                                                         type="text"
+                                                                                        placeholder="e.g. Professor, HOD, Sr. Engineer"
                                                                                         value={expert.role}
                                                                                         onChange={e => handleEditExpertChange(idx, 'role', e.target.value)}
                                                                                         className={`w-full px-4 py-2 border rounded-lg text-sm focus:ring-2 outline-none transition-all ${editErrors[idx]?.role ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:ring-blue-100'}`}
@@ -533,7 +561,7 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                                                                                     <label className="text-[11px] text-gray-500 ml-1 mb-1 block">Exp (years) <span className="text-red-500">*</span></label>
                                                                                     <input
                                                                                         type="number"
-                                                                                        min="5"
+                                                                                        min="1"
                                                                                         value={expert.seniority}
                                                                                         onChange={e => handleEditExpertChange(idx, 'seniority', e.target.value)}
                                                                                         className={`w-full px-4 py-2 border rounded-lg text-sm focus:ring-2 outline-none transition-all ${editErrors[idx]?.seniority ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:ring-blue-100'}`}
@@ -575,10 +603,10 @@ const ManagePanelsModal = ({ isOpen, onClose, onRefresh }) => {
                                                                             {expert.name}
                                                                         </div>
                                                                         <div className="flex items-center gap-2 text-xs text-gray-500 relative z-10">
-                                                                            <FaBuilding className="text-blue-300 w-3" /> {expert.department}
+                                                                            <FaBuilding className="text-blue-300 w-3" /> {expert.department?.name || 'N/A'}
                                                                         </div>
                                                                         <div className="flex items-center gap-2 text-xs text-gray-500 relative z-10">
-                                                                            <FaBriefcase className="text-blue-300 w-3" /> {expert.role}
+                                                                            <FaBriefcase className="text-blue-300 w-3" /> {expert.role || 'N/A'}
                                                                         </div>
                                                                         <div className="flex items-center gap-2 text-xs text-gray-500 relative z-10">
                                                                             <FaClock className="text-blue-300 w-3" /> {expert.seniority} Years exp.

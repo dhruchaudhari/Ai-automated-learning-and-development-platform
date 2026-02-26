@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Advertisement = require('../models/Advertisement');
 const User = require('../models/User');
+const Job = require('../models/Job');
+const Role = require('../models/Role');
+const Department = require('../models/Department');
+const DegreeOption = require('../models/DegreeOption');
 const { upload, handleUploadError } = require('../middleware/upload');
 const jwt = require('jsonwebtoken');
 
@@ -10,7 +14,24 @@ const { auth: authMiddleware, admin: adminMiddleware } = require('../middleware/
 // GET all advertisements
 router.get('/', async (req, res) => {
     try {
-        const ads = await Advertisement.find().populate('createdBy', 'fullName').sort({ createdAt: -1 });
+        const ads = await Advertisement.find()
+            .populate('createdBy', 'fullName')
+            .populate('department')
+            .populate({
+                path: 'role',
+                populate: { path: 'criteriaSet.specificDegrees' }
+            })
+            .populate({
+                path: 'job',
+                populate: [
+                    {
+                        path: 'role',
+                        populate: { path: 'criteriaSet.specificDegrees' }
+                    },
+                    { path: 'department' }
+                ]
+            })
+            .sort({ createdAt: -1 });
         res.json({ success: true, data: ads });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -20,15 +41,56 @@ router.get('/', async (req, res) => {
 // GET active advertisements
 router.get('/active', async (req, res) => {
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const ads = await Advertisement.find({
-            isActive: true,
-            lastDateToApply: { $gte: today }
-        }).sort({ createdAt: -1 });
-
+        const ads = await Advertisement.find({ isActive: true })
+            .populate('createdBy', 'fullName')
+            .populate('department')
+            .populate({
+                path: 'role',
+                populate: { path: 'criteriaSet.specificDegrees' }
+            })
+            .populate({
+                path: 'job',
+                populate: [
+                    {
+                        path: 'role',
+                        populate: { path: 'criteriaSet.specificDegrees' }
+                    },
+                    { path: 'department' }
+                ]
+            })
+            .sort({ createdAt: -1 });
         res.json({ success: true, data: ads });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET single advertisement
+router.get('/:id', async (req, res) => {
+    try {
+        const ad = await Advertisement.findById(req.params.id)
+            .populate('createdBy', 'fullName')
+            .populate('department')
+            .populate({
+                path: 'role',
+                populate: { path: 'criteriaSet.specificDegrees' }
+            })
+            .populate({
+                path: 'job',
+                populate: [
+                    {
+                        path: 'role',
+                        populate: { path: 'criteriaSet.specificDegrees' }
+                    },
+                    { path: 'department' }
+                ]
+            });
+
+        if (!ad) {
+            return res.status(404).json({ success: false, message: 'Advertisement not found' });
+        }
+
+        res.json({ success: true, data: ad });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -37,21 +99,51 @@ router.get('/active', async (req, res) => {
 // POST create advertisement
 router.post('/', authMiddleware, adminMiddleware, upload.single('document'), handleUploadError, async (req, res) => {
     try {
-        const { title, lastDateToApply, isActive } = req.body;
+        const { lastDateToApply, isActive, job } = req.body;
 
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'Advertisement PDF is required' });
         }
 
+        if (!job) {
+            return res.status(400).json({ success: false, message: 'Job selection is required' });
+        }
+
+        // Fetch job to get role and department
+        const Job = require('../models/Job');
+        const jobData = await Job.findById(job).populate('role');
+        if (!jobData) {
+            return res.status(404).json({ success: false, message: 'Selected job not found' });
+        }
+
         const newAd = new Advertisement({
-            title,
+            title: jobData.role?.title || 'Untitled Position',
             detail: req.file.path,
-            lastDateToApply,
+            lastDateToApply: lastDateToApply || jobData.applicationDeadline,
             isActive: isActive === 'true' || isActive === true,
-            createdBy: req.userId
+            createdBy: req.userId,
+            department: jobData.department,
+            role: jobData.role?._id,
+            job: job
         });
 
         await newAd.save();
+        await newAd.populate('department');
+        await newAd.populate({
+            path: 'role',
+            populate: { path: 'criteriaSet.specificDegrees' }
+        });
+        await newAd.populate({
+            path: 'job',
+            populate: [
+                {
+                    path: 'role',
+                    populate: { path: 'criteriaSet.specificDegrees' }
+                },
+                { path: 'department' }
+            ]
+        });
+
         res.status(201).json({ success: true, data: newAd });
     } catch (error) {
         if (error.code === 11000) {
@@ -64,19 +156,53 @@ router.post('/', authMiddleware, adminMiddleware, upload.single('document'), han
 // PUT update advertisement
 router.put('/:id', authMiddleware, adminMiddleware, upload.single('document'), handleUploadError, async (req, res) => {
     try {
-        const { title, lastDateToApply, isActive } = req.body;
+        const { lastDateToApply, isActive, job } = req.body;
+
+        const Job = require('../models/Job');
+        let jobData = null;
+        if (job) {
+            jobData = await Job.findById(job).populate('role');
+            if (!jobData) {
+                return res.status(404).json({ success: false, message: 'Selected job not found' });
+            }
+        }
+
         const updateData = {
-            title,
-            lastDateToApply,
             isActive: isActive === 'true' || isActive === true,
-            updatedBy: req.userId
+            updatedBy: req.userId,
         };
+
+        if (jobData) {
+            updateData.job = job;
+            updateData.title = jobData.role?.title || 'Untitled Position';
+            updateData.department = jobData.department;
+            updateData.role = jobData.role?._id;
+            updateData.lastDateToApply = lastDateToApply || jobData.applicationDeadline;
+        } else if (lastDateToApply) {
+            updateData.lastDateToApply = lastDateToApply;
+        }
 
         if (req.file) {
             updateData.detail = req.file.path;
         }
 
-        const ad = await Advertisement.findByIdAndUpdate(req.params.id, updateData, { new: true });
+        const ad = await Advertisement.findByIdAndUpdate(req.params.id, updateData, { new: true })
+            .populate('department')
+            .populate({
+                path: 'role',
+                populate: { path: 'criteriaSet.specificDegrees' }
+            })
+            .populate({
+                path: 'job',
+                populate: [
+                    {
+                        path: 'role',
+                        populate: { path: 'criteriaSet.specificDegrees' }
+                    },
+                    { path: 'department' }
+                ]
+            });
+
         if (!ad) return res.status(404).json({ success: false, message: 'Advertisement not found' });
 
         res.json({ success: true, data: ad });

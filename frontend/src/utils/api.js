@@ -324,13 +324,22 @@ export const departmentAPI = {
   delete: (id) => api.delete(`/departments/${id}`)
 };
 
-// ==================== JOB DESCRIPTION API CALLS ====================
-export const jobDescriptionAPI = {
-  getByDepartment: (departmentId) => api.get(`/job-descriptions?department=${departmentId}`),
-  getAll: () => api.get('/job-descriptions'),
-  create: (data) => api.post('/job-descriptions', data),
-  update: (id, data) => api.put(`/job-descriptions/${id}`, data),
-  delete: (id) => api.delete(`/job-descriptions/${id}`)
+// ==================== JOB API CALLS ====================
+export const jobAPI = {
+  getByDepartment: (departmentId) => api.get(`/jobs?department=${departmentId}`),
+  getAll: () => api.get('/jobs'),
+  create: (data) => api.post('/jobs', data),
+  update: (id, data) => api.put(`/jobs/${id}`, data),
+  delete: (id) => api.delete(`/jobs/${id}`)
+};
+
+// ==================== ROLE API CALLS ====================
+export const roleAPI = {
+  getByDepartment: (departmentId) => api.get(`/roles?department=${departmentId}`),
+  getAll: () => api.get('/roles'),
+  create: (data) => api.post('/roles', data),
+  update: (id, data) => api.put(`/roles/${id}`, data),
+  delete: (id) => api.delete(`/roles/${id}`)
 };
 
 // ==================== DEGREE OPTION API CALLS ====================
@@ -345,6 +354,7 @@ export const degreeOptionAPI = {
 export const advertisementAPI = {
   getAll: () => api.get('/advertisements'),
   getActive: () => api.get('/advertisements/active'),
+  getById: (id) => api.get(`/advertisements/${id}`),
   create: (formData) => {
     // Log for debugging since it's multipart/form-data
     logFormData(formData, 'createAdvertisement');

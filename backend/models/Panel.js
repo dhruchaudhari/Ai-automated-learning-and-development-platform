@@ -7,19 +7,19 @@ const expertSchema = new mongoose.Schema({
         trim: true
     },
     department: {
-        type: String,
-        required: [true, 'Department is required'],
-        trim: true
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Department',
+        required: [true, 'Department is required']
     },
     role: {
         type: String,
-        required: [true, 'Role is required'],
+        required: [true, 'Role/Designation is required'],
         trim: true
     },
     seniority: {
         type: Number,
         required: [true, 'Seniority (years) is required'],
-        min: [5, 'Expert must have at least 5 years of experience']
+        min: [1, 'Expert must have at least 1 year of experience']
     }
 });
 

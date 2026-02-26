@@ -18,8 +18,7 @@ const advertisementSchema = new mongoose.Schema({
         }
     },
     lastDateToApply: {
-        type: Date,
-        required: [true, 'Last date to apply is required']
+        type: Date
     },
     isActive: {
         type: Boolean,
@@ -33,6 +32,22 @@ const advertisementSchema = new mongoose.Schema({
     updatedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
+    },
+    department: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Department',
+        index: true
+    },
+    role: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Role',
+        index: true
+    },
+    job: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Job',
+        required: true,
+        index: true
     }
 }, {
     timestamps: true,

@@ -811,9 +811,22 @@ export const validateAdPDF = (file, isEdit = false) => {
 
 export const validateAdForm = (formData, isEdit = false) => {
   const errors = {};
-  errors.title = validateAdTitle(formData.title);
-  errors.lastDateToApply = validateLastDate(formData.lastDateToApply);
+
+  // Title is mandatory
+  if (!formData.title || formData.title.trim().length === 0) {
+    errors.title = 'Advertisement title is required (select a job first)';
+  } else {
+    errors.title = validateAdTitle(formData.title);
+  }
+
+  // PDF is mandatory
   errors.detail = validateAdPDF(formData.detail, isEdit);
+
+  // Job is mandatory
+  if (!formData.job) {
+    errors.job = 'Job selection is required';
+  }
+
   return errors;
 };
 

@@ -7,7 +7,7 @@ import UserGrid from './components/UserGrid';
 import ViewUser from './components/ViewUser';
 import EditUser from './components/EditUser';
 import Analytics from './components/Analytics';
-import JobManagement from './components/JobManagement';
+import JobsDeptsRolesSuperintendence from './components/JobsDeptsRolesSuperintendence';
 import Home from './components/Home';
 import Sidebar from './components/Sidebar';
 
@@ -30,17 +30,21 @@ function App() {
       {/* Toast notifications */}
       <Toaster
         position="top-right"
+        gutter={10}
+        containerStyle={{ top: 20, right: 20 }}
         toastOptions={{
-          duration: 4000,
+          duration: 3500,
           style: {
             background: '#1f2937',
             color: '#fff',
             borderRadius: '12px',
-            padding: '16px',
-            fontSize: '14px',
+            padding: '14px 18px',
+            fontSize: '13px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            maxWidth: '380px',
           },
           success: {
-            duration: 3000,
+            duration: 2500,
             iconTheme: {
               primary: '#10b981',
               secondary: '#fff',
@@ -129,7 +133,7 @@ function App() {
               <div className="flex min-h-screen">
                 <Sidebar />
                 <main className="flex-1 ml-0 transition-all duration-300 md:ml-64 p-4 md:p-6 overflow-x-hidden">
-                  <JobManagement />
+                  <JobsDeptsRolesSuperintendence />
                 </main>
               </div>
             }

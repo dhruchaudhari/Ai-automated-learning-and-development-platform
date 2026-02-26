@@ -13,13 +13,18 @@ import {
   FaCalendarAlt,
   FaCheckCircle,
   FaTimesCircle,
-  FaFilePdf
+  FaFilePdf,
+  FaEye
 } from 'react-icons/fa';
+import AdDetailsModal from './AdDetailsModal';
+import PreviewModal from './PreviewModal';
 
 const Home = () => {
   const { isAdmin } = useAuth();
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedAdDetail, setSelectedAdDetail] = useState(null);
+  const [previewDoc, setPreviewDoc] = useState(null);
 
   useEffect(() => {
     if (isAdmin) {
@@ -117,31 +122,41 @@ const Home = () => {
               ) : (
                 <div className="space-y-4">
                   {ads.map((ad) => (
-                    <div key={ad._id} className="p-4 bg-white border border-gray-100 rounded-xl hover:border-primary-200 hover:shadow-md transition-all">
+                    <div
+                      key={ad._id}
+                      onClick={() => setSelectedAdDetail(ad)}
+                      className="p-4 bg-white border border-gray-100 rounded-xl hover:border-primary-200 hover:shadow-md transition-all cursor-pointer group"
+                    >
                       <div className="flex justify-between items-start gap-4">
                         <div className="flex-1">
-                          <h4 className="font-bold text-gray-800 mb-2">{ad.title}</h4>
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                            <span className="flex items-center gap-1">
-                              <FaCalendarAlt className="text-gray-400" />
-                              Deadline: {ad.lastDateToApply ? format(new Date(ad.lastDateToApply), 'dd MMM yyyy') : 'N/A'}
+                          <h4 className="font-bold text-gray-900 mb-1 group-hover:text-primary-700 transition-colors uppercase tracking-tight leading-none">{ad.title}</h4>
+                          <div className="flex items-center gap-2 mb-3">
+                            {ad.department && (
+                              <span className="text-[10px] bg-gray-50 text-gray-500 px-2 py-0.5 rounded border border-gray-100 font-bold uppercase tracking-tight">
+                                {ad.department.name}
+                              </span>
+                            )}
+                            {ad.job && (
+                              <span className="text-[10px] bg-primary-50 text-primary-700 px-2 py-0.5 rounded border border-primary-100 font-black tracking-widest">
+                                {typeof ad.job === 'object' ? ad.job.jobCode : 'JOB'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
+                            <span className="flex items-center gap-1.5">
+                              <FaCalendarAlt className="text-primary-300" />
+                              Deadline: <span className="font-black text-gray-700">{ad.lastDateToApply ? format(new Date(ad.lastDateToApply), 'dd MMM yyyy') : 'N/A'}</span>
                             </span>
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${ad.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${ad.isActive ? 'bg-green-50 text-green-700 border-green-100' : 'bg-gray-50 text-gray-600 border-gray-100'
                               }`}>
                               {ad.isActive ? <FaCheckCircle /> : <FaTimesCircle />}
                               {ad.isActive ? 'Active' : 'Draft'}
                             </span>
                           </div>
                         </div>
-                        <a
-                          href={ad.detail}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-all flex items-center gap-2 text-sm font-medium"
-                        >
-                          <FaFilePdf />
-                          View
-                        </a>
+                        <div className="p-2 bg-primary-50 text-primary-600 rounded-lg group-hover:bg-primary-600 group-hover:text-white transition-all">
+                          <FaEye />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -160,6 +175,20 @@ const Home = () => {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <AdDetailsModal
+        isOpen={!!selectedAdDetail}
+        onClose={() => setSelectedAdDetail(null)}
+        advertisement={selectedAdDetail}
+        onViewDocument={(src) => setPreviewDoc({ src, type: 'document' })}
+      />
+      {previewDoc && (
+        <PreviewModal
+          preview={previewDoc}
+          onClose={() => setPreviewDoc(null)}
+        />
+      )}
     </div>
   );
 };

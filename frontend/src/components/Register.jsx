@@ -50,7 +50,10 @@ import {
   FaBrain,
   FaToolbox,
   FaShieldAlt,
-  FaCog
+  FaCog,
+  FaBuilding,
+  FaUserTie,
+  FaBriefcase
 } from 'react-icons/fa';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -714,6 +717,7 @@ const Register = () => {
   const [degreeSpecMap, setDegreeSpecMap] = useState(DEGREE_SPECIALIZATIONS);
   const [activeAds, setActiveAds] = useState([]);
   const [selectedAdsDetails, setSelectedAdsDetails] = useState([]);
+  const [viewingAdDetail, setViewingAdDetail] = useState(null);
 
   // Skill sets categories
   const SKILL_CATEGORIES = [
@@ -1979,51 +1983,150 @@ const Register = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border-2 border-gray-100 rounded-2xl overflow-hidden">
                     {activeAds.length > 0 ? (
-                      activeAds.map(ad => {
-                        const isSelected = formData.advertisements.includes(ad._id);
-                        return (
-                          <div
-                            key={ad._id}
-                            onClick={() => {
-                              const newAds = isSelected
-                                ? formData.advertisements.filter(id => id !== ad._id)
-                                : [...formData.advertisements, ad._id];
-
-                              setFormData(prev => ({ ...prev, advertisements: newAds }));
-
-                              // Update selected details for display
-                              const details = activeAds.filter(a => newAds.includes(a._id));
-                              setSelectedAdsDetails(details);
-
-                              // Trigger validation
-                              const error = validateField('advertisements', newAds);
-                              setErrors(prev => ({ ...prev, advertisements: error }));
-                              setFieldTouched(prev => ({ ...prev, advertisements: true }));
-                            }}
-                            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3 ${isSelected
-                              ? 'border-purple-600 bg-purple-100 shadow-md'
-                              : 'border-gray-200 bg-white hover:border-purple-300'
-                              }`}
-                          >
-                            <div className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                              }`}>
-                              {isSelected && <FaCheck className="text-white text-xs" />}
+                      <div className="divide-y divide-gray-100">
+                        {activeAds.map(ad => {
+                          const isSelected = formData.advertisements.includes(ad._id);
+                          const isViewing = viewingAdDetail?._id === ad._id;
+                          return (
+                            <div key={ad._id}>
+                              <div className="flex items-center gap-3 px-4 py-3 hover:bg-purple-50/40 transition-all">
+                                {/* Checkbox */}
+                                <div
+                                  onClick={() => {
+                                    const newAds = isSelected
+                                      ? formData.advertisements.filter(id => id !== ad._id)
+                                      : [...formData.advertisements, ad._id];
+                                    setFormData(prev => ({ ...prev, advertisements: newAds }));
+                                    const details = activeAds.filter(a => newAds.includes(a._id));
+                                    setSelectedAdsDetails(details);
+                                    const error = validateField('advertisements', newAds);
+                                    setErrors(prev => ({ ...prev, advertisements: error }));
+                                    setFieldTouched(prev => ({ ...prev, advertisements: true }));
+                                  }}
+                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors flex-shrink-0 ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 hover:border-purple-400'}`}
+                                >
+                                  {isSelected && <FaCheck className="text-white text-xs" />}
+                                </div>
+                                {/* Title */}
+                                <div className="flex-1 min-w-0">
+                                  <p className={`font-medium text-sm truncate transition-colors ${isSelected ? 'text-purple-800' : 'text-gray-700'}`}>
+                                    {ad.title}
+                                  </p>
+                                  <p className="text-[10px] text-red-500 mt-0.5">
+                                    Apply by: {format(new Date(ad.lastDateToApply), 'dd MMM yyyy')}
+                                  </p>
+                                </div>
+                                {/* Eye button */}
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingAdDetail(isViewing ? null : ad)}
+                                  className={`p-2 rounded-lg transition-all flex-shrink-0 ${isViewing ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-purple-600 hover:bg-purple-50'}`}
+                                  title="View Details"
+                                >
+                                  <FaEye size={14} />
+                                </button>
+                              </div>
+                              {/* Inline Detail Panel */}
+                              {isViewing && (
+                                <div className="px-4 pb-4 animate-fade-in">
+                                  <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 space-y-4">
+                                    {/* Department */}
+                                    {ad.department && (
+                                      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/50">
+                                        <p className="text-xs text-blue-700 font-medium mb-2 flex items-center gap-1.5">
+                                          <FaBuilding className="text-[10px]" /> Department
+                                        </p>
+                                        <p className="text-sm text-gray-800">{ad.department.name}</p>
+                                        {ad.department.code && <p className="text-[10px] text-gray-500 mt-1">Code: {ad.department.code}</p>}
+                                        {ad.department.description && <p className="text-xs text-gray-500 mt-1">{ad.department.description}</p>}
+                                      </div>
+                                    )}
+                                    {/* Role */}
+                                    {ad.role && (
+                                      <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-100/50">
+                                        <p className="text-xs text-purple-700 font-medium mb-2 flex items-center gap-1.5">
+                                          <FaUserTie className="text-[10px]" /> Role
+                                        </p>
+                                        <p className="text-sm text-gray-800">{ad.role.title}</p>
+                                        <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-600">
+                                          {ad.role.level && <span>Level: {ad.role.level}</span>}
+                                          {ad.role.employmentType && <span>Type: {ad.role.employmentType}</span>}
+                                          {ad.role.education && <span>Education: {ad.role.education}</span>}
+                                        </div>
+                                        {ad.role.requiredSkills?.length > 0 && (
+                                          <div className="mt-2">
+                                            <p className="text-[10px] text-purple-500 mb-1">Required Skills</p>
+                                            <div className="flex flex-wrap gap-1">
+                                              {ad.role.requiredSkills.map((s, idx) => (
+                                                <span key={idx} className="px-2 py-0.5 bg-white border border-purple-200 text-purple-700 rounded text-[10px]">
+                                                  {s.name}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    {/* Job */}
+                                    {ad.job && (
+                                      <div className="bg-white p-4 rounded-xl border border-gray-200">
+                                        <p className="text-xs text-gray-700 font-medium mb-2 flex items-center gap-1.5">
+                                          <FaBriefcase className="text-[10px] text-indigo-600" /> Job Details
+                                        </p>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                          <div>
+                                            <p className="text-[10px] text-gray-400">Job Code</p>
+                                            <p className="text-gray-800">{ad.job.jobCode}</p>
+                                          </div>
+                                          {ad.job.location?.city && (
+                                            <div>
+                                              <p className="text-[10px] text-gray-400">City</p>
+                                              <p className="text-gray-800">{ad.job.location.city}</p>
+                                            </div>
+                                          )}
+                                          {ad.job.openings && (
+                                            <div>
+                                              <p className="text-[10px] text-gray-400">Openings</p>
+                                              <p className="text-gray-800">{ad.job.openings}</p>
+                                            </div>
+                                          )}
+                                          {ad.job.salaryRange && (
+                                            <div>
+                                              <p className="text-[10px] text-gray-400">Salary Range</p>
+                                              <p className="text-green-700">{ad.job.salaryRange.currency} {ad.job.salaryRange.min?.toLocaleString()} - {ad.job.salaryRange.max?.toLocaleString()}</p>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {ad.job.description && (
+                                          <div className="mt-3">
+                                            <p className="text-[10px] text-gray-400 mb-1">Description</p>
+                                            <p className="text-xs text-gray-600 leading-relaxed">{ad.job.description}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    {/* PDF Link */}
+                                    {ad.detail && (
+                                      <a
+                                        href={ad.detail}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 font-medium rounded-lg hover:bg-purple-100 transition-all border border-purple-200 text-sm"
+                                      >
+                                        <FaFilePdf /> View PDF
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            <div className="flex-1">
-                              <p className={`font-bold transition-colors ${isSelected ? 'text-purple-900' : 'text-gray-700'}`}>
-                                {ad.title}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Apply by: {format(new Date(ad.lastDateToApply), 'dd MMM yyyy')}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                      </div>
                     ) : (
-                      <div className="col-span-full p-8 text-center bg-gray-100 rounded-xl border border-dashed border-gray-300">
+                      <div className="p-8 text-center bg-gray-100 rounded-xl border border-dashed border-gray-300">
                         <p className="text-gray-500 font-medium">No active advertisements available at the moment</p>
                       </div>
                     )}
@@ -2033,32 +2136,6 @@ const Register = () => {
                     <p className="text-sm text-red-600 flex items-center gap-1">
                       <FaTimes className="mr-1" /> {errors.advertisements}
                     </p>
-                  )}
-
-                  {selectedAdsDetails.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Selected Position Details</p>
-                      {selectedAdsDetails.map(ad => (
-                        <div key={ad._id} className="p-4 bg-white rounded-xl border border-purple-100 animate-fade-in flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="flex-1">
-                            <p className="text-base font-bold text-gray-800">{ad.title}</p>
-                            <div className="flex items-center gap-4 mt-1">
-                              <span className="flex items-center gap-1.5 text-xs font-medium text-red-600 bg-red-50 px-2.5 py-1 rounded-full border border-red-100">
-                                <FaClock /> Last Date: {format(new Date(ad.lastDateToApply), 'dd MMM yyyy')}
-                              </span>
-                            </div>
-                          </div>
-                          <a
-                            href={ad.detail}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center gap-2 px-6 py-2 bg-purple-50 text-purple-700 font-bold rounded-lg hover:bg-purple-100 transition-all border border-purple-200 text-sm"
-                          >
-                            <FaFilePdf /> View PDF
-                          </a>
-                        </div>
-                      ))}
-                    </div>
                   )}
                 </div>
               </div>

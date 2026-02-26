@@ -24,6 +24,7 @@ import {
     ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import PreviewModal from './PreviewModal';
+import AdDetailsModal from './AdDetailsModal';
 
 const ProfileDetails = () => {
     const navigate = useNavigate();
@@ -48,6 +49,7 @@ const ProfileDetails = () => {
     const [saving, setSaving] = useState(false);
     const [previewDoc, setPreviewDoc] = useState(null);
     const [activeAds, setActiveAds] = useState([]);
+    const [selectedAdDetail, setSelectedAdDetail] = useState(null);
 
     useEffect(() => {
         fetchUserProfile();
@@ -766,6 +768,10 @@ const ProfileDetails = () => {
                                                 return (
                                                     <div
                                                         key={ad._id}
+                                                        className={`p-4 rounded-3xl border-2 transition-all cursor-pointer relative group ${isSelected
+                                                            ? 'border-purple-600 bg-purple-100/50 shadow-lg shadow-purple-100'
+                                                            : 'border-white bg-white hover:border-purple-200'
+                                                            }`}
                                                         onClick={() => {
                                                             const currentAds = editForm.advertisements || [];
                                                             const newAds = isSelected
@@ -773,24 +779,50 @@ const ProfileDetails = () => {
                                                                 : [...currentAds, ad._id];
                                                             setEditForm(prev => ({ ...prev, advertisements: newAds }));
                                                         }}
-                                                        className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-4 ${isSelected
-                                                            ? 'border-purple-600 bg-purple-100 shadow-md'
-                                                            : 'border-white bg-white hover:border-purple-200'
-                                                            }`}
                                                     >
-                                                        <div className={`mt-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-200'
-                                                            }`}>
-                                                            {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <p className={`font-bold transition-colors ${isSelected ? 'text-purple-900' : 'text-gray-700'}`}>
-                                                                {ad.title}
-                                                            </p>
-                                                            <p className="text-xs text-gray-500 mt-1">
-                                                                Apply by: {new Date(ad.lastDateToApply).toLocaleDateString('en-IN', {
-                                                                    day: 'numeric', month: 'short', year: 'numeric'
-                                                                })}
-                                                            </p>
+                                                        <div className="flex items-start gap-4">
+                                                            <div className={`mt-1 w-6 h-6 rounded-xl border-2 shrink-0 flex items-center justify-center transition-all ${isSelected ? 'bg-purple-600 border-purple-600 rotate-0' : 'border-gray-200 -rotate-12'
+                                                                }`}>
+                                                                {isSelected && <CheckIcon className="w-4 h-4 text-white" />}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                    <p className={`font-black uppercase tracking-tight truncate transition-colors ${isSelected ? 'text-purple-900' : 'text-gray-800'}`}>
+                                                                        {ad.title}
+                                                                    </p>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setSelectedAdDetail(ad);
+                                                                        }}
+                                                                        className="p-1.5 bg-gray-50 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                                                                        title="View full details"
+                                                                    >
+                                                                        <EyeIcon className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+                                                                    {ad.job && (
+                                                                        <span className="text-[9px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded uppercase tracking-widest">
+                                                                            {typeof ad.job === 'object' ? ad.job.jobCode : 'JOB'}
+                                                                        </span>
+                                                                    )}
+                                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                                                        {ad.role?.title || 'No Role'}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-gray-300">•</span>
+                                                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                                                        {ad.department?.name || 'No Dept'}
+                                                                    </span>
+                                                                </div>
+
+                                                                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">
+                                                                    Deadline: <span className="text-red-500">{new Date(ad.lastDateToApply).toLocaleDateString('en-IN', {
+                                                                        day: 'numeric', month: 'short', year: 'numeric'
+                                                                    })}</span>
+                                                                </p>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 );
@@ -1029,16 +1061,20 @@ const ProfileDetails = () => {
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {user.advertisements?.map((ad, index) => (
-                                            <div key={ad._id || index} className="bg-white rounded-3xl p-6 border border-purple-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                                            <div
+                                                key={ad._id || index}
+                                                onClick={() => setSelectedAdDetail(ad)}
+                                                className="bg-white rounded-3xl p-6 border border-purple-100 shadow-sm hover:shadow-md hover:border-purple-300 transition-all cursor-pointer flex flex-col justify-between group"
+                                            >
                                                 <div>
                                                     <div className="flex items-start justify-between mb-4">
-                                                        <div className="p-2 bg-purple-50 rounded-xl text-purple-600">
+                                                        <div className="p-2 bg-purple-50 rounded-xl text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                                                             <AcademicCapIcon className="w-5 h-5" />
                                                         </div>
                                                         <span className="px-3 py-1 bg-purple-100 text-purple-700 text-[10px] font-black uppercase rounded-lg">Advertisement {index + 1}</span>
                                                     </div>
                                                     <div className="flex items-center gap-3 mb-2">
-                                                        <h4 className="text-lg font-bold text-gray-900">{ad.title || 'Untitled Position'}</h4>
+                                                        <h4 className="text-lg font-bold text-gray-900 group-hover:text-purple-700 transition-colors">{ad.title || 'Untitled Position'}</h4>
                                                         {ad.lastDateToApply && new Date(ad.lastDateToApply) < new Date().setHours(0, 0, 0, 0) && (
                                                             <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black uppercase rounded-lg border border-red-200">
                                                                 Closed
@@ -1054,14 +1090,10 @@ const ProfileDetails = () => {
                                                         </p>
                                                     )}
                                                 </div>
-                                                {ad.detail && (
-                                                    <button
-                                                        onClick={() => setPreviewDoc({ src: ad.detail, type: 'document' })}
-                                                        className="w-full flex items-center justify-center gap-2 py-3 bg-purple-50 text-purple-700 font-bold rounded-2xl hover:bg-purple-100 transition-all border border-purple-100"
-                                                    >
-                                                        <EyeIcon className="w-5 h-5" /> View Advertisement PDF
-                                                    </button>
-                                                )}
+                                                <div className="flex items-center gap-2 text-purple-600 font-bold text-sm mt-2">
+                                                    <span>View Details</span>
+                                                    <EyeIcon className="w-4 h-4" />
+                                                </div>
                                             </div>
                                         ))}
 
@@ -1137,7 +1169,14 @@ const ProfileDetails = () => {
                     />
                 )
             }
-        </div >
+            {/* Ad Details Modal */}
+            <AdDetailsModal
+                isOpen={!!selectedAdDetail}
+                onClose={() => setSelectedAdDetail(null)}
+                advertisement={selectedAdDetail}
+                onViewDocument={(src) => setPreviewDoc({ src, type: 'document' })}
+            />
+        </div>
     );
 };
 
