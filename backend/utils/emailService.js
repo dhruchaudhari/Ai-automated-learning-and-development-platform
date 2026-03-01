@@ -524,9 +524,6 @@ const sendForgotEmail = async (email, name, mobile) => {
       `
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Forgot email sent to ${email} for mobile ${mobile}`);
-    console.log(`📧 Message ID: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error(`❌ Error sending forgot email to ${email}:`, error.message);
@@ -535,44 +532,91 @@ const sendForgotEmail = async (email, name, mobile) => {
 };
 
 // Send interview invite email
-const sendInterviewInviteEmail = async (email, name, scheduledDate, panelName, advertisementTitle, location, helpline, userDetails = {}) => {
+const sendInterviewInviteEmail = async (email, name, scheduledDate, panelName, advertisementTitle, location, helpline, userDetails = {}, advertisements = []) => {
   try {
-    const formattedDate = new Date(scheduledDate).toLocaleDateString('en-IN', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    const formatDate = (date) => {
+      if (!date) return 'N/A';
+      return new Date(date).toLocaleDateString('en-IN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    };
 
-    const formattedDob = userDetails.dob ? new Date(userDetails.dob).toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }) : 'N/A';
+    const formattedDate = formatDate(scheduledDate);
 
-    const serverUrl = process.env.BASE_URL || 'http://localhost:5000';
-    const profileImageUrl = userDetails.profileImage
-      ? (userDetails.profileImage.startsWith('http') ? userDetails.profileImage : `${serverUrl}${userDetails.profileImage}`)
-      : null;
+    // Build advertisements list HTML
+    let advertisementsHtml = '';
+    if (advertisements && advertisements.length > 0) {
+      advertisementsHtml = `
+        <div style="background: #ffffff; padding: 35px; border-radius: 30px; margin: 40px 0; border: 1px solid #eef2ff; box-shadow: 0 15px 40px rgba(79, 70, 229, 0.05);">
+          <div style="margin-bottom: 20px; border-bottom: 1px solid #f0f4ff; padding-bottom: 15px;">
+            <h3 style="color: #4f46e5; margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.2em; display: inline-block;">
+              Scheduled Interviews
+            </h3>
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="text-align: left; border-bottom: 2px solid #f0f4ff;">
+                <th style="padding: 12px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;">Position Details</th>
+                <th style="padding: 12px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; text-align: right;">Interview Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${advertisements.map(ad => `
+                <tr style="border-bottom: 1px solid #f8faff;">
+                  <td style="padding: 15px 0;">
+                    <span style="color: #1e293b; font-weight: 800; font-size: 15px; display: block;">${ad.title}</span>
+                    ${ad.role ? `<span style="color: #64748b; font-size: 12px; font-weight: 600;">${ad.role}${ad.level ? ` (${ad.level})` : ''}</span>` : ''}
+                    ${ad.department ? `<br><span style="color: #94a3b8; font-size: 11px; font-weight: 700;">Dept: ${ad.department}</span>` : ''}
+                  </td>
+                  <td style="padding: 15px 0; text-align: right;">
+                    <span style="color: #4f46e5; font-weight: 800; font-size: 14px; display: block;">${formatDate(ad.scheduledDate)}</span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else {
+      // Fallback for single ad
+      advertisementsHtml = `
+        <div style="background: #ffffff; padding: 35px; border-radius: 30px; margin: 40px 0; border: 1px solid #eef2ff; box-shadow: 0 15px 40px rgba(79, 70, 229, 0.05);">
+          <div style="margin-bottom: 30px; border-bottom: 1px solid #f0f4ff; padding-bottom: 15px;">
+            <h3 style="color: #4f46e5; margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.2em; display: inline-block;">
+              Appointment Logistics
+            </h3>
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; width: 150px; font-weight: 800; letter-spacing: 0.1em;">Target Position</td>
+              <td style="padding: 15px 0; color: #1e293b; font-weight: 800; font-size: 16px;">${advertisementTitle || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;">Interview Window</td>
+              <td style="padding: 15px 0; color: #4f46e5; font-weight: 900; font-size: 20px;">${formattedDate}</td>
+            </tr>
+          </table>
+        </div>
+      `;
+    }
 
     const mailOptions = {
       from: `"Lavya Workshop - Interview Team" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: `Interview Invitation - ${advertisementTitle || 'Position'}`,
+      subject: `Interview Invitation - ${advertisementTitle || (advertisements && advertisements[0] ? advertisements[0].title : 'Position')}`,
       html: `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 40px; overflow: hidden; box-shadow: 0 40px 100px rgba(79, 70, 229, 0.15); border: 2px solid #eef2ff;">
-          <!-- Vibrant Premium Header -->
           <div style="background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #4338ca 100%); padding: 60px 40px; text-align: center; position: relative;">
-            <!-- Decorative Elements -->
             <div style="position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%;"></div>
             <div style="position: absolute; bottom: -30px; left: -30px; width: 100px; height: 100px; background: rgba(255,255,255,0.05); border-radius: 50%;"></div>
-            
             <h1 style="color: #ffffff; margin: 0; font-size: 36px; font-weight: 800; letter-spacing: -0.04em; text-shadow: 0 4px 12px rgba(0,0,0,0.15);">Interview Invitation</h1>
             <p style="color: #e0e7ff; margin: 15px 0 0 0; font-size: 17px; font-weight: 600; letter-spacing: 0.02em;">Shape your professional journey with Lavya Workshop</p>
           </div>
           
           <div style="padding: 50px 40px; background: linear-gradient(to bottom, #ffffff, #f8faff);">
-            <!-- Profile Section -->
             <div style="text-align: center; margin-bottom: 40px;">
               <h2 style="margin: 0 0 8px 0; color: #0f172a; font-size: 28px; font-weight: 800; letter-spacing: -0.03em;">${name}</h2>
               <div style="display: inline-block; padding: 6px 16px; background: #eef2ff; border-radius: 100px; border: 1px solid #e0e7ff;">
@@ -587,57 +631,39 @@ const sendInterviewInviteEmail = async (email, name, scheduledDate, panelName, a
               </p>
             </div>
             
-            <!-- Logistics Card -->
-            <div style="background: #ffffff; padding: 35px; border-radius: 30px; margin: 40px 0; border: 1px solid #eef2ff; box-shadow: 0 15px 40px rgba(79, 70, 229, 0.05);">
-              <div style="margin-bottom: 30px; border-bottom: 1px solid #f0f4ff; padding-bottom: 15px;">
-                <h3 style="color: #4f46e5; margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.2em; display: inline-block;">
-                  Appointment Logistics
-                </h3>
-              </div>
-              
-              <table style="width: 100%; border-collapse: collapse;">
+            ${advertisementsHtml}
+
+            <div style="background: #ffffff; padding: 25px; border-radius: 25px; margin: 20px 0; border: 1px solid #eef2ff;">
+               <table style="width: 100%;">
                 <tr>
-                  <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; width: 150px; font-weight: 800; letter-spacing: 0.1em;">Target Position</td>
-                  <td style="padding: 15px 0; color: #1e293b; font-weight: 800; font-size: 16px;">${advertisementTitle || 'N/A'}</td>
+                  <td style="padding: 10px 0; color: #94a3b8; font-size: 11px; width: 130px; font-weight: 800; letter-spacing: 0.1em;">CORPORATE VENUE</td>
+                  <td style="padding: 10px 0; color: #0f172a; font-weight: 700; font-size: 14px;">${location || 'To be announced'}</td>
                 </tr>
-                <tr>
-                  <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;">Interview Window</td>
-                  <td style="padding: 15px 0; color: #4f46e5; font-weight: 900; font-size: 20px;">${formattedDate}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 15px 0; color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 0.1em;">Corporate Venue</td>
-                  <td style="padding: 15px 0; color: #0f172a; font-weight: 700; font-size: 15px; line-height: 1.6;">${location || 'To be announced'}</td>
-                </tr>
-              </table>
+               </table>
             </div>
 
-            <!-- Concierge Support Card -->
-            <div style="background: #0f172a; padding: 35px; border-radius: 30px; color: #ffffff; margin: 40px 0; box-shadow: 0 25px 50px rgba(15, 23, 42, 0.2); position: relative; overflow: hidden;">
-               <div style="position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: rgba(79, 70, 229, 0.1); border-radius: 50%; blur: 40px;"></div>
-               <p style="margin: 0 0 15px 0; color: #6366f1; font-size: 11px; font-weight: 800; letter-spacing: 0.2em;">Concierge Support</p>
+            <div style="background: #0f172a; padding: 30px; border-radius: 25px; color: #ffffff; margin: 30px 0; position: relative; overflow: hidden;">
+               <p style="margin: 0 0 12px 0; color: #6366f1; font-size: 10px; font-weight: 800; letter-spacing: 0.2em;">CONCIERGE SUPPORT</p>
                <table style="width: 100%;">
                  <tr>
-                   <td style="width: 60px;">
-                      <div style="width: 50px; height: 50px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 15px; text-align: center; line-height: 50px; font-size: 20px;">📞</div>
+                   <td style="width: 50px;">
+                      <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; text-align: center; line-height: 40px; font-size: 18px;">📞</div>
                    </td>
                    <td>
-                      <span style="font-size: 26px; font-weight: 800; display: block; letter-spacing: -0.01em; color: #ffffff;">${helpline || 'Not assigned'}</span>
-                      <span style="font-size: 10px; color: #475569; font-weight: 700; letter-spacing: 0.15em;">Primary Assistance Line</span>
+                      <span style="font-size: 22px; font-weight: 800; display: block; color: #ffffff;">${helpline || 'Not assigned'}</span>
+                      <span style="font-size: 9px; color: #475569; font-weight: 700; letter-spacing: 0.1em;">PRIMARY ASSISTANCE LINE</span>
                    </td>
                  </tr>
                </table>
             </div>
 
-            
-            <div style="padding-top: 40px; text-align: center; border-top: 1px solid #f0f4ff;">
-              <div style="display: inline-block; padding: 8px 20px; background: #f8faff; border-radius: 100px; border: 1px solid #eef2ff; margin-bottom: 15px;">
-                <p style="margin: 0; color: #6366f1; font-size: 10px; font-weight: 800; letter-spacing: 0.2em;">By Lavya Workshop</p>
-              </div>
-              <p style="color: #64748b; font-size: 12px; margin: 0; font-weight: 600;">Automated Priority Correspondence</p>
+            <div style="padding-top: 30px; text-align: center; border-top: 1px solid #f0f4ff;">
+              <p style="margin: 0; color: #6366f1; font-size: 10px; font-weight: 800; letter-spacing: 0.2em;">BY LAVYA WORKSHOP</p>
+              <p style="color: #64748b; font-size: 11px; margin: 5px 0; font-weight: 600;">Automated Priority Correspondence</p>
             </div>
           </div>
           
-          <div style="text-align: center; padding: 40px; background: #f8faff; color: #64748b; font-size: 12px; border-top: 1px solid #eef2ff;">
+          <div style="text-align: center; padding: 30px; background: #f8faff; color: #64748b; font-size: 11px; border-top: 1px solid #eef2ff;">
             <p style="margin: 0; font-weight: 600;">© ${new Date().getFullYear()} Lavya Workshop</p>
           </div>
         </div>

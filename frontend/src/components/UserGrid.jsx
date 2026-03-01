@@ -47,16 +47,36 @@ import {
   FaBriefcase,
   FaBuilding,
   FaUserTie,
-  FaPhone
+  FaPhone,
+  FaRobot
 } from "react-icons/fa";
 import { format, parseISO, isWithinInterval } from "date-fns";
 
 // Stabilized Sub-components
-const EmailDraftPreview = ({ user, form }) => {
+const EmailDraftPreview = ({ user, form, selectedAdIds = [] }) => {
   if (!user) return null;
-  const formattedDate = user.interviewSchedule?.scheduledDate
-    ? new Date(user.interviewSchedule.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-    : 'Not scheduled';
+
+  const getAdSchedule = (adId) => {
+    const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === adId.toString());
+    return adMark?.interviewSchedule?.scheduledDate || user.interviewSchedule?.scheduledDate;
+  };
+
+  const formatDate = (date) => {
+    if (!date) return 'Not scheduled';
+    try {
+      return new Date(date).toLocaleDateString('en-IN', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+    } catch (e) {
+      return 'Invalid Date';
+    }
+  };
+
+  const selectedAds = (user.advertisements || [])
+    .filter(ad => selectedAdIds.includes(ad._id?.toString() || ad.toString()));
 
   return (
     <div className="border border-indigo-100 rounded-[2.5rem] overflow-hidden bg-white flex flex-col h-full shadow-2xl shadow-indigo-200/40 sticky top-0 border-t-4 border-t-indigo-600">
@@ -81,7 +101,7 @@ const EmailDraftPreview = ({ user, form }) => {
         </div>
       </div>
 
-      <div className="p-8 overflow-y-auto max-h-[600px] text-gray-800 text-sm leading-relaxed font-sans scrollbar-thin scrollbar-thumb-gray-200">
+      <div className="p-8 overflow-y-auto max-h-[660px] text-gray-800 text-sm leading-relaxed font-sans scrollbar-thin scrollbar-thumb-gray-200">
         <div className="text-center mb-6 relative">
           <h2 className="mt-6 font-bold text-3xl text-slate-900 tracking-tight">{user.fullName}</h2>
           <div className="flex items-center justify-center gap-3 mt-2">
@@ -94,74 +114,78 @@ const EmailDraftPreview = ({ user, form }) => {
           <div className="space-y-3">
             <p className="text-slate-900 font-bold text-base italic">Dear {user.fullName},</p>
             <p className="text-slate-600 leading-relaxed font-medium text-[15px]">
-              We are thrilled to extend an official invitation for your upcoming interview. Your background uniquely positions you for success within our dynamic team.
+              We are thrilled to extend an official invitation for your upcoming interview. Your background uniquely positions you for success within our dynamic team, and we look forward to exploring your potential contributions.
             </p>
           </div>
 
-          <div className="bg-indigo-50/40 p-8 rounded-[2rem] border border-indigo-100 shadow-sm relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.07] transition-opacity">
-              <FaCalendarAlt className="text-6xl text-indigo-900" />
+          {selectedAds.length > 0 ? (
+            <div className="bg-indigo-50/40 p-6 rounded-[2rem] border border-indigo-100 shadow-sm space-y-4">
+              <h5 className="text-[11px] font-bold text-indigo-600 tracking-[0.15em] mb-4 flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.5)]"></span> Scheduled Interviews
+              </h5>
+              <div className="space-y-4">
+                {selectedAds.map(ad => (
+                  <div key={ad._id} className="flex flex-col gap-2 p-4 bg-white rounded-2xl border border-indigo-50 shadow-sm">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 text-sm truncate">{ad.title}</p>
+                        <p className="text-[10px] text-slate-400 font-bold tracking-wider mt-0.5">
+                          {ad.deptName || ad.department?.name || 'Lavya Workshop'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-[11px] text-indigo-600 font-black whitespace-nowrap">
+                          {formatDate(getAdSchedule(ad._id))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <h5 className="text-[11px] font-bold text-indigo-600 tracking-[0.15em] mb-6 flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.5)]"></span> Appointment Logistics
-            </h5>
+          ) : (
+            <div className="bg-rose-50 p-6 rounded-[2rem] border border-rose-100 text-center">
+              <p className="text-rose-500 text-xs font-bold italic">Please select at least one advertisement on the left to see the schedule preview.</p>
+            </div>
+          )}
 
-            <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-3">
+            <div className="bg-white p-6 rounded-[2.5rem] border border-indigo-100 shadow-sm relative overflow-hidden group">
               <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-white border border-indigo-100 flex items-center justify-center shadow-sm shrink-0">
-                  <FaBriefcase className="text-indigo-500 text-sm" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">Target Position</span>
-                  <span className="text-base font-bold text-slate-900">{user.advertisements?.map(ad => ad.title || 'N/A').join(', ') || 'N/A'}</span>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-100 shrink-0">
-                  <FaClock className="text-white text-sm" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">Interview Window</span>
-                  <span className="text-base font-bold text-indigo-600">{formattedDate}</span>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-white border border-indigo-100 flex items-center justify-center shadow-sm shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
                   <FaBuilding className="text-indigo-500 text-sm" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1">Corporate Venue</span>
-                  <div className={`text-[15px] font-semibold leading-snug ${form.location ? 'text-slate-800' : 'text-rose-500 italic opacity-60 underline decoration-dotted'}`}>
-                    {form.location || 'Pending venue confirmation by coordinator...'}
+                  <span className="text-[10px] text-slate-400 font-bold tracking-wider mb-1 uppercase">Corporate Venue</span>
+                  <div className={`text-[14px] font-bold leading-snug ${form.location ? 'text-slate-800' : 'text-rose-500/60 italic'}`}>
+                    {form.location || 'Pending venue confirmation...'}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="bg-indigo-950 p-8 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group border border-indigo-900">
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <div className="absolute bottom-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full -mr-20 -mb-20 blur-3xl"></div>
+            <div className="bg-indigo-950 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group border border-indigo-900">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="absolute bottom-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full -mr-20 -mb-20 blur-3xl"></div>
 
-            <div className="relative flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-indigo-300 tracking-widest mb-3">Concierge Support</p>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/10 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
-                    <FaPhone className="text-indigo-300" />
-                  </div>
-                  <div>
-                    <span className={`text-2xl font-bold tracking-tight block ${form.helpline ? 'text-white' : 'text-indigo-800/40 italic'}`}>
-                      {form.helpline || 'Not assigned'}
-                    </span>
-                    <span className="text-[10px] text-indigo-400 font-bold tracking-widest mt-1 block">Primary Assistance Line</span>
+              <div className="relative flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold text-indigo-300 tracking-widest mb-3">Concierge Support</p>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/10 group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
+                      <FaPhone className="text-indigo-300" />
+                    </div>
+                    <div>
+                      <span className={`text-2xl font-bold tracking-tight block ${form.helpline ? 'text-white' : 'text-indigo-800/40 italic'}`}>
+                        {form.helpline || 'Not assigned'}
+                      </span>
+                      <span className="text-[10px] text-indigo-400 font-bold tracking-widest mt-1 block uppercase">Primary Assistance Line</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="opacity-10 group-hover:opacity-30 transition-all duration-700 -rotate-12 group-hover:rotate-0">
-                <FaLightbulb className="text-5xl" />
+                <div className="opacity-10 group-hover:opacity-30 transition-all duration-700 -rotate-12 group-hover:rotate-0">
+                  <FaLightbulb className="text-5xl" />
+                </div>
               </div>
             </div>
           </div>
@@ -170,7 +194,7 @@ const EmailDraftPreview = ({ user, form }) => {
             <div className="inline-block px-6 py-2 rounded-full bg-indigo-50/50 border border-indigo-100 mb-4 shadow-sm hover:shadow-md transition-shadow">
               <p className="text-[11px] text-indigo-600 font-bold tracking-wide">By Lavya Workshop</p>
             </div>
-            <div className="flex items-center justify-center gap-6 text-[10px] text-slate-300 font-bold tracking-[0.2em]">
+            <div className="flex items-center justify-center gap-6 text-[10px] text-slate-300 font-bold tracking-[0.2em] uppercase">
               <span className="hover:text-indigo-400 transition-colors cursor-default">Verified</span>
               <span className="w-1 h-1 rounded-full bg-indigo-100"></span>
               <span className="hover:text-indigo-400 transition-colors cursor-default">Encrypted</span>
@@ -187,8 +211,11 @@ import ConfirmationModal from "./ConfirmationModal";
 import PreviewModal from "./PreviewModal";
 import ModalContainer from "./ModalContainer";
 import ViewUser from "./ViewUser";
+import MeritViewDetails from "./MeritViewDetails";
+import InterviewViewDetails from "./InterviewViewDetails";
 import EditUser from "./EditUser";
 import FilterPanel from "./FilterPanel";
+import MeritFilterPanel from "./MeritFilterPanel";
 import ManageDegreesModal from "./ManageDegreesModal";
 import ManageAdvertisementsModal from "./ManageAdvertisementsModal";
 import AdDetailsModal from "./AdDetailsModal";
@@ -469,7 +496,7 @@ const UserGrid = () => {
   const [emailConfirmModal, setEmailConfirmModal] = useState({ show: false, user: null });
   const [emailForm, setEmailForm] = useState({ location: '', helpline: '' });
   const [emailFormErrors, setEmailFormErrors] = useState({ location: '', helpline: '' });
-  const [interviewDetailsModal, setInterviewDetailsModal] = useState({ show: false, user: null });
+  // Unified view modal is used instead of interviewDetailsModal
   // Merit mode modals
   const [assignMarksModal, setAssignMarksModal] = useState({ show: false, user: null, advertisement: null });
   const [marksInput, setMarksInput] = useState("");
@@ -477,6 +504,23 @@ const UserGrid = () => {
   const [interviewViewMode, setInterviewViewMode] = useState('grid'); // 'grid' | 'calendar' | 'timeline'
   const [selectedAdsToSchedule, setSelectedAdsToSchedule] = useState([]);
   const [selectedAdsToEmail, setSelectedAdsToEmail] = useState([]);
+
+  // Merit mode filter state
+  const [meritFilters, setMeritFilters] = useState({
+    advertisement: '',
+    tenth: { min: '', max: '' },
+    twelfth: { min: '', max: '' },
+    graduation: { min: '', max: '' },
+    graduationCpi: { min: '', max: '' },
+    pg: { min: '', max: '' },
+    pgCpi: { min: '', max: '' },
+    assignedMarks: { min: '', max: '' },
+    age: { min: '', max: '' },
+    degree: [],
+    specialization: [],
+    experience: { min: '', max: '' }
+  });
+  const [meritSortBy, setMeritSortBy] = useState('latest');
 
   // Validation functions for Indian Context
   const validateIndiaPhone = (phone) => {
@@ -616,6 +660,111 @@ const UserGrid = () => {
     }
   }, [setUsers, users.length]);
 
+  // Helper: compute user age from dob
+  const computeAge = (dob) => {
+    if (!dob) return null;
+    const today = new Date();
+    const birthDate = new Date(dob);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  // Apply merit-specific filters on flattened merit rows
+  const applyMeritFilters = (rows, mFilters) => {
+    let result = [...rows];
+
+    // Advertisement filter
+    if (mFilters.advertisement) {
+      result = result.filter(row => {
+        const adId = (row.currentAdvertisement?._id || row.currentAdvertisement || '').toString();
+        return adId === mFilters.advertisement;
+      });
+    }
+
+    // Range helper
+    const filterRange = (value, range) => {
+      if (value === null || value === undefined) return false;
+      const num = parseFloat(value);
+      if (isNaN(num)) return false;
+      if (range.min !== '' && num < parseFloat(range.min)) return false;
+      if (range.max !== '' && num > parseFloat(range.max)) return false;
+      return true;
+    };
+
+    // 10th percentage
+    if (mFilters.tenth.min || mFilters.tenth.max) {
+      result = result.filter(row => filterRange(row.education?.tenth?.percentage, mFilters.tenth));
+    }
+
+    // 12th percentage
+    if (mFilters.twelfth.min || mFilters.twelfth.max) {
+      result = result.filter(row => filterRange(row.education?.twelfth?.percentage, mFilters.twelfth));
+    }
+
+    // Graduation percentage
+    if (mFilters.graduation.min || mFilters.graduation.max) {
+      result = result.filter(row => filterRange(row.education?.graduation?.percentage, mFilters.graduation));
+    }
+
+    // Graduation CPI
+    if (mFilters.graduationCpi.min || mFilters.graduationCpi.max) {
+      result = result.filter(row => filterRange(row.education?.graduation?.cgpa, mFilters.graduationCpi));
+    }
+
+    // PG percentage
+    if (mFilters.pg.min || mFilters.pg.max) {
+      result = result.filter(row => filterRange(row.education?.qualifyingDegree?.percentage, mFilters.pg));
+    }
+
+    // PG CPI
+    if (mFilters.pgCpi.min || mFilters.pgCpi.max) {
+      result = result.filter(row => filterRange(row.education?.qualifyingDegree?.cgpa, mFilters.pgCpi));
+    }
+
+    // Assigned marks
+    if (mFilters.assignedMarks.min || mFilters.assignedMarks.max) {
+      result = result.filter(row => {
+        const marks = row.currentAdMark?.marks ?? row.interviewMarks ?? 0;
+        return filterRange(marks, mFilters.assignedMarks);
+      });
+    }
+
+    // Age
+    if (mFilters.age.min || mFilters.age.max) {
+      result = result.filter(row => {
+        const age = computeAge(row.dob);
+        return filterRange(age, mFilters.age);
+      });
+    }
+
+    // Degree checkbox filter
+    if (mFilters.degree && mFilters.degree.length > 0) {
+      result = result.filter(row => {
+        const gradDegree = row.education?.graduation?.degree;
+        const qualDegree = row.education?.qualifyingDegree?.degree;
+        return mFilters.degree.includes(gradDegree) || mFilters.degree.includes(qualDegree);
+      });
+    }
+
+    // Specialization checkbox filter
+    if (mFilters.specialization && mFilters.specialization.length > 0) {
+      result = result.filter(row => {
+        const gradSpec = row.education?.graduation?.specialization;
+        const qualSpec = row.education?.qualifyingDegree?.specialization;
+        return mFilters.specialization.includes(gradSpec) || mFilters.specialization.includes(qualSpec);
+      });
+    }
+
+    // Experience (placeholder — filter will pass all if user data lacks experience field)
+    // In the future, if User model gets an experience field, this filter will work.
+
+    return result;
+  };
+
   // Apply filters and sorting
   useEffect(() => {
     let result = applyFilters(users, searchTerm, filters);
@@ -650,43 +799,102 @@ const UserGrid = () => {
           }
         }
       });
-      result = flattenedResult;
+      // Apply merit-specific filters
+      result = applyMeritFilters(flattenedResult, meritFilters);
+
+      // Merit-specific sorting
+      const activeSortBy = meritSortBy;
+      result.sort((a, b) => {
+        switch (activeSortBy) {
+          case 'latest':
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          case 'oldest':
+            return new Date(a.createdAt) - new Date(b.createdAt);
+          case 'name-asc':
+            return (a.fullName || '').localeCompare(b.fullName || '');
+          case 'name-desc':
+            return (b.fullName || '').localeCompare(a.fullName || '');
+          case 'marks-high': {
+            const mA = a.currentAdMark?.marks ?? a.interviewMarks ?? 0;
+            const mB = b.currentAdMark?.marks ?? b.interviewMarks ?? 0;
+            return mB - mA;
+          }
+          case 'marks-low': {
+            const mA2 = a.currentAdMark?.marks ?? a.interviewMarks ?? 0;
+            const mB2 = b.currentAdMark?.marks ?? b.interviewMarks ?? 0;
+            return mA2 - mB2;
+          }
+          default:
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        }
+      });
     } else if (isInterviewMode) {
       result = result.filter(user => user.status === 'eligible');
-    }
 
-    result.sort((a, b) => {
-      const activationA = calculateActivationDuration(a.activationHistory);
-      const activationB = calculateActivationDuration(b.activationHistory);
+      result.sort((a, b) => {
+        const activationA = calculateActivationDuration(a.activationHistory);
+        const activationB = calculateActivationDuration(b.activationHistory);
 
-      switch (sortBy) {
-        case 'latest':
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        case 'oldest':
-          return new Date(a.createdAt) - new Date(b.createdAt);
-        case 'name-asc':
-          return (a.fullName || '').localeCompare(b.fullName || '');
-        case 'name-desc':
-          return (b.fullName || '').localeCompare(a.fullName || '');
-        case 'recent-active':
-          if (activationA.active && !activationB.active) return -1;
-          if (!activationA.active && activationB.active) return 1;
-          if (activationA.lastActivation && activationB.lastActivation) {
-            return new Date(activationB.lastActivation) - new Date(activationA.lastActivation);
+        switch (sortBy) {
+          case 'latest':
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          case 'oldest':
+            return new Date(a.createdAt) - new Date(b.createdAt);
+          case 'name-asc':
+            return (a.fullName || '').localeCompare(b.fullName || '');
+          case 'name-desc':
+            return (b.fullName || '').localeCompare(a.fullName || '');
+          case 'recent-active':
+            if (activationA.active && !activationB.active) return -1;
+            if (!activationA.active && activationB.active) return 1;
+            if (activationA.lastActivation && activationB.lastActivation) {
+              return new Date(activationB.lastActivation) - new Date(activationA.lastActivation);
+            }
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          case 'most-active': {
+            const durationA = activationA.totalDuration + (activationA.active ? Date.now() - new Date(activationA.lastActivation).getTime() : 0);
+            const durationB = activationB.totalDuration + (activationB.active ? Date.now() - new Date(activationB.lastActivation).getTime() : 0);
+            return durationB - durationA;
           }
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        case 'most-active':
-          const durationA = activationA.totalDuration + (activationA.active ? Date.now() - new Date(activationA.lastActivation).getTime() : 0);
-          const durationB = activationB.totalDuration + (activationB.active ? Date.now() - new Date(activationB.lastActivation).getTime() : 0);
-          return durationB - durationA;
-        default:
-          return new Date(b.createdAt) - new Date(a.createdAt);
-      }
-    });
+          default:
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        }
+      });
+    } else {
+      result.sort((a, b) => {
+        const activationA = calculateActivationDuration(a.activationHistory);
+        const activationB = calculateActivationDuration(b.activationHistory);
+
+        switch (sortBy) {
+          case 'latest':
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          case 'oldest':
+            return new Date(a.createdAt) - new Date(b.createdAt);
+          case 'name-asc':
+            return (a.fullName || '').localeCompare(b.fullName || '');
+          case 'name-desc':
+            return (b.fullName || '').localeCompare(a.fullName || '');
+          case 'recent-active':
+            if (activationA.active && !activationB.active) return -1;
+            if (!activationA.active && activationB.active) return 1;
+            if (activationA.lastActivation && activationB.lastActivation) {
+              return new Date(activationB.lastActivation) - new Date(activationA.lastActivation);
+            }
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          case 'most-active': {
+            const durationA = activationA.totalDuration + (activationA.active ? Date.now() - new Date(activationA.lastActivation).getTime() : 0);
+            const durationB = activationB.totalDuration + (activationB.active ? Date.now() - new Date(activationB.lastActivation).getTime() : 0);
+            return durationB - durationA;
+          }
+          default:
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        }
+      });
+    }
 
     setFilteredUsers(result);
     setPage(1);
-  }, [users, searchTerm, filters, sortBy, isInterviewMode, isMeritMode]);
+  }, [users, searchTerm, filters, sortBy, isInterviewMode, isMeritMode, meritFilters, meritSortBy]);
 
   // Discover unique skills from user data
   const availableSkills = useMemo(() => {
@@ -794,6 +1002,84 @@ const UserGrid = () => {
 
     return counts;
   }, [users, searchTerm, filters, filteredUsers.length, degreeSpecMap, availableSkills]);
+
+  // Merit filter counts for live facets
+  const meritFilterCounts = useMemo(() => {
+    if (!isMeritMode) return {};
+
+    // Build the unfiltered merit list (all eligible user-ad rows)
+    const baseUsers = applyFilters(users, searchTerm, filters);
+    const allMeritRows = [];
+    baseUsers.forEach(user => {
+      if (user.status === 'eligible') {
+        const userAds = user.advertisements || [];
+        if (userAds.length > 0) {
+          userAds.forEach(ad => {
+            const adId = (ad._id || ad).toString();
+            const adMark = user.advertisementMarks?.find(am =>
+              (am.advertisementId?._id || am.advertisementId)?.toString() === adId
+            );
+            allMeritRows.push({
+              ...user,
+              currentAdvertisement: ad,
+              currentAdMark: adMark || null,
+              meritRowId: `${user._id}_${adId}`
+            });
+          });
+        } else {
+          allMeritRows.push({
+            ...user,
+            currentAdvertisement: null,
+            currentAdMark: null,
+            meritRowId: `${user._id}_no_ad`
+          });
+        }
+      }
+    });
+
+    const counts = {
+      total: filteredUsers.length
+    };
+
+    // Advertisement count
+    if (meritFilters.advertisement) {
+      counts.advertisement = applyMeritFilters(allMeritRows, meritFilters).length;
+    }
+
+    // Range filter counts
+    const rangeKeys = ['tenth', 'twelfth', 'graduation', 'graduationCpi', 'pg', 'pgCpi', 'assignedMarks', 'age', 'experience'];
+    rangeKeys.forEach(key => {
+      const vals = meritFilters[key];
+      if (vals && (vals.min || vals.max)) {
+        counts[key] = applyMeritFilters(allMeritRows, meritFilters).length;
+      }
+    });
+
+    // Degree facet counts
+    const degreeNames = degreeOptions.length > 0
+      ? degreeOptions.map(d => d.name)
+      : [
+        "Bachelor Technology / Bachelor Engineering",
+        "Bachelor of Computer Applications (BCA)",
+        "Bachelor of Science",
+        "Master of Technology / Master of Engineering (M.Tech / M.E.)",
+        "Master of Computer Applications (MCA)",
+        "Master of Science (M.Sc.)"
+      ];
+
+    counts.degrees = {};
+    degreeNames.forEach(d => {
+      counts.degrees[d] = applyMeritFilters(allMeritRows, { ...meritFilters, degree: [d], specialization: [] }).length;
+    });
+
+    // Specialization facet counts
+    counts.specializations = {};
+    Object.values(degreeSpecMap).flat().forEach(s => {
+      counts.specializations[s] = applyMeritFilters(allMeritRows, { ...meritFilters, specialization: [s] }).length;
+    });
+
+    return counts;
+  }, [users, searchTerm, filters, isMeritMode, meritFilters, filteredUsers.length, degreeOptions, degreeSpecMap]);
 
   const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
   const paginatedUsers = filteredUsers.slice(
@@ -1450,26 +1736,29 @@ const UserGrid = () => {
 
   const meritStats = useMemo(() => {
     const eligibleUsers = users.filter(u => u.status === 'eligible');
-    const emailSentUsers = eligibleUsers.filter(u => u.interviewEmailSent?.sent);
 
-    // Check if ALL eligible users have at least one advertisement with both scheduled + email sent
-    const allReady = eligibleUsers.length > 0 && eligibleUsers.every(user => {
+    const isSatisfied = (user) => {
       const adMarks = user.advertisementMarks || [];
-      // User must have at least one ad where interview is scheduled AND email is sent
       return adMarks.some(am =>
         am.interviewSchedule?.scheduledDate && am.interviewEmailSent?.sent
       ) || (
-          // Backward compatibility: check global fields
           user.interviewSchedule?.scheduledDate && user.interviewEmailSent?.sent
         );
-    });
+    };
+
+    // candidates who satisfy BOTH conditions in the CURRENT GRID
+    // Note: in isInterviewMode, filteredUsers ONLY contains eligible users already
+    const satisfiedInGrid = filteredUsers.filter(u => isSatisfied(u)).length;
+
+    // Check if ALL eligible users in the system are ready (not just filtered ones)
+    const allReady = eligibleUsers.length > 0 && eligibleUsers.every(user => isSatisfied(user));
 
     return {
-      sent: emailSentUsers.length,
-      total: eligibleUsers.length,
+      sent: satisfiedInGrid,
+      total: filteredUsers.length,
       canProceedToMerit: allReady
     };
-  }, [users]);
+  }, [users, filteredUsers]);
 
   return (
     <div className="min-h-screen py-8 px-4 animate-fade-in">
@@ -1721,6 +2010,55 @@ const UserGrid = () => {
                   </>
                 )}
 
+                {/* Admin-only AI Normalization Button for Merit Mode */}
+                {isMeritMode && isAdmin && (
+                  <button
+                    onClick={() => {
+                      if (!meritFilters.advertisement) return;
+                      // Future logic
+                    }}
+                    className={`
+                      relative group flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm border border-transparent h-[42px] overflow-hidden
+                      bg-gray-800
+                      ${meritFilters.advertisement
+                        ? 'cursor-pointer active:scale-95'
+                        : 'cursor-not-allowed opacity-80'
+                      }
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500/50
+                    `}
+                    title={!meritFilters.advertisement ? "Select an advertisement to enable AI Normalization" : "Perform Normalization with AI for current advertisement"}
+                  >
+                    {/* Hover Background Overlay: Changes to gradient on hover */}
+                    {meritFilters.advertisement && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-[#b8cbb8] via-[#b8cbb8] to-[#b465da] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"></div>
+                    )}
+
+                    <div className="relative z-10 flex items-center gap-2">
+                      <FaRobot className={`text-base transition-colors duration-300 ${meritFilters.advertisement
+                        ? 'text-[#b465da] group-hover:text-gray-800'
+                        : 'text-gray-500/60'
+                        }`} />
+
+                      <div className="relative">
+                        {/* Normal State Text: colorful gradient, fades out on hover */}
+                        <span className={`transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#b8cbb8] to-[#b465da] ${meritFilters.advertisement
+                          ? 'group-hover:opacity-0'
+                          : 'opacity-50'
+                          }`}>
+                          Normalization with AI
+                        </span>
+
+                        {/* Hover State Text: gray-800, fades in on hover */}
+                        {meritFilters.advertisement && (
+                          <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 text-gray-800 whitespace-nowrap">
+                            Normalization with AI
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )}
+
                 {interviewViewMode === 'grid' && (
                   <button
                     onClick={() => setIsGridCollapsed(!isGridCollapsed)}
@@ -1738,19 +2076,70 @@ const UserGrid = () => {
             <PanelDisplay panels={panels} loading={loadingPanels} />
           )}
 
+          {/* Merit Mode Stats Bar */}
+          {isMeritMode && (
+            <div className="mb-4 p-4 bg-gradient-to-r from-indigo-50 via-white to-indigo-50 rounded-xl border border-indigo-100 shadow-sm animate-fade-in flex items-center justify-between">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div className="flex items-center gap-2 text-sm text-indigo-700">
+                  <FaFilter className="text-indigo-500" />
+                  <span className="font-medium text-sm">
+                    {filteredUsers.length}
+                  </span>
+                  <span className="opacity-70">candidates filtered from</span>
+                  <span className="font-medium text-sm">
+                    {meritStats.total}
+                  </span>
+                  <span className="opacity-70">eligible total</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Merit Mode Filter Panel */}
+          {isMeritMode && (
+            <MeritFilterPanel
+              meritFilters={meritFilters}
+              onMeritFilterChange={(filterKey, value) => setMeritFilters(prev => ({ ...prev, [filterKey]: value }))}
+              onMeritFiltersUpdate={(newFilters) => setMeritFilters(newFilters)}
+              onClearMeritFilters={() => setMeritFilters({
+                advertisement: '',
+                tenth: { min: '', max: '' },
+                twelfth: { min: '', max: '' },
+                graduation: { min: '', max: '' },
+                graduationCpi: { min: '', max: '' },
+                pg: { min: '', max: '' },
+                pgCpi: { min: '', max: '' },
+                assignedMarks: { min: '', max: '' },
+                age: { min: '', max: '' },
+                degree: [],
+                specialization: [],
+                experience: { min: '', max: '' }
+              })}
+              onMeritSortChange={(newSort) => setMeritSortBy(newSort)}
+              meritSortBy={meritSortBy}
+              meritFilterCounts={meritFilterCounts}
+              advertisements={advertisements}
+              degreeOptions={degreeOptions}
+              degreeSpecMap={degreeSpecMap}
+              filteredUsers={filteredUsers}
+            />
+          )}
+
           {isInterviewMode && interviewViewMode === 'calendar' && (
             <InterviewCalendarView
               filteredUsers={filteredUsers}
+              searchTerm={searchTerm}
               panels={panels}
-              onViewUser={(user) => setInterviewDetailsModal({ show: true, user })}
+              onViewUser={(user) => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
             />
           )}
 
           {isInterviewMode && interviewViewMode === 'timeline' && (
             <InterviewTimelineView
               filteredUsers={filteredUsers}
+              searchTerm={searchTerm}
               panels={panels}
-              onViewUser={(user) => setInterviewDetailsModal({ show: true, user })}
+              onViewUser={(user) => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
             />
           )}
 
@@ -1899,7 +2288,7 @@ const UserGrid = () => {
                                     </div>
                                     <div className="flex flex-col min-w-0">
                                       <p
-                                        onClick={() => setInterviewDetailsModal({ show: true, user })}
+                                        onClick={() => handleViewUser(user._id, user.currentAdvertisement?._id)}
                                         className="text-gray-900 text-sm font-bold leading-none mb-1 truncate cursor-pointer hover:text-indigo-600 transition-colors"
                                       >
                                         {user.fullName}
@@ -2030,7 +2419,12 @@ const UserGrid = () => {
                                       </div>
                                     </div>
                                     <div className="flex flex-col min-w-0">
-                                      <p className="text-gray-900 text-base leading-none mb-1 truncate font-normal">{user.fullName}</p>
+                                      <p
+                                        onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+                                        className="text-gray-900 text-base leading-none mb-1 truncate font-normal cursor-pointer hover:text-indigo-600 transition-colors"
+                                      >
+                                        {user.fullName}
+                                      </p>
                                       <p className="text-xs text-gray-500 truncate mb-2 font-normal">{user.email}</p>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-medium tracking-tight">
@@ -2201,7 +2595,7 @@ const UserGrid = () => {
                                 <td className="py-4 px-6">
                                   <div className="grid grid-cols-2 gap-2 min-w-[180px]">
                                     <button
-                                      onClick={() => setInterviewDetailsModal({ show: true, user })}
+                                      onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
                                       className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
                                       title="View Details"
                                     >
@@ -2285,7 +2679,12 @@ const UserGrid = () => {
                                       {user.fullName?.charAt(0) || "U"}
                                     </div>
                                     <div>
-                                      <p className="font-normal text-gray-800">{user.fullName}</p>
+                                      <p
+                                        onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+                                        className="font-normal text-gray-800 cursor-pointer hover:text-primary-600 transition-colors"
+                                      >
+                                        {user.fullName}
+                                      </p>
                                       <p className="text-sm text-gray-500 font-normal">{user.email}</p>
                                       <p className="text-xs text-gray-400 mt-1 font-normal">{user.mobile}</p>
                                     </div>
@@ -2425,7 +2824,7 @@ const UserGrid = () => {
                                 <td className="py-4 px-6">
                                   <div className="grid grid-cols-2 gap-2 min-w-[160px]">
                                     <button
-                                      onClick={() => handleViewUser(user._id)}
+                                      onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
                                       className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
                                       title="View Profile"
                                     >
@@ -2498,27 +2897,38 @@ const UserGrid = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  if (!meritStats.canProceedToMerit) {
-                    toast.error('All eligible candidates must have interview scheduled and email sent for at least one advertisement before proceeding to merit.');
-                    return;
-                  }
-                  setIsMeritMode(true);
-                }}
-                disabled={!meritStats.canProceedToMerit}
-                className={`px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${meritStats.canProceedToMerit
-                    ? 'bg-gradient-to-r from-indigo-700 to-indigo-900 text-white hover:from-indigo-600 hover:to-indigo-800 hover:shadow-xl active:scale-95 focus:ring-indigo-500 cursor-pointer'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                title={!meritStats.canProceedToMerit ? 'All eligible candidates must have interview scheduled and email sent for at least one advertisement' : 'Proceed to Merit Procedure'}
-              >
-                Merit Procedure
-              </button>
+              {isAdmin && (
+                <div className="mt-4 flex flex-col items-center gap-4">
+
+                  <button
+                    disabled={!meritStats.canProceedToMerit}
+                    onClick={() => setIsMeritMode(true)}
+                    className={`
+                        px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2
+                        ${meritStats.canProceedToMerit
+                        ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-purple-600 hover:to-pink-600 cursor-pointer focus:ring-pink-500'
+                        : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed grayscale'
+                      }
+                      `}
+                    style={{
+                      border: '1px solid transparent'
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#8b0000';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = 'transparent';
+                    }}
+                    title={!meritStats.canProceedToMerit ? 'All eligible candidates must have interview scheduled and email sent for at least one advertisement' : 'Proceed to Merit Procedure'}
+                  >
+                    Merit Procedure
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {!isInterviewMode && (
+          {!isInterviewMode && isAdmin && (
             <div className="mt-8 flex flex-col items-center gap-4">
               <div className="flex items-center gap-2 text-sm text-gray-500 font-normal">
                 <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md border border-blue-100 font-normal">
@@ -2562,940 +2972,848 @@ const UserGrid = () => {
             </div>
           )}
         </div>
-      </div >
 
-      <ConfirmationModal
-        isOpen={deleteModal.show}
-        onClose={() => setDeleteModal({ show: false, userId: null })}
-        onConfirm={handleDeleteConfirm}
-        title="Delete User"
-        message="Are you sure you want to delete this user? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        type="danger"
-      />
+        <ConfirmationModal
+          isOpen={deleteModal.show}
+          onClose={() => setDeleteModal({ show: false, userId: null })}
+          onConfirm={handleDeleteConfirm}
+          title="Delete User"
+          message="Are you sure you want to delete this user? This action cannot be undone."
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="danger"
+        />
 
-      <ConfirmationModal
-        isOpen={activationModal.show}
-        onClose={() => setActivationModal({ show: false, userId: null, currentStatus: false })}
-        onConfirm={handleActivationConfirm}
-        title={activationModal.currentStatus ? "Deactivate User" : "Activate User"}
-        message={`Are you sure you want to ${activationModal.currentStatus ? 'deactivate' : 'activate'} ${activationModal.userName || 'this user'}?`}
-        confirmText={activationModal.currentStatus ? "Deactivate" : "Activate"}
-        cancelText="Cancel"
-        type={activationModal.currentStatus ? "warning" : "primary"}
-      />
+        <ConfirmationModal
+          isOpen={activationModal.show}
+          onClose={() => setActivationModal({ show: false, userId: null, currentStatus: false })}
+          onConfirm={handleActivationConfirm}
+          title={activationModal.currentStatus ? "Deactivate User" : "Activate User"}
+          message={`Are you sure you want to ${activationModal.currentStatus ? 'deactivate' : 'activate'} ${activationModal.userName || 'this user'}?`}
+          confirmText={activationModal.currentStatus ? "Deactivate" : "Activate"}
+          cancelText="Cancel"
+          type={activationModal.currentStatus ? "warning" : "primary"}
+        />
 
-      <ConfirmationModal
-        isOpen={logoutModal}
-        onClose={() => setLogoutModal(false)}
-        onConfirm={handleLogout}
-        title="Confirm Logout"
-        message="Are you sure you want to logout? You will need to login again to access the dashboard."
-        confirmText="Logout"
-        cancelText="Cancel"
-        type="danger"
-      />
+        <ConfirmationModal
+          isOpen={logoutModal}
+          onClose={() => setLogoutModal(false)}
+          onConfirm={handleLogout}
+          title="Confirm Logout"
+          message="Are you sure you want to logout? You will need to login again to access the dashboard."
+          confirmText="Logout"
+          cancelText="Cancel"
+          type="danger"
+        />
 
-      <ManagePanelsModal
-        isOpen={managePanelModal}
-        onClose={() => setManagePanelModal(false)}
-        onRefresh={fetchPanels}
-      />
+        <ManagePanelsModal
+          isOpen={managePanelModal}
+          onClose={() => setManagePanelModal(false)}
+          onRefresh={fetchPanels}
+        />
 
-      {
-        previewModal.show && (
-          <PreviewModal
-            preview={previewModal}
-            onClose={() => setPreviewModal({ show: false, src: null, type: null })}
-          />
-        )
-      }
-
-      <ModalContainer
-        isOpen={viewModal.show}
-        onClose={handleViewModalClose}
-        title="User Details"
-        size="large"
-      >
-        {selectedUserData && (
-          <ViewUser
-            user={selectedUserData}
-            advertisementId={viewModal.advertisementId}
-            onClose={handleViewModalClose}
-            onApprove={handleApproveUser}
-            onReject={handleRejectUser}
-            onViewDocument={openDocumentPreview}
-            onViewImage={openImagePreview}
-            onAssignPanel={isAdmin ? () => {
-              handleViewModalClose();
-              handleAssignPanelClick(selectedUserData);
-            } : null}
-          />
-        )}
-      </ModalContainer>
-
-      <ModalContainer
-        isOpen={editModal.show}
-        onClose={handleEditModalClose}
-        title="Edit User"
-        size="large"
-        footer={null}
-      >
-        {selectedUserData && (
-          <EditUser
-            user={selectedUserData}
-            onClose={handleEditModalClose}
-            onSuccess={handleEditSuccess}
-          />
-        )}
-      </ModalContainer>
-
-      <ModalContainer
-        isOpen={assignPanelModal.show}
-        onClose={() => setAssignPanelModal({ show: false, user: null })}
-        title="Assign Interview Panels"
-        size="large"
-        footer={
-          <div className="flex justify-end gap-3 items-center w-full">
-            <div className="flex-1 hidden md:flex items-center gap-3">
-              {Object.values(assignmentMap).filter(Boolean).length > 0 && (
-                <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-bold shadow-sm shadow-emerald-100">
-                  {Object.values(assignmentMap).filter(Boolean).length}
-                </div>
-              )}
-              <p className="text-xs text-gray-500 font-medium">
-                {Object.values(assignmentMap).filter(Boolean).length === (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))
-                  ? "✓ All panels assigned"
-                  : `Assign panels to all ${(assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))} ads.`
-                }
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleAssignPanel(assignPanelModal.user._id)}
-                disabled={Object.values(assignmentMap).filter(Boolean).length !== (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))}
-                className="px-10 py-2.5 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl font-bold hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm shadow-lg shadow-primary-100"
-              >
-                Assign
-              </button>
-              <button
-                onClick={() => setAssignPanelModal({ show: false, user: null })}
-                className="px-8 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer text-sm border-2 border-transparent"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+        {
+          previewModal.show && (
+            <PreviewModal
+              preview={previewModal}
+              onClose={() => setPreviewModal({ show: false, src: null, type: null })}
+            />
+          )
         }
-      >
-        {assignPanelModal.user && (
-          <div className="p-0 flex flex-col max-h-[85vh]">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-              <div className="flex items-center gap-4">
-                {assignPanelModal.user.profileImage ? (
-                  <img
-                    src={assignPanelModal.user.profileImage}
-                    alt="Profile"
-                    className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary-100 border-2 border-white"
-                  />
-                ) : (
-                  <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-primary-100">
-                    {assignPanelModal.user.fullName?.charAt(0)}
+
+        <ModalContainer
+          isOpen={viewModal.show}
+          onClose={handleViewModalClose}
+          title={isMeritMode ? "Merit Candidate Details" : isInterviewMode ? "Interview Candidate Details" : "User Details"}
+          size="large"
+        >
+          {selectedUserData && (
+            isMeritMode ? (
+              <MeritViewDetails
+                user={selectedUserData}
+                advertisementId={viewModal.advertisementId}
+                onClose={handleViewModalClose}
+                onViewDocument={openDocumentPreview}
+                onViewImage={openImagePreview}
+              />
+            ) : isInterviewMode ? (
+              <InterviewViewDetails
+                user={selectedUserData}
+                advertisementId={viewModal.advertisementId}
+                onClose={handleViewModalClose}
+                onViewDocument={openDocumentPreview}
+                onViewImage={openImagePreview}
+                onAssignPanel={isAdmin ? () => {
+                  handleViewModalClose();
+                  handleAssignPanelClick(selectedUserData);
+                } : null}
+                onSchedule={isAdmin ? () => {
+                  handleViewModalClose();
+                  setScheduleModal({ show: true, user: selectedUserData });
+                  setScheduleDateInput(selectedUserData.interviewSchedule?.scheduledDate
+                    ? new Date(selectedUserData.interviewSchedule.scheduledDate).toISOString().split('T')[0]
+                    : ""
+                  );
+                } : null}
+                isAdmin={isAdmin}
+                panels={panels}
+              />
+            ) : (
+              <ViewUser
+                user={selectedUserData}
+                advertisementId={viewModal.advertisementId}
+                onClose={handleViewModalClose}
+                onApprove={handleApproveUser}
+                onReject={handleRejectUser}
+                onViewDocument={openDocumentPreview}
+                onViewImage={openImagePreview}
+                onAssignPanel={isAdmin ? () => {
+                  handleViewModalClose();
+                  handleAssignPanelClick(selectedUserData);
+                } : null}
+              />
+            )
+          )}
+        </ModalContainer>
+
+        <ModalContainer
+          isOpen={editModal.show}
+          onClose={handleEditModalClose}
+          title="Edit User"
+          size="large"
+          footer={null}
+        >
+          {selectedUserData && (
+            <EditUser
+              user={selectedUserData}
+              onClose={handleEditModalClose}
+              onSuccess={handleEditSuccess}
+            />
+          )}
+        </ModalContainer>
+
+        <ModalContainer
+          isOpen={assignPanelModal.show}
+          onClose={() => setAssignPanelModal({ show: false, user: null })}
+          title="Assign Interview Panels"
+          size="large"
+          footer={
+            <div className="flex justify-end gap-3 items-center w-full">
+              <div className="flex-1 hidden md:flex items-center gap-3">
+                {Object.values(assignmentMap).filter(Boolean).length > 0 && (
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-bold shadow-sm shadow-emerald-100">
+                    {Object.values(assignmentMap).filter(Boolean).length}
                   </div>
                 )}
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">{assignPanelModal.user.fullName}</h3>
-                  <p className="text-sm text-gray-500 font-medium">{assignPanelModal.user.email}</p>
-                </div>
+                <p className="text-xs text-gray-500 font-medium">
+                  {Object.values(assignmentMap).filter(Boolean).length === (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))
+                    ? "✓ All panels assigned"
+                    : `Assign panels to all ${(assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))} ads.`
+                  }
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleAssignPanel(assignPanelModal.user._id)}
+                  disabled={Object.values(assignmentMap).filter(Boolean).length !== (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))}
+                  className="px-10 py-2.5 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl font-bold hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm shadow-lg shadow-primary-100"
+                >
+                  Assign
+                </button>
+                <button
+                  onClick={() => setAssignPanelModal({ show: false, user: null })}
+                  className="px-8 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer text-sm border-2 border-transparent"
+                >
+                  Close
+                </button>
               </div>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-1.5 h-6 bg-primary-500 rounded-full"></span>
-                  Advertisement Panel Assignments
-                </h4>
-                <span className="px-3 py-1 rounded-full bg-primary-50 text-xs font-bold text-primary-600 border border-primary-100">
-                  {(assignPanelModal.user.advertisements?.length || (assignPanelModal.user.advertisement ? 1 : 0))} Total Ads
-                </span>
+          }
+        >
+          {assignPanelModal.user && (
+            <div className="p-0 flex flex-col max-h-[85vh]">
+              <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                <div className="flex items-center gap-4">
+                  {assignPanelModal.user.profileImage ? (
+                    <img
+                      src={assignPanelModal.user.profileImage}
+                      alt="Profile"
+                      className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary-100 border-2 border-white"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-primary-100">
+                      {assignPanelModal.user.fullName?.charAt(0)}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">{assignPanelModal.user.fullName}</h3>
+                    <p className="text-sm text-gray-500 font-medium">{assignPanelModal.user.email}</p>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6">
-                {(assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
-                  ? assignPanelModal.user.advertisements
-                  : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : [])
-                ).map((ad) => (
-                  <div
-                    key={ad._id}
-                    className={`group relative flex flex-col md:flex-row gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${assignmentErrors[ad._id]
-                      ? "border-rose-200 bg-rose-50/30 ring-4 ring-rose-50"
-                      : assignmentMap[ad._id]
-                        ? "border-emerald-100 bg-emerald-50/10"
-                        : "border-gray-100 bg-white hover:border-primary-100"
-                      }`}
-                  >
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-start gap-3">
-                        <FaBullhorn className={`mt-1 flex-shrink-0 ${assignmentErrors[ad._id] ? "text-rose-500" : "text-primary-500"}`} />
-                        <h5 className="font-bold text-gray-800 leading-tight">
-                          {ad.title}
-                        </h5>
-                      </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
+                    <FaBriefcase className="text-primary-500" />
+                    Advertisements for Selection
+                  </h4>
+                  <span className="px-3 py-1 rounded-full bg-primary-50 text-xs font-bold text-primary-600 border border-primary-100">
+                    {(assignPanelModal.user.advertisements?.length || (assignPanelModal.user.advertisement ? 1 : 0))} Total Ads
+                  </span>
+                </div>
 
-                      <div className="flex flex-wrap items-center gap-4">
-                        <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 uppercase">
-                          <FaCalendarAlt className="text-gray-400" />
-                          Deadline: <span className="text-gray-700">{ad.lastDateToApply ? new Date(ad.lastDateToApply).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                <div className="grid grid-cols-1 gap-6">
+                  {(assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
+                    ? assignPanelModal.user.advertisements
+                    : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : [])
+                  ).map(ad => (
+                    <div
+                      key={ad._id}
+                      className={`group relative flex flex-col md:flex-row gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${assignmentErrors[ad._id]
+                        ? "border-rose-200 bg-rose-50/30 ring-4 ring-rose-50"
+                        : assignmentMap[ad._id]
+                          ? "border-emerald-100 bg-emerald-50/10"
+                          : "border-gray-100 bg-white hover:border-primary-100"
+                        }`}
+                    >
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <FaBullhorn className={`mt-1 flex-shrink-0 ${assignmentErrors[ad._id] ? "text-rose-500" : "text-primary-500"}`} />
+                          <h5 className="font-bold text-gray-800 leading-tight">
+                            {ad.title}
+                          </h5>
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewAd(ad); }}
-                            className="text-[10px] px-2 py-1 rounded-md bg-primary-50 text-primary-600 font-bold hover:bg-primary-100 transition-colors flex items-center gap-1"
-                          >
-                            <FaInfoCircle className="size-2.5" /> Details
-                          </button>
-                          {ad.detail && (
+
+                        <div className="flex flex-wrap items-center gap-4">
+                          <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 uppercase">
+                            <FaCalendarAlt className="text-gray-400" />
+                            Deadline: <span className="text-gray-700">{ad.lastDateToApply ? new Date(ad.lastDateToApply).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                          </div>
+                          <div className="flex gap-2">
                             <button
-                              onClick={(e) => { e.stopPropagation(); openDocumentPreview(ad.detail, 'pdf'); }}
-                              className="text-[10px] px-2 py-1 rounded-md bg-amber-50 text-amber-600 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1"
+                              onClick={(e) => { e.stopPropagation(); handleViewAd(ad); }}
+                              className="text-[10px] px-2 py-1 rounded-md bg-primary-50 text-primary-600 font-bold hover:bg-primary-100 transition-colors flex items-center gap-1"
                             >
-                              <FaFilePdf className="size-2.5" /> PDF
+                              <FaInfoCircle className="size-2.5" /> Details
                             </button>
+                            {ad.detail && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openDocumentPreview(ad.detail, 'pdf'); }}
+                                className="text-[10px] px-2 py-1 rounded-md bg-amber-50 text-amber-600 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1"
+                              >
+                                <FaFilePdf className="size-2.5" /> PDF
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 font-bold uppercase">
+                            ID: {ad._id.slice(-6)}
+                          </span>
+                          {ad.department && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold uppercase">
+                              {ad.department}
+                            </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 font-bold uppercase">
-                          ID: {ad._id.slice(-6)}
-                        </span>
-                        {ad.department && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold uppercase">
-                            {ad.department}
-                          </span>
+                      <div className="w-full md:w-[320px] flex flex-col gap-2">
+                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide ml-1">
+                          Select Interview Panel
+                        </label>
+                        <div className="relative group/select">
+                          <select
+                            value={assignmentMap[ad._id] || ""}
+                            onChange={(e) => handlePanelChange(ad._id, e.target.value)}
+                            className={`w-full h-12 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium border-2 appearance-none transition-all outline-none cursor-pointer ${assignmentErrors[ad._id]
+                              ? "border-rose-300 bg-white text-rose-600 focus:border-rose-500"
+                              : assignmentMap[ad._id]
+                                ? "border-emerald-200 bg-white text-emerald-700 focus:border-emerald-500"
+                                : "border-gray-200 bg-gray-50/50 text-gray-700 hover:border-primary-300 focus:border-primary-500 focus:bg-white"
+                              }`}
+                          >
+                            <option value="">-- Choose a Panel --</option>
+                            {panels.map((panel) => (
+                              <option key={panel._id} value={panel._id}>
+                                {panel.name} ({panel.experts?.length || 0} Experts)
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/select:text-primary-500 transition-colors">
+                            <FaChevronDown className="size-3" />
+                          </div>
+                        </div>
+                        {assignmentErrors[ad._id] && (
+                          <p className="text-[10px] font-bold text-rose-500 mt-1 flex items-center gap-1.5 ml-1">
+                            <FaTimesCircle className="size-2.5" />
+                            Requires panel assignment
+                          </p>
+                        )}
+
+                        {/* View Experts Toggle */}
+                        {assignmentMap[ad._id] && (
+                          <div className="mt-3 ml-1">
+                            <button
+                              onClick={() => setShowExpertsMap(prev => ({ ...prev, [ad._id]: !prev[ad._id] }))}
+                              className={`flex items-center gap-2 text-[11px] font-medium transition-all outline-none text-pink-500 hover:text-red-600 active:text-emerald-600 focus:text-emerald-600 ${showExpertsMap[ad._id] ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                            >
+                              <FaUsers className="size-3" />
+                              {showExpertsMap[ad._id] ? 'Hide expert details' : 'View expert details'}
+                              {showExpertsMap[ad._id] ? <FaChevronUp className="size-2.5" /> : <FaChevronDown className="size-2.5" />}
+                            </button>
+
+                            {/* Expert Info Display */}
+                            {showExpertsMap[ad._id] && (() => {
+                              const selectedPanel = panels.find(p => p._id === assignmentMap[ad._id]);
+                              if (!selectedPanel) return null;
+
+                              return (
+                                <div className="mt-3 space-y-3 animate-slide-down">
+                                  <div className="grid grid-cols-1 gap-2.5">
+                                    {selectedPanel.experts?.map((expert, eIdx) => (
+                                      <div key={eIdx} className="bg-gray-50/50 rounded-xl p-3.5 border border-gray-100 flex items-start gap-3.5 hover:bg-white hover:shadow-md hover:border-primary-100 transition-all duration-300 group/expert">
+                                        <div className="w-9 h-9 rounded-xl bg-white border border-primary-50 flex items-center justify-center text-primary-500 shrink-0 shadow-sm group-hover/expert:bg-primary-500 group-hover/expert:text-white transition-all duration-300">
+                                          <FaUserTie className="size-4.5" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex justify-between items-center mb-1">
+                                            <p className="text-[13px] font-semibold text-gray-800 truncate">{expert.name}</p>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium whitespace-nowrap border border-primary-100">
+                                              {expert.seniority} years experience
+                                            </span>
+                                          </div>
+                                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                            <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                              <FaBriefcase className="size-3 text-gray-400" />
+                                              {expert.role || 'N/A'}
+                                            </span>
+                                            <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                              <FaBuilding className="size-3 text-gray-400" />
+                                              {expert.department?.name || expert.department || 'N/A'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
                         )}
                       </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </ModalContainer>
 
-                    <div className="w-full md:w-[320px] flex flex-col gap-2">
-                      <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide ml-1">
-                        Select Interview Panel
-                      </label>
-                      <div className="relative group/select">
-                        <select
-                          value={assignmentMap[ad._id] || ""}
-                          onChange={(e) => handlePanelChange(ad._id, e.target.value)}
-                          className={`w-full h-12 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium border-2 appearance-none transition-all outline-none cursor-pointer ${assignmentErrors[ad._id]
-                            ? "border-rose-300 bg-white text-rose-600 focus:border-rose-500"
-                            : assignmentMap[ad._id]
-                              ? "border-emerald-200 bg-white text-emerald-700 focus:border-emerald-500"
-                              : "border-gray-200 bg-gray-50/50 text-gray-700 hover:border-primary-300 focus:border-primary-500 focus:bg-white"
-                            }`}
-                        >
-                          <option value="">-- Choose a Panel --</option>
-                          {panels.map((panel) => (
-                            <option key={panel._id} value={panel._id}>
-                              {panel.name} ({panel.experts?.length || 0} Experts)
-                            </option>
-                          ))}
-                        </select>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/select:text-primary-500 transition-colors">
-                          <FaChevronDown className="size-3" />
-                        </div>
-                      </div>
-                      {assignmentErrors[ad._id] && (
-                        <p className="text-[10px] font-bold text-rose-500 mt-1 flex items-center gap-1.5 ml-1">
-                          <FaTimesCircle className="size-2.5" />
-                          Requires panel assignment
-                        </p>
-                      )}
+        <ManageDegreesModal
+          isOpen={manageDegreeModal}
+          onClose={() => setManageDegreeModal(false)}
+          onRefresh={fetchDegreeOptions}
+        />
 
-                      {/* View Experts Toggle */}
-                      {assignmentMap[ad._id] && (
-                        <div className="mt-3 ml-1">
-                          <button
-                            onClick={() => setShowExpertsMap(prev => ({ ...prev, [ad._id]: !prev[ad._id] }))}
-                            className={`flex items-center gap-2 text-[11px] font-medium transition-all outline-none text-pink-500 hover:text-red-600 active:text-emerald-600 focus:text-emerald-600 ${showExpertsMap[ad._id] ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
-                          >
-                            <FaUsers className="size-3" />
-                            {showExpertsMap[ad._id] ? 'Hide expert details' : 'View expert details'}
-                            {showExpertsMap[ad._id] ? <FaChevronUp className="size-2.5" /> : <FaChevronDown className="size-2.5" />}
-                          </button>
+        <ManageAdvertisementsModal
+          isOpen={manageAdModal}
+          onClose={() => setManageAdModal(false)}
+        />
 
-                          {/* Expert Info Display */}
-                          {showExpertsMap[ad._id] && (() => {
-                            const selectedPanel = panels.find(p => p._id === assignmentMap[ad._id]);
-                            if (!selectedPanel) return null;
+        <AdDetailsModal
+          isOpen={adViewModal.show}
+          onClose={() => setAdViewModal({ show: false, ad: null })}
+          advertisement={adViewModal.ad}
+          onViewDocument={openDocumentPreview}
+        />
 
-                            return (
-                              <div className="mt-3 space-y-3 animate-slide-down">
-                                <div className="grid grid-cols-1 gap-2.5">
-                                  {selectedPanel.experts?.map((expert, eIdx) => (
-                                    <div key={eIdx} className="bg-gray-50/50 rounded-xl p-3.5 border border-gray-100 flex items-start gap-3.5 hover:bg-white hover:shadow-md hover:border-primary-100 transition-all duration-300 group/expert">
-                                      <div className="w-9 h-9 rounded-xl bg-white border border-primary-50 flex items-center justify-center text-primary-500 shrink-0 shadow-sm group-hover/expert:bg-primary-500 group-hover/expert:text-white transition-all duration-300">
-                                        <FaUserTie className="size-4.5" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-1">
-                                          <p className="text-[13px] font-semibold text-gray-800 truncate">{expert.name}</p>
-                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium whitespace-nowrap border border-primary-100">
-                                            {expert.seniority} years experience
-                                          </span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                          <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                            <FaBriefcase className="size-3 text-gray-400" />
-                                            {expert.role || 'N/A'}
-                                          </span>
-                                          <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                            <FaBuilding className="size-3 text-gray-400" />
-                                            {expert.department?.name || expert.department || 'N/A'}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
+        {/* Assign Marks Modal */}
+        {assignMarksModal.show && (
+          <ModalContainer
+            isOpen={assignMarksModal.show}
+            onClose={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
+            title="Assign Interview Marks"
+            size="medium"
+            footer={
+              assignMarksModal.user && (
+                <div className="flex gap-3 w-full">
+                  <button
+                    onClick={() => handleAssignMarks(assignMarksModal.user._id, assignMarksModal.advertisement?._id, marksInput)}
+                    disabled={isSubmittingMarks || marksInput === "" || isNaN(parseFloat(marksInput))}
+                    className="flex-1 py-3 bg-gradient-to-r from-pink-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {isSubmittingMarks ? <FaSpinner className="animate-spin inline mr-2" /> : <FaClipboardList className="inline mr-2" />}
+                    Save Marks
+                  </button>
+                  <button
+                    onClick={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
+                    className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )
+            }
+          >
+            {assignMarksModal.user && (
+              <div className="p-6">
+                <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                  {assignMarksModal.user.profileImage ? (
+                    <img
+                      src={assignMarksModal.user.profileImage}
+                      alt="Profile"
+                      className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                      {assignMarksModal.user.fullName?.charAt(0)}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        )}
-      </ModalContainer>
-
-      <ManageDegreesModal
-        isOpen={manageDegreeModal}
-        onClose={() => setManageDegreeModal(false)}
-        onRefresh={fetchDegreeOptions}
-      />
-
-      <ManageAdvertisementsModal
-        isOpen={manageAdModal}
-        onClose={() => setManageAdModal(false)}
-      />
-
-      <AdDetailsModal
-        isOpen={adViewModal.show}
-        onClose={() => setAdViewModal({ show: false, ad: null })}
-        advertisement={adViewModal.ad}
-        onViewDocument={openDocumentPreview}
-      />
-
-      {/* Assign Marks Modal */}
-      <ModalContainer
-        isOpen={assignMarksModal.show}
-        onClose={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
-        title="Assign Interview Marks"
-        size="medium"
-        footer={
-          assignMarksModal.user && (
-            <div className="flex gap-3 w-full">
-              <button
-                onClick={() => handleAssignMarks(assignMarksModal.user._id, assignMarksModal.advertisement?._id, marksInput)}
-                disabled={isSubmittingMarks || marksInput === "" || isNaN(parseFloat(marksInput))}
-                className="flex-1 py-3 bg-gradient-to-r from-pink-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {isSubmittingMarks ? <FaSpinner className="animate-spin inline mr-2" /> : <FaClipboardList className="inline mr-2" />}
-                Save Marks
-              </button>
-              <button
-                onClick={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
-                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          )
-        }
-      >
-        {assignMarksModal.user && (
-          <div className="p-6">
-            <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-              {assignMarksModal.user.profileImage ? (
-                <img
-                  src={assignMarksModal.user.profileImage}
-                  alt="Profile"
-                  className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
-                  {assignMarksModal.user.fullName?.charAt(0)}
-                </div>
-              )}
-              <div>
-                <h3 className="font-bold text-gray-900">{assignMarksModal.user.fullName}</h3>
-                <p className="text-sm text-gray-500">{assignMarksModal.user.email}</p>
-                {assignMarksModal.advertisement && (
-                  <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
-                    {assignMarksModal.advertisement.title || assignMarksModal.advertisement.advtNo}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Interview Marks (0-100)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={marksInput}
-                    onChange={(e) => setMarksInput(e.target.value)}
-                    placeholder="Enter marks"
-                    className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all font-bold text-lg text-primary-900"
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
-                    / 100
-                  </div>
-                </div>
-                <p className="mt-2 text-xs text-gray-500 italic">
-                  * Marks will be assigned specifically for the {assignMarksModal.advertisement?.title || 'selected'} advertisement.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </ModalContainer>
-
-      {/* Interview Details Modal */}
-      <ModalContainer
-        isOpen={interviewDetailsModal.show}
-        onClose={() => setInterviewDetailsModal({ show: false, user: null })}
-        title="Candidate Interview Details"
-        size="large"
-      >
-        {interviewDetailsModal.user && (() => {
-          const u = interviewDetailsModal.user;
-          const ads = u.advertisements && u.advertisements.length > 0 ? u.advertisements : (u.advertisement ? [u.advertisement] : []);
-          return (
-            <div className="p-6 space-y-6">
-              {/* Personal Info */}
-              <div className="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl p-5 border border-primary-100">
-                <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaUser className="text-primary-500" /> Personal Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><span className="text-xs text-gray-500">Full Name</span><p className="text-sm font-medium text-gray-800">{u.fullName || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Email</span><p className="text-sm font-medium text-gray-800">{u.email || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Mobile</span><p className="text-sm font-medium text-gray-800">{u.mobile || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Gender</span><p className="text-sm font-medium text-gray-800">{u.gender || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Father's Name</span><p className="text-sm font-medium text-gray-800">{u.fathersName || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Date of Birth</span><p className="text-sm font-medium text-gray-800">{u.dob ? new Date(u.dob).toLocaleDateString('en-IN') : 'N/A'}</p></div>
-                </div>
-              </div>
-
-              {/* Education */}
-              <div className="bg-blue-50 rounded-xl p-5 border border-blue-100">
-                <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaGraduationCap className="text-blue-500" /> Education</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><span className="text-xs text-gray-500">Degree</span><p className="text-sm font-medium text-gray-800">{u.education?.qualifyingDegree?.degree || u.education?.graduation?.degree || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Specialization</span><p className="text-sm font-medium text-gray-800">{u.education?.qualifyingDegree?.specialization || u.education?.graduation?.specialization || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Passing Year</span><p className="text-sm font-medium text-gray-800">{u.education?.graduation?.passingYear || 'N/A'}</p></div>
-                  <div><span className="text-xs text-gray-500">Percentage/CGPA</span><p className="text-sm font-medium text-gray-800">{u.education?.graduation?.percentage || u.education?.graduation?.cgpa || 'N/A'}</p></div>
-                </div>
-              </div>
-
-              {/* Skillsets */}
-              {u.skillSets && Object.values(u.skillSets).flat().length > 0 && (
-                <div className="bg-purple-50 rounded-xl p-5 border border-purple-100">
-                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaLightbulb className="text-purple-500" /> Skills</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(u.skillSets).map(([category, skills]) =>
-                      skills?.map((skill, i) => (
-                        <span key={`${category}-${i}`} className="px-2 py-1 rounded-md text-xs bg-white border border-purple-200 text-purple-700 font-medium">
-                          {skill}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Advertisement & Panel */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-amber-50 rounded-xl p-5 border border-amber-100">
-                  <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><FaBullhorn className="text-amber-500" /> Advertisements</h3>
-                  {ads.length > 0 ? ads.map((ad, i) => (
-                    <p key={i} className="text-sm text-gray-700 font-medium">{ad.title}</p>
-                  )) : <p className="text-sm text-gray-400 italic">No advertisement</p>}
-                </div>
-                <div className="bg-emerald-50 rounded-xl p-5 border border-emerald-100">
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><FaUsers className="text-emerald-500" /> Assigned Panel</h3>
-                    {isAdmin && (
-                      <button
-                        onClick={() => {
-                          setInterviewDetailsModal({ show: false, user: null });
-                          handleAssignPanelClick(u);
-                        }}
-                        disabled={u.interviewEmailSent?.sent}
-                        className="text-[10px] px-2 py-1 bg-white border border-emerald-200 text-emerald-600 rounded-md font-bold hover:bg-emerald-50 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={u.interviewEmailSent?.sent ? "Cannot change panel after email sent" : (u.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel")}
-                      >
-                        {u.panelAssignments?.length > 0 ? "Change" : "Assign"}
-                      </button>
-                    )}
-                  </div>
-                  {u.panelAssignments?.length > 0 ? u.panelAssignments.map((pa, i) => {
-                    const panelInfo = panels.find(p => p._id === pa.panelId);
-                    return <p key={i} className="text-sm text-gray-700 font-medium">{panelInfo?.name || 'Unknown Panel'}</p>;
-                  }) : <p className="text-sm text-gray-400 italic">No panel assigned</p>}
-                </div>
-              </div>
-
-              {/* Schedule & Email Status */}
-              <div className="bg-indigo-50 rounded-xl p-5 border border-indigo-100">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2"><FaCalendarAlt className="text-indigo-500" /> Interview Schedule</h3>
-                  {isAdmin && (
-                    <button
-                      onClick={() => {
-                        setInterviewDetailsModal({ show: false, user: null });
-                        setScheduleModal({ show: true, user: u });
-                        setScheduleDateInput(u.interviewSchedule?.scheduledDate
-                          ? new Date(u.interviewSchedule.scheduledDate).toISOString().split('T')[0]
-                          : ""
-                        );
-                      }}
-                      disabled={u.interviewEmailSent?.sent}
-                      className="text-[10px] px-2 py-1 bg-white border border-pink-200 text-pink-600 rounded-md font-bold hover:bg-pink-50 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={u.interviewEmailSent?.sent ? "Cannot reschedule after email sent" : (u.interviewSchedule?.scheduledDate ? "Reschedule Interview" : "Schedule Interview")}
-                    >
-                      {u.interviewSchedule?.scheduledDate ? "Reschedule" : "Schedule"}
-                    </button>
                   )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="text-xs text-gray-500">Scheduled Date</span>
-                    <p className={`text-sm font-medium ${u.interviewSchedule?.scheduledDate ? 'text-indigo-700' : 'text-gray-400 italic'}`}>
-                      {u.interviewSchedule?.scheduledDate
-                        ? new Date(u.interviewSchedule.scheduledDate).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
-                        : 'Not Scheduled'
-                      }
-                    </p>
+                    <h3 className="font-bold text-gray-900">{assignMarksModal.user.fullName}</h3>
+                    <p className="text-sm text-gray-500">{assignMarksModal.user.email}</p>
+                    {assignMarksModal.advertisement && (
+                      <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
+                        {assignMarksModal.advertisement.title || assignMarksModal.advertisement.advtNo}
+                      </span>
+                    )}
                   </div>
+                </div>
+
+                <div className="space-y-4">
                   <div>
-                    <span className="text-xs text-gray-500">Email Status</span>
-                    <p className={`text-sm font-medium ${u.interviewEmailSent?.sent ? 'text-emerald-700' : 'text-amber-600'}`}>
-                      {u.interviewEmailSent?.sent ? '✓ Email Sent' : 'Not Sent'}
-                      {u.interviewEmailSent?.sentAt && (
-                        <span className="text-xs text-gray-400 ml-2">
-                          ({new Date(u.interviewEmailSent.sentAt).toLocaleDateString('en-IN')})
-                        </span>
-                      )}
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Interview Marks (0-100)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={marksInput}
+                        onChange={(e) => setMarksInput(e.target.value)}
+                        placeholder="Enter marks"
+                        className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all font-bold text-lg text-primary-900"
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
+                        / 100
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 italic">
+                      * Marks will be assigned specifically for the {assignMarksModal.advertisement?.title || 'selected'} advertisement.
                     </p>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
-      </ModalContainer>
+            )}
+          </ModalContainer>
+        )}
 
-      {/* Schedule Interview Modal */}
-      <ModalContainer
-        isOpen={scheduleModal.show}
-        onClose={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
-        title="Schedule Interview"
-        size="medium"
-        footer={
-          scheduleModal.user && (
-            <div className="flex gap-3 w-full">
-              <button
-                onClick={() => handleScheduleInterview(scheduleModal.user._id, scheduleDateInput, selectedAdsToSchedule)}
-                disabled={!scheduleDateInput || selectedAdsToSchedule.length === 0}
-                className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {scheduleModal.user.interviewSchedule?.scheduledDate ? "Update Schedule" : "Confirm Schedule"}
-              </button>
-              <button
-                onClick={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
-                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          )
-        }
-      >
-        {scheduleModal.user && (
-          <div className="p-6">
-            <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-              {scheduleModal.user.profileImage ? (
-                <img
-                  src={scheduleModal.user.profileImage}
-                  alt="Profile"
-                  className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
-                  {scheduleModal.user.fullName?.charAt(0)}
+
+
+        {/* Schedule Interview Modal */}
+        {scheduleModal.show && (
+          <ModalContainer
+            isOpen={scheduleModal.show}
+            onClose={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
+            title="Schedule Interview"
+            size="medium"
+            footer={
+              scheduleModal.user && (
+                <div className="flex gap-3 w-full">
+                  <button
+                    onClick={() => handleScheduleInterview(scheduleModal.user._id, scheduleDateInput, selectedAdsToSchedule)}
+                    disabled={!scheduleDateInput || selectedAdsToSchedule.length === 0}
+                    className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {scheduleModal.user.interviewSchedule?.scheduledDate ? "Update Schedule" : "Confirm Schedule"}
+                  </button>
+                  <button
+                    onClick={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
+                    className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
                 </div>
-              )}
-              <div>
-                <h3 className="font-bold text-gray-900">{scheduleModal.user.fullName}</h3>
-                <p className="text-sm text-gray-500">{scheduleModal.user.email}</p>
-              </div>
-            </div>
-
-            {/* Show latest ad deadline info */}
-            {(() => {
-              const ads = scheduleModal.user.advertisements || [];
-              if (ads.length > 0) {
-                const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
-                return (
-                  <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-xs text-amber-700">
-                      <strong>Note:</strong> Interview date must be at least 5 days after the last advertisement deadline:
-                      <span className="font-bold ml-1">{latestDeadline.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                    </p>
+              )
+            }
+          >
+            {scheduleModal.user && (
+              <div className="p-6">
+                <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                  {scheduleModal.user.profileImage ? (
+                    <img
+                      src={scheduleModal.user.profileImage}
+                      alt="Profile"
+                      className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                      {scheduleModal.user.fullName?.charAt(0)}
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="font-bold text-gray-900">{scheduleModal.user.fullName}</h3>
+                    <p className="text-sm text-gray-500">{scheduleModal.user.email}</p>
                   </div>
-                );
-              }
-              return null;
-            })()}
+                </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Interview Date</label>
-                <input
-                  type="date"
-                  value={scheduleDateInput}
-                  onChange={(e) => setScheduleDateInput(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-                  min={(() => {
-                    const ads = scheduleModal.user.advertisements || [];
-                    if (ads.length > 0) {
-                      const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
-                      const minDate = new Date(latestDeadline);
-                      minDate.setDate(minDate.getDate() + 5); // Minimum 5 days after deadline
-                      return minDate.toISOString().split('T')[0];
-                    }
-                    return new Date().toISOString().split('T')[0];
-                  })()}
-                />
-              </div>
-
-              {/* Advertisement Selection */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
-                  <span>Select Advertisements to Schedule</span>
-                  <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">Required</span>
-                </label>
-                <div className="space-y-2.5 max-h-[220px] overflow-y-auto p-1 custom-scrollbar">
-                  {(scheduleModal.user.advertisements || (scheduleModal.user.advertisement ? [scheduleModal.user.advertisement] : [])).map((ad) => {
-                    const isSelected = selectedAdsToSchedule.includes(ad._id);
-                    const adMark = scheduleModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
-                    const currentSchedule = adMark?.interviewSchedule?.scheduledDate;
-
+                {(() => {
+                  const ads = scheduleModal.user.advertisements || [];
+                  if (ads.length > 0) {
+                    const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
                     return (
-                      <div
-                        key={ad._id}
-                        onClick={() => {
-                          setSelectedAdsToSchedule(prev =>
-                            prev.includes(ad._id)
-                              ? prev.filter(id => id !== ad._id)
-                              : [...prev, ad._id]
-                          );
-                        }}
-                        className={`group flex items-center gap-4 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
-                          ? 'bg-indigo-50/50 border-indigo-200'
-                          : 'bg-white border-gray-100 hover:border-indigo-100 shadow-sm'
-                          }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
-                          ? 'bg-indigo-600 border-indigo-600'
-                          : 'border-gray-200 group-hover:border-indigo-300'
-                          }`}>
-                          {isSelected && <FaCheckCircle className="text-white text-[10px]" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-bold text-gray-800 truncate leading-snug group-hover:text-indigo-600 transition-colors">{ad.title}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{ad.advtNo}</span>
-                            {currentSchedule && (
-                              <>
-                                <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
-                                <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
-                                  Scheduled: {new Date(currentSchedule).toLocaleDateString('en-IN')}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
+                      <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                        <p className="text-xs text-amber-700">
+                          <strong>Note:</strong> Interview date must be at least 5 days after the last advertisement deadline:
+                          <span className="font-bold ml-1">{latestDeadline.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                        </p>
                       </div>
                     );
-                  })}
-                </div>
-              </div>
+                  }
+                  return null;
+                })()}
 
-            </div>
-          </div>
-        )}
-      </ModalContainer>
-
-      {/* Send Email Confirmation Modal */}
-      <ModalContainer
-        isOpen={emailConfirmModal.show}
-        onClose={() => {
-          setEmailConfirmModal({ show: false, user: null });
-          setEmailForm({ location: '', helpline: '' });
-          setEmailFormErrors({ location: '', helpline: '' });
-        }}
-        title="Send Interview Invitation Email"
-        size="large"
-        footer={
-          emailConfirmModal.user && (
-            <div className="flex gap-4 justify-end px-8 py-6 bg-white border-t border-indigo-50">
-              <button
-                onClick={() => {
-                  setEmailConfirmModal({ show: false, user: null });
-                  setEmailForm({ location: '', helpline: '' });
-                  setEmailFormErrors({ location: '', helpline: '' });
-                }}
-                className="px-6 py-3 bg-slate-50 text-slate-500 rounded-2xl font-bold border border-slate-100 hover:bg-slate-100 transition-all cursor-pointer shadow-sm active:scale-95 text-sm"
-              >
-                Cancel Draft
-              </button>
-              <button
-                onClick={() => handleSendInterviewEmail(emailConfirmModal.user._id, emailForm.location, emailForm.helpline, selectedAdsToEmail)}
-                disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0}
-                className="px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm"
-              >
-                <FaPaperPlane className="text-[11px]" /> Dispatch Invitation
-              </button>
-            </div>
-          )
-        }
-      >
-        {emailConfirmModal.user && (
-          <div className="flex flex-col lg:flex-row h-full overflow-hidden min-h-[550px] bg-white">
-            {/* Left Column: Form Section */}
-            <div className="lg:w-1/2 p-0 lg:border-r border-indigo-50 overflow-y-auto bg-white/50 backdrop-blur-sm scrollbar-thin scrollbar-thumb-indigo-100">
-              <div className="p-10 space-y-10">
-                {/* Refined Candidate Profile Card - Above Address/Helpline */}
-                <div className="relative p-8 bg-gradient-to-br from-indigo-500/10 via-white to-indigo-50/30 rounded-[2.5rem] border border-indigo-100 shadow-sm overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform duration-700"></div>
-
-                  <div className="flex items-center gap-8 relative z-10">
-                    <div className="relative shrink-0">
-                      {emailConfirmModal.user.profileImage ? (
-                        <img
-                          src={emailConfirmModal.user.profileImage.startsWith('http') ? emailConfirmModal.user.profileImage : `http://localhost:5000${emailConfirmModal.user.profileImage}`}
-                          alt={emailConfirmModal.user.fullName}
-                          className="w-20 h-20 rounded-[1.8rem] border-4 border-white object-cover shadow-xl group-hover:rotate-3 transition-all duration-500 shadow-indigo-100"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 rounded-[1.8rem] bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold text-3xl border-4 border-white shadow-xl">
-                          {emailConfirmModal.user.fullName?.charAt(0)}
-                        </div>
-                      )}
-                      <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg border border-indigo-50">
-                        <FaCheckCircle className="text-emerald-500 text-lg" />
-                      </div>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1.5">
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-indigo-50 rounded-lg shadow-sm">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                          <span className="text-[9px] text-slate-500 font-bold tracking-wider">Interview Status</span>
-                        </div>
-                      </div>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight truncate leading-tight mb-1">{emailConfirmModal.user.fullName}</h3>
-                      <div className="flex items-center gap-2 text-slate-500 font-bold text-[13px] opacity-80 overflow-hidden">
-                        <FaEnvelope className="text-indigo-400 shrink-0 text-xs" />
-                        <span className="truncate">{emailConfirmModal.user.email}</span>
-                      </div>
-                    </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Select Interview Date</label>
+                    <input
+                      type="date"
+                      value={scheduleDateInput}
+                      onChange={(e) => setScheduleDateInput(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                      min={(() => {
+                        const ads = scheduleModal.user.advertisements || [];
+                        if (ads.length > 0) {
+                          const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
+                          const minDate = new Date(latestDeadline);
+                          minDate.setDate(minDate.getDate() + 5); // Minimum 5 days after deadline
+                          return minDate.toISOString().split('T')[0];
+                        }
+                        return new Date().toISOString().split('T')[0];
+                      })()}
+                    />
                   </div>
-                </div>
 
-                {/* Advertisement Selection for Email */}
-                <div>
-                  <label className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Target Advertisements
-                    </span>
-                    <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
-                      Select for Mailing
-                    </span>
-                  </label>
-                  <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(emailConfirmModal.user.advertisements || (emailConfirmModal.user.advertisement ? [emailConfirmModal.user.advertisement] : [])).map((ad) => {
-                      const isSelected = selectedAdsToEmail.includes(ad._id);
-                      const adMark = emailConfirmModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
-                      const hasSchedule = !!adMark?.interviewSchedule?.scheduledDate;
-                      const hasPanel = emailConfirmModal.user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
-                      const emailSent = !!adMark?.interviewEmailSent?.sent;
-                      const isEligible = hasSchedule && hasPanel;
+                  {/* Advertisement Selection */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
+                      <span>Select Advertisements to Schedule</span>
+                      <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">Required</span>
+                    </label>
+                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto p-1 custom-scrollbar">
+                      {(scheduleModal.user.advertisements || (scheduleModal.user.advertisement ? [scheduleModal.user.advertisement] : [])).map((ad) => {
+                        const isSelected = selectedAdsToSchedule.includes(ad._id);
+                        const adMark = scheduleModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                        const currentSchedule = adMark?.interviewSchedule?.scheduledDate;
 
-                      return (
-                        <div
-                          key={ad._id}
-                          onClick={() => {
-                            if (!isEligible) return;
-                            setSelectedAdsToEmail(prev =>
-                              prev.includes(ad._id)
-                                ? prev.filter(id => id !== ad._id)
-                                : [...prev, ad._id]
-                            );
-                          }}
-                          className={`group relative p-4 rounded-[2rem] border-2 transition-all duration-300 ${isEligible
-                            ? (isSelected ? 'bg-indigo-50/30 border-indigo-200 shadow-md' : 'bg-white border-slate-50 hover:border-indigo-100 cursor-pointer shadow-sm')
-                            : 'bg-slate-50/50 border-slate-100 opacity-60 cursor-not-allowed'
-                            }`}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className={`w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${isSelected
+                        return (
+                          <div
+                            key={ad._id}
+                            onClick={() => {
+                              setSelectedAdsToSchedule(prev =>
+                                prev.includes(ad._id)
+                                  ? prev.filter(id => id !== ad._id)
+                                  : [...prev, ad._id]
+                              );
+                            }}
+                            className={`group flex items-center gap-4 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
+                              ? 'bg-indigo-50/50 border-indigo-200'
+                              : 'bg-white border-gray-100 hover:border-indigo-100 shadow-sm'
+                              }`}
+                          >
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
                               ? 'bg-indigo-600 border-indigo-600'
-                              : 'bg-white border-slate-200 group-hover:border-indigo-300'
+                              : 'border-gray-200 group-hover:border-indigo-300'
                               }`}>
-                              {isSelected && <FaCheckCircle className="text-white text-xs" />}
+                              {isSelected && <FaCheckCircle className="text-white text-[10px]" />}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{ad.title}</p>
-                                {emailSent && (
-                                  <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg border border-emerald-200">SENT</span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                {!hasSchedule && (
-                                  <span className="text-[9px] text-rose-500 font-bold flex items-center gap-1"><FaClock className="text-[8px]" /> Missing Schedule</span>
-                                )}
-                                {!hasPanel && (
-                                  <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><FaUsers className="text-[8px]" /> Panel Pending</span>
-                                )}
-                                {hasSchedule && (
-                                  <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1">
-                                    <FaCalendarAlt className="text-[8px]" /> {new Date(adMark.interviewSchedule.scheduledDate).toLocaleDateString('en-IN')}
-                                  </span>
+                              <p className="text-[13px] font-bold text-gray-800 truncate leading-snug group-hover:text-indigo-600 transition-colors">{ad.title}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{ad.advtNo}</span>
+                                {currentSchedule && (
+                                  <>
+                                    <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
+                                    <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                                      Scheduled: {new Date(currentSchedule).toLocaleDateString('en-IN')}
+                                    </span>
+                                  </>
                                 )}
                               </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-
-                <div className="relative">
-                  <label className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Interview Location / Venue
-                    </span>
-                    {emailForm.location && !emailFormErrors.location && (
-                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
-                        <FaCheckCircle className="text-[9px]" /> India Standard Address
-                      </span>
-                    )}
-                  </label>
-                  <div className="relative group">
-                    <textarea
-                      placeholder="Enter precise office/venue address including 6-digit PIN code..."
-                      value={emailForm.location}
-                      onChange={(e) => setEmailForm(prev => ({ ...prev, location: e.target.value }))}
-                      className={`w-full px-5 py-5 rounded-3xl border-2 transition-all duration-300 outline-none text-[15px] min-h-[140px] resize-none leading-relaxed shadow-sm ${emailFormErrors.location && emailForm.location ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
-                        }`}
-                    />
-                    <div className="absolute right-5 top-5 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
-                      <FaBuilding className="text-lg" />
-                    </div>
-                  </div>
-                  {emailFormErrors.location && emailForm.location ? (
-                    <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
-                      {emailFormErrors.location}
-                    </p>
-                  ) : (
-                    <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
-                      <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
-                      <p>Please specify Floor No. and Building properly. Example: Sector 2, Gandhinagar 382010</p>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Support Helpline Number
-                    </span>
-                    {emailForm.helpline && !emailFormErrors.helpline && (
-                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
-                        <FaCheckCircle className="text-[9px]" /> Verified Format
-                      </span>
-                    )}
-                  </label>
-                  <div className="relative group">
-                    <input
-                      type="text"
-                      placeholder="9XXXXXXXXX (10 Digit Mobile)"
-                      value={emailForm.helpline}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                        setEmailForm(prev => ({ ...prev, helpline: val }));
-                      }}
-                      className={`w-full px-5 py-5 rounded-full border-2 transition-all duration-300 outline-none text-[15px] shadow-sm ${emailFormErrors.helpline && emailForm.helpline ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
-                        }`}
-                    />
-                    <div className="absolute right-6 top-1/2 -translate-y-1/2 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
-                      <FaPhone />
-                    </div>
-                  </div>
-                  {!emailForm.helpline && (
-                    <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
-                      <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
-                      <p>Enter a 10-digit Indian number. It will be displayed as the primary support line.</p>
-                    </div>
-                  )}
-                  {emailFormErrors.helpline && emailForm.helpline && (
-                    <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
-                      {emailFormErrors.helpline}
-                    </p>
-                  )}
-                </div>
-
-                {emailConfirmModal.user.interviewEmailSent?.sent && (
-                  <div className="p-5 bg-amber-50 rounded-[1.5rem] border border-amber-200 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-8 -mt-8"></div>
-                    <div className="flex items-center gap-4 relative">
-                      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center border border-amber-200 shadow-sm">
-                        <FaInfoCircle className="text-amber-600 text-lg" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-amber-900 font-bold">Resending Invitation</p>
-                        <p className="text-[11px] text-amber-700/80 font-bold mt-0.5">Last transmission detected: {new Date(emailConfirmModal.user.interviewEmailSent.at).toLocaleDateString()}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-            </div>
-
-            {/* Right Column: Live Preview Section */}
-            <div className="lg:w-1/2 p-8 bg-slate-50/50 overflow-y-auto max-h-[750px] scrollbar-none">
-              <EmailDraftPreview user={emailConfirmModal.user} form={emailForm} />
-            </div>
-          </div>
+            )}
+          </ModalContainer>
         )}
-      </ModalContainer >
-    </div >
-  );
+
+        {/* Send Email Confirmation Modal */}
+        {emailConfirmModal.show && (
+          <ModalContainer
+            isOpen={emailConfirmModal.show}
+            onClose={() => {
+              setEmailConfirmModal({ show: false, user: null });
+              setEmailForm({ location: '', helpline: '' });
+              setEmailFormErrors({ location: '', helpline: '' });
+            }}
+            title="Send Interview Invitation Email"
+            size="large"
+            footer={
+              emailConfirmModal.user && (
+                <div className="flex gap-4 justify-end px-8 py-6 bg-white border-t border-indigo-50">
+                  <button
+                    onClick={() => {
+                      setEmailConfirmModal({ show: false, user: null });
+                      setEmailForm({ location: '', helpline: '' });
+                      setEmailFormErrors({ location: '', helpline: '' });
+                    }}
+                    className="px-6 py-3 bg-slate-50 text-slate-500 rounded-2xl font-bold border border-slate-100 hover:bg-slate-100 transition-all cursor-pointer shadow-sm active:scale-95 text-sm"
+                  >
+                    Cancel Draft
+                  </button>
+                  <button
+                    onClick={() => handleSendInterviewEmail(emailConfirmModal.user._id, emailForm.location, emailForm.helpline, selectedAdsToEmail)}
+                    disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0}
+                    className="px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm"
+                  >
+                    <FaPaperPlane className="text-[11px]" /> Dispatch Invitation
+                  </button>
+                </div>
+              )
+            }
+          >
+            {emailConfirmModal.user && (
+              <div className="flex flex-col lg:flex-row h-full overflow-hidden min-h-[550px] bg-white">
+                {/* Left Column: Form Section */}
+                <div className="lg:w-1/2 p-0 lg:border-r border-indigo-50 overflow-y-auto bg-white/50 backdrop-blur-sm scrollbar-thin scrollbar-thumb-indigo-100">
+                  <div className="p-10 space-y-10">
+                    {/* Refined Candidate Profile Card */}
+                    <div className="relative p-8 bg-gradient-to-br from-indigo-500/10 via-white to-indigo-50/30 rounded-[2.5rem] border border-indigo-100 shadow-sm overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform duration-700"></div>
+
+                      <div className="flex items-center gap-8 relative z-10">
+                        <div className="relative shrink-0">
+                          {emailConfirmModal.user.profileImage ? (
+                            <img
+                              src={emailConfirmModal.user.profileImage.startsWith('http') ? emailConfirmModal.user.profileImage : `http://localhost:5000${emailConfirmModal.user.profileImage}`}
+                              alt={emailConfirmModal.user.fullName}
+                              className="w-20 h-20 rounded-[1.8rem] border-4 border-white object-cover shadow-xl group-hover:rotate-3 transition-all duration-500 shadow-indigo-100"
+                            />
+                          ) : (
+                            <div className="w-20 h-20 rounded-[1.8rem] bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold text-3xl border-4 border-white shadow-xl">
+                              {emailConfirmModal.user.fullName?.charAt(0)}
+                            </div>
+                          )}
+                          <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg border border-indigo-50">
+                            <FaCheckCircle className="text-emerald-500 text-lg" />
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3 mb-1.5">
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-indigo-50 rounded-lg shadow-sm">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                              <span className="text-[9px] text-slate-500 font-bold tracking-wider">Interview Status</span>
+                            </div>
+                          </div>
+                          <h3 className="text-2xl font-black text-slate-900 tracking-tight truncate leading-tight mb-1">{emailConfirmModal.user.fullName}</h3>
+                          <div className="flex items-center gap-2 text-slate-500 font-bold text-[13px] opacity-80 overflow-hidden">
+                            <FaEnvelope className="text-indigo-400 shrink-0 text-xs" />
+                            <span className="truncate">{emailConfirmModal.user.email}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Advertisement Selection for Email */}
+                    <div>
+                      <label className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Target Advertisements
+                        </span>
+                        <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+                          Select for Mailing
+                        </span>
+                      </label>
+                      <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                        {(emailConfirmModal.user.advertisements || (emailConfirmModal.user.advertisement ? [emailConfirmModal.user.advertisement] : [])).map((ad) => {
+                          const isSelected = selectedAdsToEmail.includes(ad._id);
+                          const adMark = emailConfirmModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                          const hasSchedule = !!adMark?.interviewSchedule?.scheduledDate;
+                          const hasPanel = emailConfirmModal.user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
+                          const emailSent = !!adMark?.interviewEmailSent?.sent;
+                          const isEligible = hasSchedule && hasPanel;
+
+                          return (
+                            <div
+                              key={ad._id}
+                              onClick={() => {
+                                if (!isEligible) return;
+                                setSelectedAdsToEmail(prev =>
+                                  prev.includes(ad._id)
+                                    ? prev.filter(id => id !== ad._id)
+                                    : [...prev, ad._id]
+                                );
+                              }}
+                              className={`group relative p-4 rounded-[2rem] border-2 transition-all duration-300 ${isEligible
+                                ? (isSelected ? 'bg-indigo-50/30 border-indigo-200 shadow-md' : 'bg-white border-slate-50 hover:border-indigo-100 cursor-pointer shadow-sm')
+                                : 'bg-slate-50/50 border-slate-100 opacity-60 cursor-not-allowed'
+                                }`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className={`w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${isSelected
+                                  ? 'bg-indigo-600 border-indigo-600'
+                                  : 'bg-white border-slate-200 group-hover:border-indigo-300'
+                                  }`}>
+                                  {isSelected && <FaCheckCircle className="text-white text-xs" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{ad.title}</p>
+                                    {emailSent && (
+                                      <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg border border-emerald-200">SENT</span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    {!hasSchedule && (
+                                      <span className="text-[9px] text-rose-500 font-bold flex items-center gap-1"><FaClock className="text-[8px]" /> Missing Schedule</span>
+                                    )}
+                                    {!hasPanel && (
+                                      <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><FaUsers className="text-[8px]" /> Panel Pending</span>
+                                    )}
+                                    {hasSchedule && (
+                                      <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1">
+                                        <FaCalendarAlt className="text-[8px]" /> {new Date(adMark.interviewSchedule.scheduledDate).toLocaleDateString('en-IN')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Interview Location */}
+                    <div>
+                      <label className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Interview Location / Venue
+                        </span>
+                        {emailForm.location && !emailFormErrors.location && (
+                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
+                            <FaCheckCircle className="text-[9px]" /> India Standard Address
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative group">
+                        <textarea
+                          placeholder="Enter precise office/venue address including 6-digit PIN code..."
+                          value={emailForm.location}
+                          onChange={(e) => setEmailForm(prev => ({ ...prev, location: e.target.value }))}
+                          className={`w-full px-5 py-5 rounded-3xl border-2 transition-all duration-300 outline-none text-[15px] min-h-[140px] resize-none leading-relaxed shadow-sm ${emailFormErrors.location && emailForm.location ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
+                            }`}
+                        />
+                        <div className="absolute right-5 top-5 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
+                          <FaBuilding className="text-lg" />
+                        </div>
+                      </div>
+                      {emailFormErrors.location && emailForm.location ? (
+                        <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
+                          {emailFormErrors.location}
+                        </p>
+                      ) : (
+                        <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                          <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
+                          <p>Please specify Floor No. and Building properly. Example: Sector 2, Gandhinagar 382010</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Support Helpline */}
+                    <div>
+                      <label className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Support Helpline Number
+                        </span>
+                        {emailForm.helpline && !emailFormErrors.helpline && (
+                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
+                            <FaCheckCircle className="text-[9px]" /> Verified Format
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative group">
+                        <input
+                          type="text"
+                          placeholder="9XXXXXXXXX (10 Digit Mobile)"
+                          value={emailForm.helpline}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setEmailForm(prev => ({ ...prev, helpline: val }));
+                          }}
+                          className={`w-full px-5 py-5 rounded-full border-2 transition-all duration-300 outline-none text-[15px] shadow-sm ${emailFormErrors.helpline && emailForm.helpline ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
+                            }`}
+                        />
+                        <div className="absolute right-6 top-1/2 -translate-y-1/2 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
+                          <FaPhone />
+                        </div>
+                      </div>
+                      {!emailForm.helpline && (
+                        <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                          <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
+                          <p>Enter a 10-digit Indian number. It will be displayed as the primary support line.</p>
+                        </div>
+                      )}
+                      {emailFormErrors.helpline && emailForm.helpline && (
+                        <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
+                          {emailFormErrors.helpline}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Resend Warning */}
+                    {emailConfirmModal.user.interviewEmailSent?.sent && (
+                      <div className="p-5 bg-amber-50 rounded-[1.5rem] border border-amber-200 shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-8 -mt-8"></div>
+                        <div className="flex items-center gap-4 relative">
+                          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center border border-amber-200 shadow-sm">
+                            <FaInfoCircle className="text-amber-600 text-lg" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-amber-900 font-bold">Resending Invitation</p>
+                            <p className="text-[11px] text-amber-700/80 font-bold mt-0.5">
+                              Last transmission detected: {new Date(emailConfirmModal.user.interviewEmailSent.at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Column: Live Preview Section */}
+                <div className="lg:w-1/2 p-8 bg-slate-50/50 overflow-y-auto max-h-[750px] scrollbar-none">
+                  <EmailDraftPreview user={emailConfirmModal.user} form={emailForm} selectedAdIds={selectedAdsToEmail} />
+                </div>
+              </div>
+            )}
+          </ModalContainer>
+        )}
+      </div>
+    </div>
+  )
 };
 
 export default UserGrid;

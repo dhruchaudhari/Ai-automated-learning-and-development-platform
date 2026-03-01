@@ -78,9 +78,8 @@ const INDIAN_HOLIDAYS = {
     "2027-12-25": { name: "Christmas", type: "gazetted" },
 };
 
-const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
+const InterviewCalendarView = ({ filteredUsers, panels, onViewUser, searchTerm = "" }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [searchTerm, setSearchTerm] = useState("");
     const [selectedDay, setSelectedDay] = useState(null); // date key for detail panel
     const [hoveredDay, setHoveredDay] = useState(null);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -97,9 +96,46 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
     const [filterRange, setFilterRange] = useState({ start: "", end: "" });
     const [filterWeeks, setFilterWeeks] = useState([]); // 1, 2, 3, 4, 5, 6 (week of month)
 
+    // Flatten logic: Create a separate record for each advertisement a user is assigned to
+    const flattenedData = useMemo(() => {
+        const flattened = [];
+        filteredUsers.forEach(user => {
+            const userAds = user.advertisements && user.advertisements.length > 0
+                ? user.advertisements
+                : (user.advertisement ? [user.advertisement] : []);
+
+            if (userAds.length === 0) {
+                // No ads assigned - keep as single record
+                flattened.push({
+                    ...user,
+                    currentAd: null,
+                    resolvedSchedule: user.interviewSchedule?.scheduledDate || null,
+                    resolvedEmailSent: user.interviewEmailSent?.sent || false,
+                    uniqueId: `${user._id}_noad`
+                });
+            } else {
+                userAds.forEach(ad => {
+                    const adId = (ad._id || ad).toString();
+                    const adMark = user.advertisementMarks?.find(am =>
+                        (am.advertisementId?._id || am.advertisementId)?.toString() === adId
+                    );
+
+                    flattened.push({
+                        ...user,
+                        currentAd: ad,
+                        resolvedSchedule: adMark?.interviewSchedule?.scheduledDate || user.interviewSchedule?.scheduledDate || null,
+                        resolvedEmailSent: adMark?.interviewEmailSent?.sent || user.interviewEmailSent?.sent || false,
+                        uniqueId: `${user._id}_${adId}`
+                    });
+                });
+            }
+        });
+        return flattened;
+    }, [filteredUsers]);
+
     // Filter combined logic
     const filteredCandidates = useMemo(() => {
-        return filteredUsers.filter(u => {
+        return flattenedData.filter(u => {
             // 1. Search filter
             if (searchTerm.trim()) {
                 const q = searchTerm.toLowerCase();
@@ -108,12 +144,13 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                     u.email?.toLowerCase().includes(q) ||
                     u.mobile?.includes(q) ||
                     u.education?.graduation?.degree?.toLowerCase().includes(q) ||
-                    u.education?.qualifyingDegree?.degree?.toLowerCase().includes(q);
+                    u.education?.qualifyingDegree?.degree?.toLowerCase().includes(q) ||
+                    (u.currentAd?.title && u.currentAd.title.toLowerCase().includes(q));
                 if (!matchesSearch) return false;
             }
 
             // If user has no schedule, they only pass if no date filters are active
-            const schedule = u.interviewSchedule?.scheduledDate;
+            const schedule = u.resolvedSchedule;
             const hasDateFilters = filterDays.length > 0 || filterRange.start || filterRange.end || filterWeeks.length > 0;
 
             if (!schedule) {
@@ -143,26 +180,31 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
 
             return true;
         });
-    }, [filteredUsers, searchTerm, filterDays, filterRange, filterWeeks]);
+    }, [flattenedData, searchTerm, filterDays, filterRange, filterWeeks]);
 
     // Group users by scheduled interview date
     const usersByDate = useMemo(() => {
         const map = {};
-        filteredCandidates.forEach(user => {
-            const dateStr = user.interviewSchedule?.scheduledDate;
+        filteredCandidates.forEach(candidate => {
+            const dateStr = candidate.resolvedSchedule;
             if (!dateStr) return;
             const dateKey = format(new Date(dateStr), "yyyy-MM-dd");
             if (!map[dateKey]) map[dateKey] = [];
-            map[dateKey].push(user);
+            map[dateKey].push(candidate);
         });
         return map;
     }, [filteredCandidates]);
 
     // Stats
     const stats = useMemo(() => {
-        const scheduled = filteredCandidates.filter(u => u.interviewSchedule?.scheduledDate).length;
-        const emailSent = filteredCandidates.filter(u => u.interviewEmailSent?.sent).length;
-        const panelAssigned = filteredCandidates.reduce((sum, u) => sum + (u.panelAssignments?.length || 0), 0);
+        const scheduled = filteredCandidates.filter(u => u.resolvedSchedule).length;
+        const emailSent = filteredCandidates.filter(u => u.resolvedEmailSent).length;
+        const panelAssigned = filteredCandidates.reduce((sum, u) => {
+            if (!u.currentAd) return sum + (u.panelAssignments?.length || 0);
+            const adId = (u.currentAd._id || u.currentAd).toString();
+            const hasAssignedPanel = u.panelAssignments?.some(pa => pa.advertisementId?.toString() === adId);
+            return sum + (hasAssignedPanel ? 1 : 0);
+        }, 0);
         const notScheduled = filteredCandidates.length - scheduled;
         // Count interviews this month
         const monthKey = format(currentMonth, "yyyy-MM");
@@ -197,9 +239,16 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
         { short: "Sun", color: "text-red-600" },
     ];
 
-    const getPanelNames = (user) => {
-        if (!user.panelAssignments?.length || !panels?.length) return [];
-        return user.panelAssignments.map(assignment => {
+    const getPanelNames = (candidate) => {
+        if (!candidate.panelAssignments?.length || !panels?.length) return [];
+
+        let assignments = candidate.panelAssignments;
+        if (candidate.currentAd) {
+            const adId = (candidate.currentAd._id || candidate.currentAd).toString();
+            assignments = assignments.filter(pa => pa.advertisementId?.toString() === adId);
+        }
+
+        return assignments.map(assignment => {
             const panel = panels.find(p => p._id === assignment.panelId);
             return panel?.name || "Unknown Panel";
         });
@@ -273,14 +322,14 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
     const selectedDayUsers = selectedDay ? (usersByDate[selectedDay] || []) : [];
     const selectedDayHoliday = selectedDay ? INDIAN_HOLIDAYS[selectedDay] : null;
 
-    const handleUserNavigate = (user) => {
-        const dateStr = user.interviewSchedule?.scheduledDate;
+    const handleUserNavigate = (candidate) => {
+        const dateStr = candidate.resolvedSchedule;
         if (dateStr) {
             const date = new Date(dateStr);
             setCurrentMonth(date);
             setSelectedDay(format(date, "yyyy-MM-dd"));
         } else {
-            toast.error(`${user.fullName} is not scheduled yet`);
+            toast.error(`${candidate.fullName} is not scheduled yet`);
         }
     };
 
@@ -291,19 +340,19 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                         <FaUsers className="text-indigo-600 text-sm" />
-                        <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Candidate Quick Nav</h3>
+                        <h3 className="text-xs font-semibold text-gray-800 tracking-wider">Candidates quick nav</h3>
                     </div>
-                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
-                        Total Candidates: {stats.total}
+                    <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+                        Total candidates: {stats.total}
                     </span>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                     {filteredCandidates.map(user => (
                         <button
-                            key={user._id}
+                            key={user.uniqueId}
                             onClick={() => handleUserNavigate(user)}
-                            className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer shadow-sm group ${user.interviewSchedule?.scheduledDate
-                                ? 'bg-pink-50 border-pink-200 hover:bg-pink-100'
+                            className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer shadow-sm group ${user.resolvedSchedule
+                                ? 'bg-slate-100 border-black-200 hover:bg-green-100'
                                 : 'bg-gray-50 border-gray-100 hover:bg-gray-100 text-gray-400'
                                 }`}
                         >
@@ -315,22 +364,23 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                 </div>
                             )}
                             <div className="text-left">
-                                <p className={`text-[11px] font-bold truncate max-w-[100px] ${user.interviewSchedule?.scheduledDate ? 'text-pink-700' : 'text-gray-400'}`}>
+                                <p className={`text-[11px] font-medium truncate max-w-[100px] ${user.resolvedSchedule ? 'text-black-700' : 'text-gray-400'}`}>
                                     {user.fullName}
                                 </p>
-                                {user.interviewSchedule?.scheduledDate && (
-                                    <p className="text-[9px] text-pink-400 font-medium">
-                                        {format(new Date(user.interviewSchedule.scheduledDate), "dd MMM")}
+                                {user.resolvedSchedule && (
+                                    <p className="text-[9px] text-black-400 font-medium">
+                                        {format(new Date(user.resolvedSchedule), "dd MMM")}
                                     </p>
                                 )}
                             </div>
                         </button>
+
                     ))}
                 </div>
             </div>
 
             {/* ───── Top Controls: Search + Stats ───── */}
-            <div className="mb-5 space-y-4">
+            <div className="mb-5 space-y-4" >
                 <div className="flex flex-col lg:flex-row gap-4">
                     {/* Search */}
                     <div className="relative flex-1 max-w-md">
@@ -338,26 +388,26 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                         <input
                             type="text"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search by name, email, phone, degree..."
-                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm transition-all"
+                            readOnly
+                            placeholder="Global search and filters applied..."
+                            className="w-full pl-10 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none shadow-sm transition-all text-gray-500 italic"
                         />
                         {searchTerm && (
-                            <button onClick={() => setSearchTerm("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer">
-                                <FaTimes className="text-xs" />
-                            </button>
+                            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-indigo-400">
+                                <FaSearch className="text-xs" />
+                            </div>
                         )}
                     </div>
 
                     <button
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-bold text-xs transition-all shadow-sm cursor-pointer ${isFilterOpen || filterDays.length > 0 || filterRange.start || filterRange.end || filterWeeks.length > 0
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-medium text-xs transition-all shadow-sm cursor-pointer ${isFilterOpen || filterDays.length > 0 || filterRange.start || filterRange.end || filterWeeks.length > 0
                             ? "bg-indigo-600 text-white border-indigo-600"
                             : "bg-white text-gray-600 border-gray-200 hover:bg-indigo-50"
                             }`}
                     >
                         <FaFilter className="text-[10px]" />
-                        Advanced Filters
+                        Advanced filters
                         {(filterDays.length > 0 || filterRange.start || filterRange.end || filterWeeks.length > 0) && (
                             <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
                         )}
@@ -366,121 +416,123 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                     {/* Quick Stats Chips */}
                     <div className="flex flex-wrap items-center gap-2">
                         {[
-                            { label: "This Month", value: stats.thisMonth, icon: FaCalendarAlt, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+                            { label: "This month", value: stats.thisMonth, icon: FaCalendarAlt, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
                             { label: "Scheduled", value: stats.scheduled, icon: FaCheckCircle, cls: "bg-pink-50 text-pink-700 border-pink-200" },
-                            { label: "Email Sent", value: stats.emailSent, icon: FaEnvelope, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-                            { label: "Panels Assigned", value: stats.panelAssigned, icon: FaClipboardList, cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                            { label: "Email sent", value: stats.emailSent, icon: FaEnvelope, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                            { label: "Panels assigned", value: stats.panelAssigned, icon: FaClipboardList, cls: "bg-purple-50 text-purple-700 border-purple-200" },
                             { label: "Unscheduled", value: stats.notScheduled, icon: FaClock, cls: "bg-amber-50 text-amber-700 border-amber-200" },
                         ].map(({ label, value, icon: Icon, cls }) => (
-                            <span key={label} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold shadow-sm ${cls}`}>
+                            <span key={label} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium shadow-sm ${cls}`}>
                                 <Icon className="text-[10px]" />
-                                {label}: <span className="font-bold">{value}</span>
+                                {label}: <span className="font-semibold">{value}</span>
                             </span>
                         ))}
                     </div>
                 </div>
 
                 {/* Expanded Filters */}
-                {isFilterOpen && (
-                    <div className="p-5 bg-white rounded-2xl border border-indigo-100 shadow-xl animate-scale-up space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {/* Day of Week */}
-                            <div>
-                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <FaRegCalendarAlt className="text-indigo-400" /> Day of Week
-                                </h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {[
-                                        { l: "M", i: 1 }, { l: "T", i: 2 }, { l: "W", i: 3 },
-                                        { l: "T", i: 4 }, { l: "F", i: 5 }, { l: "S", i: 6 }, { l: "S", i: 0 }
-                                    ].map(day => (
-                                        <button
-                                            key={day.i}
-                                            onClick={() => {
-                                                setFilterDays(prev =>
-                                                    prev.includes(day.i) ? prev.filter(x => x !== day.i) : [...prev, day.i]
-                                                );
-                                            }}
-                                            className={`w-9 h-9 rounded-xl border text-xs font-bold transition-all cursor-pointer ${filterDays.includes(day.i)
-                                                ? "bg-indigo-600 text-white border-indigo-600 shadow-md"
-                                                : "bg-gray-50 text-gray-500 border-gray-200 hover:border-indigo-300"
-                                                }`}
-                                        >
-                                            {day.l}
-                                        </button>
-                                    ))}
+                {
+                    isFilterOpen && (
+                        <div className="p-5 bg-white rounded-2xl border border-indigo-100 shadow-xl animate-scale-up space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                {/* Day of Week */}
+                                <div>
+                                    <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <FaRegCalendarAlt className="text-indigo-400" /> Day of week
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[
+                                            { l: "M", i: 1 }, { l: "T", i: 2 }, { l: "W", i: 3 },
+                                            { l: "T", i: 4 }, { l: "F", i: 5 }, { l: "S", i: 6 }, { l: "S", i: 0 }
+                                        ].map(day => (
+                                            <button
+                                                key={day.i}
+                                                onClick={() => {
+                                                    setFilterDays(prev =>
+                                                        prev.includes(day.i) ? prev.filter(x => x !== day.i) : [...prev, day.i]
+                                                    );
+                                                }}
+                                                className={`w-9 h-9 rounded-xl border text-xs font-medium transition-all cursor-pointer ${filterDays.includes(day.i)
+                                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-md"
+                                                    : "bg-gray-50 text-gray-500 border-gray-200 hover:border-indigo-300"
+                                                    }`}
+                                            >
+                                                {day.l}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Custom Date Range */}
+                                <div>
+                                    <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <FaCalendarAlt className="text-indigo-400" /> Date range
+                                    </h4>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="date"
+                                            value={filterRange.start}
+                                            onChange={(e) => setFilterRange(prev => ({ ...prev, start: e.target.value }))}
+                                            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none"
+                                        />
+                                        <span className="text-gray-400 text-xs">to</span>
+                                        <input
+                                            type="date"
+                                            value={filterRange.end}
+                                            onChange={(e) => setFilterRange(prev => ({ ...prev, end: e.target.value }))}
+                                            className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Week of Month */}
+                                <div>
+                                    <h4 className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                        <FaClipboardList className="text-indigo-400" /> Week of month
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[1, 2, 3, 4, 5, 6].map(wk => (
+                                            <button
+                                                key={wk}
+                                                onClick={() => {
+                                                    setFilterWeeks(prev =>
+                                                        prev.includes(wk) ? prev.filter(x => x !== wk) : [...prev, wk]
+                                                    );
+                                                }}
+                                                className={`px-3 py-1.5 rounded-lg border text-[10px] font-medium transition-all cursor-pointer ${filterWeeks.includes(wk)
+                                                    ? "bg-purple-600 text-white border-purple-600"
+                                                    : "bg-gray-50 text-gray-500 border-gray-200 hover:border-purple-300"
+                                                    }`}
+                                            >
+                                                Week {wk}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Custom Date Range */}
-                            <div>
-                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <FaCalendarAlt className="text-indigo-400" /> Date Range
-                                </h4>
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="date"
-                                        value={filterRange.start}
-                                        onChange={(e) => setFilterRange(prev => ({ ...prev, start: e.target.value }))}
-                                        className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none"
-                                    />
-                                    <span className="text-gray-400 text-xs">to</span>
-                                    <input
-                                        type="date"
-                                        value={filterRange.end}
-                                        onChange={(e) => setFilterRange(prev => ({ ...prev, end: e.target.value }))}
-                                        className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-400 outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Week of Month */}
-                            <div>
-                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    <FaClipboardList className="text-indigo-400" /> Week of Month
-                                </h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {[1, 2, 3, 4, 5, 6].map(wk => (
-                                        <button
-                                            key={wk}
-                                            onClick={() => {
-                                                setFilterWeeks(prev =>
-                                                    prev.includes(wk) ? prev.filter(x => x !== wk) : [...prev, wk]
-                                                );
-                                            }}
-                                            className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${filterWeeks.includes(wk)
-                                                ? "bg-purple-600 text-white border-purple-600"
-                                                : "bg-gray-50 text-gray-500 border-gray-200 hover:border-purple-300"
-                                                }`}
-                                        >
-                                            Week {wk}
-                                        </button>
-                                    ))}
-                                </div>
+                            <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+                                <p className="text-[10px] text-gray-400 font-medium italic">
+                                    * Filtering updates all stats and user chips in real-time.
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        setFilterDays([]);
+                                        setFilterRange({ start: "", end: "" });
+                                        setFilterWeeks([]);
+                                    }}
+                                    className="text-[10px] font-medium text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider cursor-pointer"
+                                >
+                                    Reset all filters
+                                </button>
                             </div>
                         </div>
-
-                        <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
-                            <p className="text-[10px] text-gray-400 font-medium italic">
-                                * Filtering updates all stats and user chips in real-time.
-                            </p>
-                            <button
-                                onClick={() => {
-                                    setFilterDays([]);
-                                    setFilterRange({ start: "", end: "" });
-                                    setFilterWeeks([]);
-                                }}
-                                className="text-[10px] font-bold text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider cursor-pointer"
-                            >
-                                Reset All Filters
-                            </button>
-                        </div>
-                    </div>
-                )}
+                    )
+                }
             </div>
 
             {/* ───── Month Navigator ───── */}
-            <div className="flex items-center justify-between mb-4 bg-gradient-to-r from-indigo-50 via-white to-purple-50 p-3 rounded-xl border border-indigo-100 shadow-sm">
+            <div className="flex items-center justify-between mb-4 bg-gradient-to-r from-indigo-50 via-white to-purple-50 p-3 rounded-xl border border-indigo-100 shadow-sm" >
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => jumpToNextInterviewMonth(-1)}
@@ -494,7 +546,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                         className="flex items-center gap-1.5 px-3.5 py-2 bg-white rounded-lg border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm active:scale-95 cursor-pointer"
                     >
                         <FaChevronLeft className="text-indigo-600 text-[10px]" />
-                        <span className="text-xs font-semibold text-gray-700">Prev</span>
+                        <span className="text-xs font-medium text-gray-700">Prev</span>
                     </button>
                 </div>
 
@@ -509,7 +561,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                         onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
                         className="flex items-center gap-1.5 px-3.5 py-2 bg-white rounded-lg border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 transition-all shadow-sm active:scale-95 cursor-pointer"
                     >
-                        <span className="text-xs font-semibold text-gray-700">Next</span>
+                        <span className="text-xs font-medium text-gray-700">Next</span>
                         <FaChevronRight className="text-indigo-600 text-[10px]" />
                     </button>
                     <button
@@ -523,20 +575,20 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
             </div>
 
             {/* ───── Color Legend & Today ───── */}
-            <div className="flex flex-wrap items-center justify-between mb-4 px-1 text-[10px] font-semibold">
+            <div className="flex flex-wrap items-center justify-between mb-4 px-1 text-[10px] font-semibold" >
                 <div className="flex flex-wrap items-center gap-3">
                     <span className="text-gray-500 uppercase tracking-wider mr-1">Legend:</span>
                     <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-indigo-500 border border-indigo-600"></span> Today</span>
                     <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-400 border border-red-500"></span> Sunday</span>
                     <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-300 border border-blue-400"></span> Saturday</span>
-                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-600 border border-red-700"></span> National Holiday</span>
-                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-400 border border-orange-500"></span> Govt. Holiday</span>
-                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-pink-200 border border-pink-300"></span> Has Interviews</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-600 border border-red-700"></span> National holiday</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-400 border border-orange-500"></span> Govt. holiday</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-pink-200 border border-pink-300"></span> Has interviews</span>
                 </div>
                 <button
                     onClick={() => setCurrentMonth(new Date())}
                     title={`Current Time: ${format(currentTime, "EEEE, dd MMM yyyy | hh:mm:ss a")}`}
-                    className="px-4 py-1.5 bg-black text-white rounded-lg font-bold text-[10px] hover:bg-gray-800 transition-all cursor-pointer shadow-md active:scale-95 border border-black uppercase tracking-wider"
+                    className="px-4 py-1.5 bg-black text-white rounded-lg font-medium text-[10px] hover:bg-gray-800 transition-all cursor-pointer shadow-md active:scale-95 border border-black uppercase tracking-wider"
                 >
                     Today
                 </button>
@@ -549,7 +601,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                     <div className="grid grid-cols-7 bg-gradient-to-r from-indigo-100 via-blue-100 to-purple-100 border-b border-indigo-200">
                         {weekDays.map(({ short, color }) => (
                             <div key={short} className="py-3 text-center">
-                                <span className={`text-xs font-bold tracking-wider uppercase ${color}`}>{short}</span>
+                                <span className={`text-xs font-medium tracking-wider uppercase ${color}`}>{short}</span>
                             </div>
                         ))}
                     </div>
@@ -582,12 +634,12 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                 >
                                     {/* Day Number + Holiday Badge */}
                                     <div className="flex items-start justify-between mb-1">
-                                        <span className={`w-6 h-6 flex items-center justify-center rounded-full text-[11px] font-bold ${getDayNumberClasses(day, isCurrentMonth, todayFlag)}`}>
+                                        <span className={`w-6 h-6 flex items-center justify-center rounded-full text-[11px] font-medium ${getDayNumberClasses(day, isCurrentMonth, todayFlag)}`}>
                                             {format(day, "d")}
                                         </span>
                                         <div className="flex items-center gap-1">
                                             {hasUsers && isCurrentMonth && (
-                                                <span className="text-[8px] font-bold text-white bg-indigo-500 px-1.5 py-0.5 rounded-full shadow-sm leading-none">
+                                                <span className="text-[8px] font-medium text-white bg-indigo-500 px-1.5 py-0.5 rounded-full shadow-sm leading-none">
                                                     {usersOnDay.length}
                                                 </span>
                                             )}
@@ -596,7 +648,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
 
                                     {/* Holiday Label */}
                                     {holiday && isCurrentMonth && (
-                                        <div className={`mb-1 px-1.5 py-0.5 rounded text-[8px] font-bold truncate ${holiday.type === "national"
+                                        <div className={`mb-1 px-1.5 py-0.5 rounded text-[8px] font-medium truncate ${holiday.type === "national"
                                             ? "bg-red-100 text-red-700 border border-red-200"
                                             : "bg-orange-100 text-orange-700 border border-orange-200"
                                             }`} title={holiday.name}>
@@ -606,7 +658,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
 
                                     {/* Sunday label if no holiday */}
                                     {sunday && !holiday && isCurrentMonth && (
-                                        <div className="mb-1 px-1.5 py-0.5 rounded text-[8px] font-bold text-red-400 bg-red-50 border border-red-100 truncate">
+                                        <div className="mb-1 px-1.5 py-0.5 rounded text-[8px] font-medium text-red-400 bg-red-50 border border-red-100 truncate">
                                             Sunday
                                         </div>
                                     )}
@@ -618,16 +670,16 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                                 const panelNames = getPanelNames(user);
                                                 return (
                                                     <button
-                                                        key={user._id}
+                                                        key={user.uniqueId}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onViewUser && onViewUser(user);
                                                         }}
-                                                        className={`w-full text-left px-1.5 py-1 rounded-md border transition-all cursor-pointer group shadow-sm ${user.interviewEmailSent?.sent
+                                                        className={`w-full text-left px-1.5 py-1 rounded-md border transition-all cursor-pointer group shadow-sm ${user.resolvedEmailSent
                                                             ? "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"
                                                             : "bg-pink-50 border-pink-100 hover:bg-pink-100"
                                                             }`}
-                                                        title={`${user.fullName}\n${user.email}\nPanels: ${panelNames.length ? panelNames.join(", ") : "None"}\n${user.interviewEmailSent?.sent ? "✓ Email sent" : "✗ Email pending"}`}
+                                                        title={`${user.fullName}\nAd: ${user.currentAd?.title || "N/A"}\n${user.email}\nPanels: ${panelNames.length ? panelNames.join(", ") : "None"}\n${user.resolvedEmailSent ? "✓ Email sent" : "✗ Email pending"}`}
                                                     >
                                                         <div className="flex items-center gap-1">
                                                             {user.profileImage ? (
@@ -638,16 +690,21 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                                                 </div>
                                                             )}
                                                             <div className="flex-1 min-w-0">
-                                                                <span className="text-[9px] font-semibold text-gray-800 truncate leading-tight block">
+                                                                <span className="text-[9px] font-medium text-gray-800 truncate leading-tight block">
                                                                     {user.fullName}
                                                                 </span>
+                                                                {user.currentAd?.title && (
+                                                                    <span className="text-[7px] text-indigo-500 font-medium truncate block leading-tight">
+                                                                        {user.currentAd.title}
+                                                                    </span>
+                                                                )}
                                                                 {panelNames.length > 0 && (
                                                                     <span className="text-[7px] text-pink-500 font-medium truncate block">
                                                                         {panelNames.join(", ")}
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            {user.interviewEmailSent?.sent && (
+                                                            {user.resolvedEmailSent && (
                                                                 <FaCheckCircle className="text-[7px] text-emerald-500 flex-shrink-0" />
                                                             )}
                                                         </div>
@@ -655,7 +712,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                                 );
                                             })}
                                             {overflow > 0 && (
-                                                <span className="text-center text-[8px] font-bold text-indigo-600 bg-indigo-100 rounded-full py-0.5 border border-indigo-200 cursor-default">
+                                                <span className="text-center text-[8px] font-medium text-indigo-600 bg-indigo-100 rounded-full py-0.5 border border-indigo-200 cursor-default">
                                                     +{overflow} more
                                                 </span>
                                             )}
@@ -673,7 +730,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                         {/* Header */}
                         <div className="p-4 bg-gradient-to-r from-indigo-100 to-purple-100 border-b border-indigo-200">
                             <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-sm font-extrabold text-indigo-800">
+                                <h3 className="text-sm font-semibold text-indigo-800">
                                     {format(new Date(selectedDay), "EEEE, dd MMM yyyy")}
                                 </h3>
                                 <button onClick={() => setSelectedDay(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer">
@@ -681,7 +738,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                 </button>
                             </div>
                             {selectedDayHoliday && (
-                                <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold ${selectedDayHoliday.type === "national"
+                                <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium ${selectedDayHoliday.type === "national"
                                     ? "bg-red-100 text-red-700 border border-red-200"
                                     : "bg-orange-100 text-orange-700 border border-orange-200"
                                     }`}>
@@ -689,13 +746,15 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                     <span className="opacity-60">({selectedDayHoliday.type === "national" ? "National" : "Govt."})</span>
                                 </div>
                             )}
-                            <div className="mt-2 flex items-center gap-2">
-                                <span className="text-xs font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-semibold bg-white text-indigo-700 border border-indigo-200 shadow-sm leading-none">
                                     {selectedDayUsers.length} candidate{selectedDayUsers.length !== 1 ? "s" : ""}
                                 </span>
-                                <span className="text-xs text-emerald-600 font-medium">
-                                    {selectedDayUsers.filter(u => u.interviewEmailSent?.sent).length} emailed
-                                </span>
+                                {selectedDayUsers.filter(u => u.resolvedEmailSent).length > 0 && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-lg text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm leading-none">
+                                        {selectedDayUsers.filter(u => u.resolvedEmailSent).length} emailed
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -712,7 +771,7 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                     const degree = user.education?.qualifyingDegree?.degree || user.education?.graduation?.degree || "N/A";
                                     return (
                                         <button
-                                            key={user._id}
+                                            key={user.uniqueId}
                                             onClick={() => onViewUser && onViewUser(user)}
                                             className="w-full text-left p-3 bg-gray-50 hover:bg-indigo-50 rounded-xl border border-gray-100 hover:border-indigo-200 transition-all cursor-pointer group shadow-sm"
                                         >
@@ -725,8 +784,13 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                                     </div>
                                                 )}
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-bold text-gray-800 group-hover:text-indigo-700 transition-colors truncate">{user.fullName}</p>
-                                                    <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
+                                                    <p className="text-sm font-medium text-gray-800 group-hover:text-indigo-700 transition-colors truncate">{user.fullName}</p>
+                                                    {user.currentAd?.title && (
+                                                        <p className="text-[10px] text-indigo-600 font-semibold truncate uppercase tracking-tighter bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 inline-block mt-0.5">
+                                                            {user.currentAd.title}
+                                                        </p>
+                                                    )}
+                                                    <p className="text-[10px] text-gray-500 truncate mt-1">{user.email}</p>
                                                     <p className="text-[10px] text-gray-400 mt-0.5">{user.mobile}</p>
                                                     <div className="flex flex-wrap gap-1 mt-1.5">
                                                         <span className="text-[9px] font-medium px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100 truncate max-w-[140px]" title={degree}>
@@ -741,13 +805,13 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
                                                                 ))}
                                                             </div>
                                                         )}
-                                                        {user.interviewEmailSent?.sent ? (
-                                                            <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-100">
+                                                        {user.resolvedEmailSent ? (
+                                                            <span className="text-[9px] font-medium px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-100">
                                                                 ✓ Emailed
                                                             </span>
                                                         ) : (
                                                             <span className="text-[9px] font-medium px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded border border-amber-100">
-                                                                ✗ Not Emailed
+                                                                ✗ Not emailed
                                                             </span>
                                                         )}
                                                     </div>
@@ -763,44 +827,46 @@ const InterviewCalendarView = ({ filteredUsers, panels, onViewUser }) => {
             </div>
 
             {/* ───── Unscheduled Candidates ───── */}
-            {stats.notScheduled > 0 && (
-                <div className="mt-5 p-4 bg-amber-50/50 rounded-xl border border-amber-100">
-                    <div className="flex items-center gap-2 mb-3">
-                        <FaClock className="text-amber-500 text-sm" />
-                        <h3 className="text-sm font-bold text-amber-800">
-                            Unscheduled Candidates ({stats.notScheduled})
-                        </h3>
-                        <span className="text-[10px] text-amber-500 font-medium ml-auto">Click to view details</span>
+            {
+                stats.notScheduled > 0 && (
+                    <div className="mt-5 p-4 bg-amber-50/50 rounded-xl border border-amber-100">
+                        <div className="flex items-center gap-2 mb-3">
+                            <FaClock className="text-amber-500 text-sm" />
+                            <h3 className="text-sm font-medium text-amber-800">
+                                Unscheduled candidates ({stats.notScheduled})
+                            </h3>
+                            <span className="text-[10px] text-amber-500 font-medium ml-auto">Click to view details</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {filteredCandidates
+                                .filter(u => !u.resolvedSchedule)
+                                .slice(0, 24)
+                                .map(user => (
+                                    <button
+                                        key={user.uniqueId}
+                                        onClick={() => onViewUser && onViewUser(user)}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-amber-200 hover:border-amber-400 hover:bg-amber-50 transition-all cursor-pointer shadow-sm text-xs group"
+                                        title={`${user.fullName}\nAd: ${user.currentAd?.title || "N/A"}\n${user.email}\n${user.education?.graduation?.degree || "No degree info"}`}
+                                    >
+                                        {user.profileImage ? (
+                                            <img src={user.profileImage} alt="" className="w-4 h-4 rounded-full object-cover border border-amber-100" />
+                                        ) : (
+                                            <div className="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center">
+                                                <FaUser className="text-[7px] text-amber-600" />
+                                            </div>
+                                        )}
+                                        <span className="font-medium text-gray-700 group-hover:text-amber-800 transition-colors">{user.fullName}</span>
+                                    </button>
+                                ))}
+                            {stats.notScheduled > 24 && (
+                                <span className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-amber-600 bg-amber-100 rounded-lg border border-amber-200">
+                                    +{stats.notScheduled - 24} more
+                                </span>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        {filteredCandidates
-                            .filter(u => !u.interviewSchedule?.scheduledDate)
-                            .slice(0, 24)
-                            .map(user => (
-                                <button
-                                    key={user._id}
-                                    onClick={() => onViewUser && onViewUser(user)}
-                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-lg border border-amber-200 hover:border-amber-400 hover:bg-amber-50 transition-all cursor-pointer shadow-sm text-xs group"
-                                    title={`${user.fullName}\n${user.email}\n${user.education?.graduation?.degree || "No degree info"}`}
-                                >
-                                    {user.profileImage ? (
-                                        <img src={user.profileImage} alt="" className="w-4 h-4 rounded-full object-cover border border-amber-100" />
-                                    ) : (
-                                        <div className="w-4 h-4 rounded-full bg-amber-100 flex items-center justify-center">
-                                            <FaUser className="text-[7px] text-amber-600" />
-                                        </div>
-                                    )}
-                                    <span className="font-medium text-gray-700 group-hover:text-amber-800 transition-colors">{user.fullName}</span>
-                                </button>
-                            ))}
-                        {stats.notScheduled > 24 && (
-                            <span className="inline-flex items-center px-2.5 py-1.5 text-xs font-bold text-amber-600 bg-amber-100 rounded-lg border border-amber-200">
-                                +{stats.notScheduled - 24} more
-                            </span>
-                        )}
-                    </div>
-                </div>
-            )}
+                )
+            }
         </div>
     );
 };

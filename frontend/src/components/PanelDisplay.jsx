@@ -95,7 +95,7 @@ const PanelDisplay = ({ panels, loading }) => {
                             return (
                                 <div key={panel._id || idx} className={`bg-white rounded-xl border-2 ${color.border} shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group`}>
                                     <div className={`bg-gradient-to-r ${color.accent} px-3 py-2 border-b-2 ${color.border} flex justify-between items-center`}>
-                                        <span className={`text-[11px] font-semibold ${color.text} truncate max-w-[60%] tracking-tight`}>{panel.name || `Panel #${idx + 1}`}</span>
+                                        <span className={`text-[11px] font-medium ${color.text} truncate max-w-[60%] tracking-tight`}>{panel.name || `Panel #${idx + 1}`}</span>
                                         <span className={`text-[10px] font-medium ${color.expertBadge} bg-white px-2 py-1 rounded-full border shadow-sm`}>
                                             {panel.experts.length} Experts
                                         </span>
@@ -103,7 +103,7 @@ const PanelDisplay = ({ panels, loading }) => {
                                     <div className="p-3 space-y-3">
                                         {panel.experts.map((expert, eIdx) => (
                                             <div key={eIdx} className={`relative pl-3 border-l-2 ${color.border} py-1`}>
-                                                <div className="text-gray-800 text-[11px] truncate font-semibold tracking-tight" title={expert.name}>
+                                                <div className="text-gray-800 text-[11px] truncate font-medium tracking-tight" title={expert.name}>
                                                     {expert.name}
                                                 </div>
                                                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
@@ -113,7 +113,7 @@ const PanelDisplay = ({ panels, loading }) => {
                                                     <div className="flex items-center gap-1 text-[9px] text-gray-500 font-medium">
                                                         <FaBriefcase className={`${color.icon} w-2.5`} /> {expert.role || 'N/A'}
                                                     </div>
-                                                    <div className="flex items-center gap-1 text-[9px] text-gray-700 font-semibold">
+                                                    <div className="flex items-center gap-1 text-[9px] text-gray-700 font-medium">
                                                         <FaClock className={`${color.icon} w-2.5`} /> {expert.seniority}Y Exp
                                                     </div>
                                                 </div>

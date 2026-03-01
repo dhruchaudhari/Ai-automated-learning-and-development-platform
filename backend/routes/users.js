@@ -1011,7 +1011,28 @@ router.get('/grid/view/:id', authMiddleware, async (req, res) => {
         }
 
         const user = await User.findById(req.params.id, '-password -__v')
-            .populate('advertisements');
+            .populate({
+                path: 'advertisements',
+                populate: [
+                    { path: 'job' },
+                    { path: 'role' },
+                    { path: 'department' }
+                ]
+            })
+            .populate({
+                path: 'panelAssignments.panelId'
+            })
+            .populate({
+                path: 'panelAssignments.advertisementId'
+            })
+            .populate({
+                path: 'advertisementMarks.advertisementId',
+                populate: [
+                    { path: 'job' },
+                    { path: 'role' },
+                    { path: 'department' }
+                ]
+            });
 
         if (!user) {
             return res.status(404).json({
@@ -1317,7 +1338,29 @@ router.get('/admin/users/:id', adminMiddleware, async (req, res) => {
             });
         }
 
-        const user = await User.findById(id, '-password -__v').populate('advertisements');
+        const user = await User.findById(id, '-password -__v')
+            .populate({
+                path: 'advertisements',
+                populate: [
+                    { path: 'job' },
+                    { path: 'role' },
+                    { path: 'department' }
+                ]
+            })
+            .populate({
+                path: 'panelAssignments.panelId'
+            })
+            .populate({
+                path: 'panelAssignments.advertisementId'
+            })
+            .populate({
+                path: 'advertisementMarks.advertisementId',
+                populate: [
+                    { path: 'job' },
+                    { path: 'role' },
+                    { path: 'department' }
+                ]
+            });
 
         if (!user) {
             return res.status(404).json({
@@ -2100,7 +2143,6 @@ router.post('/admin/users/:id/send-interview-email', adminMiddleware, async (req
             selectedAds = user.advertisements.filter(ad => targetAdIds.some(id => id.toString() === ad._id.toString()));
 
             // For email content, we'll use the schedule from the first selected ad if multi-ad
-            // (Assuming they are scheduled for the same time if sent together)
             const firstAdMark = user.advertisementMarks.find(am => am.advertisementId.toString() === targetAdIds[0].toString());
             scheduleInfo = firstAdMark?.interviewSchedule;
         } else {
@@ -2146,18 +2188,45 @@ router.post('/admin/users/:id/send-interview-email', adminMiddleware, async (req
             panelName = panel?.name;
         }
 
-        const adTitles = selectedAds.map(ad => ad.title).join(', ');
+        // Build detailed advertisement info with job, role, dept and specific dates for the email
+        const populatedAds = await Advertisement.find({ _id: { $in: selectedAds.map(a => a._id) } })
+            .populate('role', 'title level')
+            .populate('department', 'name');
 
-        const emailResult = await emailService.sendInterviewInvitation(
+        const advertisementsDetailed = populatedAds.map(ad => {
+            const adMark = user.advertisementMarks.find(am => am.advertisementId.toString() === ad._id.toString());
+            const adSchedule = adMark?.interviewSchedule?.scheduledDate || scheduleInfo.scheduledDate;
+
+            return {
+                title: ad.title,
+                role: ad.role?.title,
+                level: ad.role?.level,
+                department: ad.department?.name,
+                scheduledDate: adSchedule
+            };
+        });
+
+        // Keep adTitles for backward compatibility and subject line summary
+        const adTitles = advertisementsDetailed.map(ad => {
+            let label = ad.title;
+            if (ad.role) label += ` — Position: ${ad.role}${ad.level ? ` (${ad.level})` : ''}`;
+            if (ad.department) label += ` | Dept: ${ad.department}`;
+            return label;
+        }).join('; ');
+
+        const emailResult = await emailService.sendInterviewInviteEmail(
             user.email,
+            user.fullName,
+            scheduleInfo.scheduledDate,
+            panelName,
+            adTitles,
+            location,
+            helpline,
             {
-                fullName: user.fullName,
-                scheduledDate: scheduleInfo.scheduledDate,
-                location,
-                helpline,
-                advertisementTitle: adTitles,
-                panelName
-            }
+                dob: user.dob,
+                profileImage: user.profileImage
+            },
+            advertisementsDetailed
         );
 
         if (!emailResult.success) {
