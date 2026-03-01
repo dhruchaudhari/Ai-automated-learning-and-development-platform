@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { userAPI, degreeOptionAPI, advertisementAPI, panelAPI } from "../utils/api";
+import { userAPI, degreeOptionAPI, advertisementAPI, panelAPI, normalizationAPI } from "../utils/api";
 
 import { toast } from "react-hot-toast";
 import { calculateActivationDuration } from "../utils/durationUtils";
@@ -521,6 +521,7 @@ const UserGrid = () => {
     experience: { min: '', max: '' }
   });
   const [meritSortBy, setMeritSortBy] = useState('latest');
+  const [isNormalizing, setIsNormalizing] = useState(false);
 
   // Validation functions for Indian Context
   const validateIndiaPhone = (phone) => {
@@ -594,17 +595,6 @@ const UserGrid = () => {
     }
   };
 
-  useEffect(() => {
-    fetchDegreeOptions();
-    fetchAdvertisements();
-  }, []);
-
-  useEffect(() => {
-    if (isInterviewMode) {
-      fetchPanels();
-    }
-  }, [isInterviewMode]);
-
   const [filters, setFilters] = useState({
     gender: '',
     dateRange: { value: '', startDate: null, endDate: null },
@@ -625,6 +615,31 @@ const UserGrid = () => {
   });
   const [sortBy, setSortBy] = useState('latest');
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  useEffect(() => {
+    fetchDegreeOptions();
+    fetchAdvertisements();
+  }, []);
+
+  // Refresh users when advertisement filter changes to get AI normalization results overlay
+  useEffect(() => {
+    if (isMeritMode && filters.advertisement && filters.advertisement !== 'all') {
+      refreshUsers(filters.advertisement);
+    } else if (isMeritMode && (!filters.advertisement || filters.advertisement === 'all')) {
+      refreshUsers();
+    }
+  }, [filters.advertisement, isMeritMode]);
+
+  useEffect(() => {
+    if (isInterviewMode) {
+      fetchPanels();
+    }
+  }, [isInterviewMode]);
+
+  // Scroll to top when mode changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [isInterviewMode, isMeritMode]);
 
   // Fetch users on component mount
   useEffect(() => {
@@ -1667,6 +1682,31 @@ const UserGrid = () => {
     }
   };
 
+  // Handle AI Normalization for Merit Mode
+  const handleAiNormalization = async () => {
+    const adId = meritFilters.advertisement;
+    if (!adId) {
+      toast.error("Please select an advertisement first");
+      return;
+    }
+
+    try {
+      setIsNormalizing(true);
+      const response = await normalizationAPI.meritMode(adId);
+
+      if (response.data.success) {
+        toast.success(response.data.message || "AI Normalization successful!");
+        // Refresh users to show updated marks
+        await refreshUsers();
+      }
+    } catch (err) {
+      console.error('AI Normalization error:', err);
+      toast.error(err.response?.data?.message || "AI Normalization failed. Check server logs.");
+    } finally {
+      setIsNormalizing(false);
+    }
+  };
+
   // Bulk permanent delete users
   const handleBulkDelete = async (targetIds = null) => {
     const userIds = targetIds || selectedUsers;
@@ -1761,7 +1801,7 @@ const UserGrid = () => {
   }, [users, filteredUsers]);
 
   return (
-    <div className="min-h-screen py-8 px-4 animate-fade-in">
+    <div className={`min-h-screen py-8 px-4 animate-fade-in transition-all duration-500 ${isNormalizing ? 'vats-processing-blur' : ''}`}>
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-10 animate-slide-down">
           <h1 className="text-4xl md:text-5xl font-normal text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
@@ -1997,6 +2037,7 @@ const UserGrid = () => {
                             setInterviewViewMode(key);
                             if (key !== 'grid') setIsGridCollapsed(false);
                           }}
+                          title={`Switch to ${label} view`}
                           className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all cursor-pointer ${interviewViewMode === key
                             ? 'bg-indigo-600 text-white shadow-inner'
                             : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700'
@@ -2013,43 +2054,49 @@ const UserGrid = () => {
                 {/* Admin-only AI Normalization Button for Merit Mode */}
                 {isMeritMode && isAdmin && (
                   <button
-                    onClick={() => {
-                      if (!meritFilters.advertisement) return;
-                      // Future logic
-                    }}
+                    onClick={handleAiNormalization}
+                    disabled={isNormalizing || !meritFilters.advertisement}
                     className={`
                       relative group flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm border border-transparent h-[42px] overflow-hidden
                       bg-gray-800
-                      ${meritFilters.advertisement
+                      ${meritFilters.advertisement && !isNormalizing
                         ? 'cursor-pointer active:scale-95'
                         : 'cursor-not-allowed opacity-80'
                       }
                       focus:outline-none focus:ring-2 focus:ring-indigo-500/50
                     `}
-                    title={!meritFilters.advertisement ? "Select an advertisement to enable AI Normalization" : "Perform Normalization with AI for current advertisement"}
+                    title={
+                      !meritFilters.advertisement
+                        ? "Please select an advertisement to enable AI Normalization"
+                        : isNormalizing
+                          ? "vatsAi is currently analyzing candidate data and calculating features..."
+                          : "Run vatsAi: Impute missing marks and normalize merit rankings"
+                    }
                   >
-                    {/* Hover Background Overlay: Changes to gradient on hover */}
-                    {meritFilters.advertisement && (
+                    {/* Hover Background Overlay */}
+                    {meritFilters.advertisement && !isNormalizing && (
                       <div className="absolute inset-0 bg-gradient-to-r from-[#b8cbb8] via-[#b8cbb8] to-[#b465da] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"></div>
                     )}
 
                     <div className="relative z-10 flex items-center gap-2">
-                      <FaRobot className={`text-base transition-colors duration-300 ${meritFilters.advertisement
-                        ? 'text-[#b465da] group-hover:text-gray-800'
-                        : 'text-gray-500/60'
-                        }`} />
+                      {isNormalizing ? (
+                        <FaRobot className="text-[#b465da] text-base vats-robot-slide" />
+                      ) : (
+                        <FaRobot className={`text-base transition-all duration-300 group-hover:scale-110 ${meritFilters.advertisement
+                          ? 'text-[#b465da] group-hover:text-gray-800'
+                          : 'text-gray-500/60'
+                          }`} />
+                      )}
 
                       <div className="relative">
-                        {/* Normal State Text: colorful gradient, fades out on hover */}
-                        <span className={`transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#b8cbb8] to-[#b465da] ${meritFilters.advertisement
+                        <span className={`transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#b8cbb8] to-[#b465da] ${meritFilters.advertisement && !isNormalizing
                           ? 'group-hover:opacity-0'
                           : 'opacity-50'
                           }`}>
-                          Normalization with AI
+                          {isNormalizing ? "Processing..." : "Normalization with AI"}
                         </span>
 
-                        {/* Hover State Text: gray-800, fades in on hover */}
-                        {meritFilters.advertisement && (
+                        {meritFilters.advertisement && !isNormalizing && (
                           <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 text-gray-800 whitespace-nowrap">
                             Normalization with AI
                           </span>
@@ -2314,24 +2361,39 @@ const UserGrid = () => {
 
                                 {/* 2. 10th % */}
                                 <td className="py-4 px-6">
-                                  <span className="text-sm font-medium text-gray-700">
-                                    {user.education?.tenth?.percentage ? `${user.education.tenth.percentage}%` : 'N/A'}
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span className={`text-sm font-medium ${user.aiImputations?.includes("10th") ? "text-amber-600 font-bold" : "text-gray-700"}`}>
+                                      {user.education?.tenth?.percentage ? `${user.education.tenth.percentage}%` : 'N/A'}
+                                    </span>
+                                    {user.aiImputations?.includes("10th") && (
+                                      <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.tenth?.percentage || 'N/A'}%)`} />
+                                    )}
+                                  </div>
                                 </td>
 
                                 {/* 3. 12th % */}
                                 <td className="py-4 px-6">
-                                  <span className="text-sm font-medium text-gray-700">
-                                    {user.education?.twelfth?.percentage ? `${user.education.twelfth.percentage}%` : 'N/A'}
-                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <span className={`text-sm font-medium ${user.aiImputations?.includes("12th") ? "text-amber-600 font-bold" : "text-gray-700"}`}>
+                                      {user.education?.twelfth?.percentage ? `${user.education.twelfth.percentage}%` : 'N/A'}
+                                    </span>
+                                    {user.aiImputations?.includes("12th") && (
+                                      <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.twelfth?.percentage || 'N/A'}%)`} />
+                                    )}
+                                  </div>
                                 </td>
 
                                 {/* 4. Graduation % & CPI */}
                                 <td className="py-4 px-6">
                                   <div className="flex flex-col">
-                                    <span className="text-sm font-medium text-indigo-700">
-                                      {user.education?.graduation?.percentage ? `${user.education.graduation.percentage}%` : 'N/A'}
-                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-sm font-medium ${user.aiImputations?.includes("Grad") ? "text-amber-600 font-bold" : "text-indigo-700"}`}>
+                                        {user.education?.graduation?.percentage ? `${user.education.graduation.percentage}%` : 'N/A'}
+                                      </span>
+                                      {user.aiImputations?.includes("Grad") && (
+                                        <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.graduation?.percentage || 'N/A'}%)`} />
+                                      )}
+                                    </div>
                                     {user.education?.graduation?.cgpa && (
                                       <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.graduation.cgpa}</span>
                                     )}
@@ -2341,9 +2403,14 @@ const UserGrid = () => {
                                 {/* 5. PG % & CPI */}
                                 <td className="py-4 px-6">
                                   <div className="flex flex-col">
-                                    <span className="text-sm font-medium text-purple-700">
-                                      {user.education?.qualifyingDegree?.percentage ? `${user.education.qualifyingDegree.percentage}%` : 'N/A'}
-                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-sm font-medium ${user.aiImputations?.includes("PG") ? "text-amber-600 font-bold" : "text-purple-700"}`}>
+                                        {user.education?.qualifyingDegree?.percentage ? `${user.education.qualifyingDegree.percentage}%` : 'N/A'}
+                                      </span>
+                                      {user.aiImputations?.includes("PG") && (
+                                        <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.qualifyingDegree?.percentage || 'N/A'}%)`} />
+                                      )}
+                                    </div>
                                     {user.education?.qualifyingDegree?.cgpa && (
                                       <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.qualifyingDegree.cgpa}</span>
                                     )}
@@ -2902,7 +2969,10 @@ const UserGrid = () => {
 
                   <button
                     disabled={!meritStats.canProceedToMerit}
-                    onClick={() => setIsMeritMode(true)}
+                    onClick={() => {
+                      setIsMeritMode(true);
+                      setIsGridCollapsed(false);
+                    }}
                     className={`
                         px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2
                         ${meritStats.canProceedToMerit
@@ -2944,7 +3014,7 @@ const UserGrid = () => {
                 onClick={() => {
                   if (!isInterviewMode) {
                     setIsInterviewMode(true);
-                    setIsGridCollapsed(true);
+                    setIsGridCollapsed(false);
                   } else {
                     setIsInterviewMode(false);
                     setIsGridCollapsed(false);
@@ -3811,7 +3881,9 @@ const UserGrid = () => {
             )}
           </ModalContainer>
         )}
+
       </div>
+
     </div>
   )
 };

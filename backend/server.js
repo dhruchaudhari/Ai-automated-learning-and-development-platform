@@ -34,6 +34,8 @@ const advertisementRoutes = require('./routes/advertisements');
 const panelRoutes = require('./routes/panels');
 const roleRoutes = require('./routes/roles');
 
+const normalizationRoutes = require('./routes/normalization');
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
@@ -42,6 +44,7 @@ app.use('/api/degree-options', degreeOptionRoutes);
 app.use('/api/advertisements', advertisementRoutes);
 app.use('/api/panels', panelRoutes);
 app.use('/api/roles', roleRoutes);
+app.use('/api/normalization', normalizationRoutes);
 
 
 const PORT = process.env.PORT || 5000;

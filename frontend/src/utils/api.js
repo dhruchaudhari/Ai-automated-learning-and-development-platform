@@ -256,8 +256,8 @@ export const userAPI = {
   // ==================== ADMIN API CALLS ====================
 
   // Get all users (admin only)
-  getAdminUsers: () =>
-    api.get('/users/admin/users'),
+  getAdminUsers: (advertisementId = null) =>
+    api.get('/users/admin/users', { params: { advertisementId } }),
 
   // Get single user details (admin only)
   getAdminUserById: (id) =>
@@ -373,6 +373,11 @@ export const panelAPI = {
   create: (data) => api.post('/panels', data),
   update: (id, data) => api.put(`/panels/${id}`, data),
   delete: (id) => api.delete(`/panels/${id}`)
+};
+
+// ==================== NORMALIZATION API CALLS ====================
+export const normalizationAPI = {
+  meritMode: (advertisementId) => api.post('/normalization/merit-mode', { advertisementId })
 };
 
 export default api;

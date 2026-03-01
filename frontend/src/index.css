@@ -143,3 +143,34 @@
     transform: rotate(360deg);
   }
 }
+
+/* AI Robot Slide Loader Animations */
+.vats-robot-slide {
+  animation: vats-slide 1.5s ease-in-out infinite;
+  display: inline-block;
+}
+
+@keyframes vats-slide {
+  0% {
+    transform: translateX(-5px);
+  }
+
+  50% {
+    transform: translateX(25px);
+  }
+
+  100% {
+    transform: translateX(-5px);
+  }
+}
+
+.vats-processing-blur {
+  filter: blur(2.5px);
+  pointer-events: none;
+  transition: filter 0.5s ease;
+}
+
+.vats-light-blur {
+  backdrop-filter: blur(3px);
+  background-color: rgba(255, 255, 255, 0.4);
+}

@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const { upload, handleUploadError } = require('../middleware/upload');
 const User = require('../models/User');
@@ -8,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailService');
 
 const { auth: authMiddleware, admin: adminMiddleware } = require('../middleware/auth');
+const AiAuditRecord = require('../models/AiAuditRecord');
 
 // ==================== USER PROFILE ====================
 
@@ -1222,14 +1224,50 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 // Admin: Get all users (admin only)
 router.get('/admin/users', adminMiddleware, async (req, res) => {
     try {
+        const { advertisementId } = req.query;
+
         const users = await User.find({ role: { $ne: 'admin' } }, '-password -__v')
             .populate('advertisements')
             .sort({ createdAt: -1 });
 
+        let processedUsers = users.map(u => u.toObject());
+
+        // If advertisementId is provided and valid, look for AI normalization records
+        if (advertisementId && mongoose.Types.ObjectId.isValid(advertisementId)) {
+            const auditRecord = await AiAuditRecord.findOne({ advertisementId })
+                .sort({ timestamp: -1 });
+
+            if (auditRecord && auditRecord.changes) {
+                const changesMap = new Map(
+                    auditRecord.changes.map(c => [c.userId.toString(), c])
+                );
+
+                processedUsers = processedUsers.map(user => {
+                    const change = changesMap.get(user._id.toString());
+                    if (change) {
+                        return {
+                            ...user,
+                            isNormalized: true,
+                            originalEducation: { ...user.education },
+                            education: {
+                                ...user.education,
+                                tenth: { ...user.education?.tenth, percentage: change.after?.["10th"] || user.education?.tenth?.percentage },
+                                twelfth: { ...user.education?.twelfth, percentage: change.after?.["12th"] || user.education?.twelfth?.percentage },
+                                graduation: { ...user.education?.graduation, percentage: change.after?.["Grad"] || user.education?.graduation?.percentage },
+                                qualifyingDegree: { ...user.education?.qualifyingDegree, percentage: change.after?.["PG"] || user.education?.qualifyingDegree?.percentage }
+                            },
+                            aiImputations: change.imputations || []
+                        };
+                    }
+                    return { ...user, isNormalized: false };
+                });
+            }
+        }
+
         res.json({
             success: true,
-            count: users.length,
-            data: users
+            count: processedUsers.length,
+            data: processedUsers
         });
     } catch (err) {
         console.error('Error fetching users:', err);

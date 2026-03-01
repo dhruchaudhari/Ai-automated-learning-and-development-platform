@@ -39,8 +39,6 @@ const auth = (req, res, next) => {
 
 const admin = async (req, res, next) => {
     try {
-        // First run auth middleware logic (or expect it to be run before)
-        // For safety, we check if req.user exists, if not we try to decode
         if (!req.user) {
             const authHeader = req.headers.authorization;
             if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -52,25 +50,18 @@ const admin = async (req, res, next) => {
             req.user = decoded;
         }
 
-        console.log(`Admin Check: User ${req.userId}, Role: ${req.user?.role}`);
-
         if (req.user && req.user.role === 'admin') {
-            console.log('Admin Check: Role "admin" found in token payload');
             return next();
         }
 
-        console.log('Admin Check: Role not in token, checking database...');
         const user = await User.findById(req.userId);
 
         if (!user) {
-            console.log('Admin Check: User not found in database');
             return res.status(403).json({
                 success: false,
                 message: 'Access denied. User not found.'
             });
         }
-
-        console.log(`Admin Check: Database role for ${user.email} is "${user.role}"`);
 
         if (user.role !== 'admin') {
             return res.status(403).json({
@@ -79,7 +70,6 @@ const admin = async (req, res, next) => {
             });
         }
 
-        console.log('Admin Check: Database check passed');
         next();
     } catch (err) {
         return res.status(401).json({

@@ -34,7 +34,7 @@ export const UserContextProvider = ({ children }) => {
     navigate('/login');
   };
 
-  const refreshUsers = async (silent = false) => {
+  const refreshUsers = async (advertisementId = null, silent = false) => {
     const token = getToken();
 
     if (!token) {
@@ -44,7 +44,7 @@ export const UserContextProvider = ({ children }) => {
 
     try {
       if (!silent) setLoading(true);
-      const res = await userAPI.getAdminUsers();
+      const res = await userAPI.getAdminUsers(advertisementId);
       const usersData = res.data?.data;
       if (!Array.isArray(usersData)) {
         console.warn("Unexpected response format from admin users API");
@@ -57,7 +57,10 @@ export const UserContextProvider = ({ children }) => {
           ...user,
           activationHistory: user.activationHistory || []
         }));
-      setUsers(usersWithActivation);
+
+      // Filter for unique IDs to prevent duplicate key errors
+      const uniqueUsers = Array.from(new Map(usersWithActivation.map(user => [user._id, user])).values());
+      setUsers(uniqueUsers);
       setLastUpdate(Date.now());
     } catch (err) {
       console.error("Error refreshing users:", err);
@@ -119,7 +122,7 @@ export const UserContextProvider = ({ children }) => {
     const token = getToken();
     if (token) {
       const interval = setInterval(() => {
-        refreshUsers(true); // Background poll — silent, suppresses error toasts
+        refreshUsers(null, true); // Background poll — silent, suppresses error toasts
       }, 30000);
 
       return () => clearInterval(interval);
