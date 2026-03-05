@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { userAPI, degreeOptionAPI, advertisementAPI, panelAPI, normalizationAPI } from "../utils/api";
 
@@ -48,11 +48,34 @@ import {
   FaBuilding,
   FaUserTie,
   FaPhone,
-  FaRobot
+  FaRobot,
+  FaAward,
+  FaTrophy,
+  FaFileExcel
 } from "react-icons/fa";
 import { format, parseISO, isWithinInterval } from "date-fns";
 
 // Stabilized Sub-components
+import ConfirmationModal from "./ConfirmationModal";
+import PreviewModal from "./PreviewModal";
+import ModalContainer from "./ModalContainer";
+import ViewUser from "./ViewUser";
+import MeritViewDetails from "./MeritViewDetails";
+import InterviewViewDetails from "./InterviewViewDetails";
+import EditUser from "./EditUser";
+import FilterPanel from "./FilterPanel";
+import MeritFilterPanel from "./MeritFilterPanel";
+import ManageDegreesModal from "./ManageDegreesModal";
+import ManageAdvertisementsModal from "./ManageAdvertisementsModal";
+import AdDetailsModal from "./AdDetailsModal";
+import { useUserContext } from "../context/UserContext";
+import { useAuth } from "../context/AuthContext";
+import ManagePanelsModal from "./ManagePanelsModal";
+import PanelDisplay from "./PanelDisplay";
+import InterviewCalendarView from "./InterviewCalendarView";
+import InterviewTimelineView from "./InterviewTimelineView";
+import BulkUploadCorrectionModal from "./BulkUploadCorrectionModal";
+
 const EmailDraftPreview = ({ user, form, selectedAdIds = [] }) => {
   if (!user) return null;
 
@@ -207,24 +230,7 @@ const EmailDraftPreview = ({ user, form, selectedAdIds = [] }) => {
     </div>
   );
 };
-import ConfirmationModal from "./ConfirmationModal";
-import PreviewModal from "./PreviewModal";
-import ModalContainer from "./ModalContainer";
-import ViewUser from "./ViewUser";
-import MeritViewDetails from "./MeritViewDetails";
-import InterviewViewDetails from "./InterviewViewDetails";
-import EditUser from "./EditUser";
-import FilterPanel from "./FilterPanel";
-import MeritFilterPanel from "./MeritFilterPanel";
-import ManageDegreesModal from "./ManageDegreesModal";
-import ManageAdvertisementsModal from "./ManageAdvertisementsModal";
-import AdDetailsModal from "./AdDetailsModal";
-import { useUserContext } from "../context/UserContext";
-import { useAuth } from "../context/AuthContext";
-import ManagePanelsModal from "./ManagePanelsModal";
-import PanelDisplay from "./PanelDisplay";
-import InterviewCalendarView from "./InterviewCalendarView";
-import InterviewTimelineView from "./InterviewTimelineView";
+
 
 
 // Helper functions
@@ -520,8 +526,14 @@ const UserGrid = () => {
     specialization: [],
     experience: { min: '', max: '' }
   });
-  const [meritSortBy, setMeritSortBy] = useState('latest');
+  const [meritSortBy, setMeritSortBy] = useState('rank-asc');
+  const [meritListData, setMeritListData] = useState([]);
+  const [isUploadingBulk, setIsUploadingBulk] = useState(false);
+  const [errorRecords, setErrorRecords] = useState([]);
+  const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+  const [isSubmittingCorrections, setIsSubmittingCorrections] = useState(false);
   const [isNormalizing, setIsNormalizing] = useState(false);
+  const [isGeneratingMerit, setIsGeneratingMerit] = useState(false);
 
   // Validation functions for Indian Context
   const validateIndiaPhone = (phone) => {
@@ -663,7 +675,9 @@ const UserGrid = () => {
       } catch (err) {
         console.error("Error fetching users:", err);
         if (err.response?.status !== 401) {
-          toast.error("Failed to load users. You may not have admin access.");
+          toast.error("Failed to load users. You may not have admin access.", {
+            icon: <FaTimesCircle className="text-red-500" />
+          });
         }
       } finally {
         setLoading(false);
@@ -821,6 +835,16 @@ const UserGrid = () => {
       const activeSortBy = meritSortBy;
       result.sort((a, b) => {
         switch (activeSortBy) {
+          case 'rank-asc': {
+            if (a.rank && b.rank) return a.rank - b.rank;
+            if (a.rank) return -1;
+            if (b.rank) return 1;
+            // If no rank, fallback to SFMC
+            const sfmcA = a.sfmc || 0;
+            const sfmcB = b.sfmc || 0;
+            if (sfmcA !== sfmcB) return sfmcB - sfmcA;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+          }
           case 'latest':
             return new Date(b.createdAt) - new Date(a.createdAt);
           case 'oldest':
@@ -1193,7 +1217,9 @@ const UserGrid = () => {
     setSortBy('latest');
     setSearchTerm('');
     if (!status || status === '') {
-      toast.success('All filters cleared');
+      toast.success('All filters cleared', {
+        icon: <FaCheckCircle className="text-green-500" />
+      });
     }
   };
 
@@ -1204,7 +1230,9 @@ const UserGrid = () => {
       setViewModal({ show: true, userId, advertisementId });
     } catch (error) {
       console.error("Error fetching user for view:", error);
-      toast.error("Failed to load user details");
+      toast.error("Failed to load user details", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1215,7 +1243,9 @@ const UserGrid = () => {
       setEditModal({ show: true, userId });
     } catch (error) {
       console.error("Error fetching user for edit:", error);
-      toast.error("Failed to load user details");
+      toast.error("Failed to load user details", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1228,7 +1258,9 @@ const UserGrid = () => {
 
     try {
       await userAPI.deleteUser(deleteModal.userId);
-      toast.success("User deleted successfully");
+      toast.success("User deleted successfully", {
+        icon: <FaCheckCircle className="text-green-500" />
+      });
 
       const updatedUsers = users.filter(user => user._id !== deleteModal.userId);
       setUsers(updatedUsers);
@@ -1243,7 +1275,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error(err);
-      toast.error("Failed to delete user");
+      toast.error("Failed to delete user", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     } finally {
       setDeleteModal({ show: false, userId: null });
     }
@@ -1251,7 +1285,9 @@ const UserGrid = () => {
 
   const handleActivationToggle = (userId) => {
     if (!isUserSelected(userId)) {
-      toast.error("Please select the user first");
+      toast.error("Please select the user first", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
       return;
     }
 
@@ -1289,7 +1325,9 @@ const UserGrid = () => {
       });
 
       setUsers(updatedUsers);
-      toast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`);
+      toast.success(`User ${newStatus ? 'activated' : 'deactivated'} successfully`, {
+        icon: <FaCheckCircle className="text-green-500" />
+      });
 
       await userAPI.updateActivationStatus(activationModal.userId, newStatus);
 
@@ -1299,9 +1337,113 @@ const UserGrid = () => {
       }
     } catch (error) {
       console.error("Error updating activation status:", error);
-      toast.error("Failed to update activation status");
+      toast.error("Failed to update activation status", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     } finally {
       setActivationModal({ show: false, userId: null, currentStatus: false });
+    }
+  };
+
+  // Bulk Upload State
+  const fileInputRef = useRef(null);
+
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const validTypes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'];
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      toast.error("Invalid file format. Please upload an Excel (.xlsx, .xls) or CSV file.", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
+      event.target.value = null;
+      return;
+    }
+
+    try {
+      setIsUploadingBulk(true);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await userAPI.bulkUpload(formData);
+
+      if (response.data.success) {
+        const { stats } = response.data;
+
+        if (stats.inserted > 0) {
+          toast.success(`${stats.inserted} user(s) uploaded successfully!`, {
+            icon: <FaCheckCircle className="text-green-500" />
+          });
+        }
+
+        if (stats.duplicates > 0) {
+          toast(`${stats.duplicates} duplicate(s) skipped (email or mobile already exists).`, {
+            icon: <FaInfoCircle className="text-blue-500" />,
+            duration: 6000
+          });
+        }
+
+        if (stats.pythonErrors > 0) {
+          toast.error(`AI processing completed with ${stats.pythonErrors} validation error(s).`, {
+            icon: <FaRobot className="text-red-500" />,
+            duration: 8000
+          });
+        }
+
+        // Trigger interactive correction if there are Python errors
+        if (response.data.errorRecords && response.data.errorRecords.length > 0) {
+          setErrorRecords(response.data.errorRecords);
+          setIsCorrectionModalOpen(true);
+          toast("Please fix the validation errors in the correction modal.", {
+            icon: <FaClipboardList className="text-amber-500" />,
+            duration: 5000
+          });
+        }
+
+        if (stats.inserted === 0 && stats.duplicates === 0 && (!response.data.errorRecords || response.data.errorRecords.length === 0)) {
+          toast.error('No users were imported. All rows failed validation. Check the errors above.', {
+            icon: <FaTimesCircle className="text-red-500" />
+          });
+        }
+
+        await refreshUsers();
+      }
+    } catch (err) {
+      console.error("Bulk upload failed:", err);
+      const errMsg = err.response?.data?.message || "Bulk upload failed. Check the file format and try again.";
+      toast.error(errMsg, {
+        icon: <FaTimesCircle className="text-red-500" />,
+        duration: 8000
+      });
+    } finally {
+      setIsUploadingBulk(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = null;
+      }
+    }
+  };
+
+  const handleBulkRegisterMany = async (fixedRecords) => {
+    try {
+      setIsSubmittingCorrections(true);
+      const response = await userAPI.bulkRegisterMany(fixedRecords);
+
+      if (response.data.success) {
+        toast.success(response.data.message, {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
+        setIsCorrectionModalOpen(false);
+        setErrorRecords([]);
+        await refreshUsers();
+      }
+    } catch (err) {
+      console.error("Batch registration failed:", err);
+      toast.error(err.response?.data?.message || "Failed to register corrected users", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
+    } finally {
+      setIsSubmittingCorrections(false);
     }
   };
 
@@ -1315,13 +1457,17 @@ const UserGrid = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
-    toast.success("Logged out successfully");
+    toast.success("Logged out successfully", {
+      icon: <FaPowerOff className="text-red-500" />
+    });
     navigate("/login");
   };
 
   const handleRefresh = () => {
     refreshUsers();
-    toast.success("User list refreshed");
+    toast.success("User list refreshed", {
+      icon: <FaCheckCircle className="text-green-500" />
+    });
   };
 
   const openImagePreview = (imageUrl) => {
@@ -1365,7 +1511,9 @@ const UserGrid = () => {
     try {
       const response = await userAPI.approveUser(userId);
       if (response.data.success) {
-        toast.success('User approved successfully!');
+        toast.success('User approved successfully!', {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
         // Update local state
         setUsers(prev => prev.map(user =>
           user._id === userId ? { ...user, status: 'approved' } : user
@@ -1373,7 +1521,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Approve error:', err);
-      toast.error('Failed to approve user');
+      toast.error('Failed to approve user', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1382,7 +1532,9 @@ const UserGrid = () => {
     try {
       const response = await userAPI.rejectUser(userId);
       if (response.data.success) {
-        toast.success('User rejected');
+        toast.success('User rejected', {
+          icon: <FaTimesCircle className="text-red-500" />
+        });
         // Update local state
         setUsers(prev => prev.map(user =>
           user._id === userId ? { ...user, status: 'rejected' } : user
@@ -1390,7 +1542,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Reject error:', err);
-      toast.error('Failed to reject user');
+      toast.error('Failed to reject user', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1399,7 +1553,9 @@ const UserGrid = () => {
     try {
       const response = await userAPI.setEligibleUser(userId);
       if (response.data.success) {
-        toast.success('User marked as eligible!');
+        toast.success('User marked as eligible!', {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
         // Update local state
         setUsers(prev => prev.map(user =>
           user._id === userId ? { ...user, status: 'eligible' } : user
@@ -1407,7 +1563,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Eligible error:', err);
-      toast.error('Failed to mark as eligible');
+      toast.error('Failed to mark as eligible', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1416,7 +1574,9 @@ const UserGrid = () => {
     try {
       const response = await userAPI.setPendingUser(userId);
       if (response.data.success) {
-        toast.success('User status set to pending');
+        toast.success('User status set to pending', {
+          icon: <FaClock className="text-amber-500" />
+        });
         // Update local state
         setUsers(prev => prev.map(user =>
           user._id === userId ? { ...user, status: 'pending' } : user
@@ -1424,7 +1584,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Set pending error:', err);
-      toast.error('Failed to set user status to pending');
+      toast.error('Failed to set user status to pending', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1485,7 +1647,9 @@ const UserGrid = () => {
 
     if (hasError) {
       setAssignmentErrors(newErrors);
-      toast.error("Please assign a panel for all advertisements");
+      toast.error("Please assign a panel for all advertisements", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
       return;
     }
 
@@ -1497,7 +1661,9 @@ const UserGrid = () => {
 
       const response = await userAPI.assignPanelsBulk(userId, assignments);
       if (response.data.success) {
-        toast.success(response.data.message || 'Panels assigned successfully!');
+        toast.success(response.data.message || 'Panels assigned successfully!', {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
         // Update user in context
         setUsers(prev => prev.map(u =>
           u._id === userId ? response.data.user : u
@@ -1506,7 +1672,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Assign panels error:', err);
-      toast.error(err.response?.data?.message || 'Failed to assign panels');
+      toast.error(err.response?.data?.message || 'Failed to assign panels', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1518,7 +1686,9 @@ const UserGrid = () => {
         advertisementIds: advertisementIds.length > 0 ? advertisementIds : undefined
       });
       if (response.data.success) {
-        toast.success('Interview scheduled successfully!');
+        toast.success('Interview scheduled successfully!', {
+          icon: <FaCalendarAlt className="text-blue-500" />
+        });
         setUsers(prev => prev.map(u =>
           u._id === userId ? {
             ...u,
@@ -1532,7 +1702,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Schedule interview error:', err);
-      toast.error(err.response?.data?.message || 'Failed to schedule interview');
+      toast.error(err.response?.data?.message || 'Failed to schedule interview', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1545,7 +1717,9 @@ const UserGrid = () => {
         advertisementIds: advertisementIds.length > 0 ? advertisementIds : undefined
       });
       if (response.data.success) {
-        toast.success('Interview invite email sent successfully!');
+        toast.success('Interview invite email sent successfully!', {
+          icon: <FaPaperPlane className="text-indigo-500" />
+        });
         setUsers(prev => prev.map(u =>
           u._id === userId ? {
             ...u,
@@ -1559,7 +1733,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Send interview email error:', err);
-      toast.error(err.response?.data?.message || 'Failed to send interview email');
+      toast.error(err.response?.data?.message || 'Failed to send interview email', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1571,7 +1747,9 @@ const UserGrid = () => {
     const nonMatchingUsers = users.filter(u => !matchedIds.has(u._id) && u.role !== 'admin' && u.status !== 'rejected');
 
     if (nonMatchingUsers.length === 0) {
-      toast.error('No non-matching users found to reject');
+      toast.error('No non-matching users found to reject', {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
       return;
     }
 
@@ -1580,7 +1758,9 @@ const UserGrid = () => {
     try {
       const response = await userAPI.bulkRejectUsers(userIds, 'Bulk rejected - did not meet filter criteria');
       if (response.data.success) {
-        toast.success(`${response.data.modifiedCount} users rejected`);
+        toast.success(`${response.data.modifiedCount} users rejected`, {
+          icon: <FaTimesCircle className="text-red-500" />
+        });
         // Update local state
         setUsers(prev => prev.map(user =>
           userIds.includes(user._id) ? { ...user, status: 'rejected' } : user
@@ -1590,7 +1770,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Bulk reject error:', err);
-      toast.error('Failed to bulk reject users');
+      toast.error('Failed to bulk reject users', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1600,7 +1782,9 @@ const UserGrid = () => {
       setIsSubmittingMarks(true);
       const response = await userAPI.assignMarks(userId, { marks, advertisementId });
       if (response.data.success) {
-        toast.success('Marks assigned successfully!');
+        toast.success('Marks assigned successfully!', {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
         // Update user in local state
         setUsers(prev => prev.map(u =>
           u._id === userId ? { ...u, advertisementMarks: response.data.user.advertisementMarks, interviewMarks: response.data.user.interviewMarks } : u
@@ -1610,7 +1794,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Assign marks error:', err);
-      toast.error(err.response?.data?.message || 'Failed to assign marks');
+      toast.error(err.response?.data?.message || 'Failed to assign marks', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     } finally {
       setIsSubmittingMarks(false);
     }
@@ -1619,14 +1805,18 @@ const UserGrid = () => {
   // Bulk mark filtered users as eligible
   const handleBulkEligible = async () => {
     if (filteredUsers.length === 0) {
-      toast.error('No users found in current filtered view to mark as eligible');
+      toast.error('No users found in current filtered view to mark as eligible', {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
       return;
     }
 
     // Filter out admins and those already eligible
     const targetUsers = filteredUsers.filter(u => u.role !== 'admin' && u.status !== 'eligible');
     if (targetUsers.length === 0) {
-      toast.error('All filtered users are already eligible or are admins');
+      toast.error('All filtered users are already eligible or are admins', {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
       return;
     }
 
@@ -1635,7 +1825,9 @@ const UserGrid = () => {
     try {
       const response = await userAPI.bulkEligibleUsers(userIds, 'Bulk marked as eligible - from filtered view');
       if (response.data.success) {
-        toast.success(`${response.data.modifiedCount} users marked as eligible`);
+        toast.success(`${response.data.modifiedCount} users marked as eligible`, {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
         // Update local state
         setUsers(prev => prev.map(user =>
           userIds.includes(user._id) ? { ...user, status: 'eligible' } : user
@@ -1645,7 +1837,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Bulk eligible error:', err);
-      toast.error('Failed to bulk mark users as eligible');
+      toast.error('Failed to bulk mark users as eligible', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     }
   };
 
@@ -1655,9 +1849,13 @@ const UserGrid = () => {
 
     if (targetUsers.length === 0) {
       if (filteredUsers.some(u => (u.status || 'pending') === 'pending')) {
-        toast.error('All users in this filtered view are already pending');
+        toast.error('All users in this filtered view are already pending', {
+          icon: <FaInfoCircle className="text-blue-500" />
+        });
       } else {
-        toast.error('No users found in current filtered view to mark as pending');
+        toast.error('No users found in current filtered view to mark as pending', {
+          icon: <FaInfoCircle className="text-blue-500" />
+        });
       }
       return;
     }
@@ -1668,7 +1866,9 @@ const UserGrid = () => {
       setLoading(true);
       const response = await userAPI.bulkPendingUsers(userIds, 'Bulk marked as pending - from filtered view');
       if (response.data.success) {
-        toast.success(`${response.data.modifiedCount} users marked as pending`);
+        toast.success(`${response.data.modifiedCount} users marked as pending`, {
+          icon: <FaClock className="text-amber-500" />
+        });
         setUsers(prev => prev.map(user =>
           userIds.includes(user._id) ? { ...user, status: 'pending' } : user
         ));
@@ -1676,7 +1876,9 @@ const UserGrid = () => {
       }
     } catch (err) {
       console.error('Bulk pending error:', err);
-      toast.error('Failed to bulk mark users as pending');
+      toast.error('Failed to bulk mark users as pending', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     } finally {
       setLoading(false);
     }
@@ -1686,24 +1888,127 @@ const UserGrid = () => {
   const handleAiNormalization = async () => {
     const adId = meritFilters.advertisement;
     if (!adId) {
-      toast.error("Please select an advertisement first");
+      toast.error("Please select an advertisement first", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
       return;
     }
+
+    if (meritListData.length === 0) {
+      toast("Not required: No candidates found.", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
+      return;
+    }
+
+    /*
+    const needsNormalization = meritListData.some(row => {
+      const adMark = row.currentAdMark;
+      return !adMark || !adMark.marks || adMark.marks === 0 || adMark.marks === 'N/A';
+    });
+ 
+    if (!needsNormalization) {
+      toast("Not required", { icon: <FaInfoCircle className="text-blue-500" /> });
+      return;
+    }
+    */
 
     try {
       setIsNormalizing(true);
       const response = await normalizationAPI.meritMode(adId);
 
       if (response.data.success) {
-        toast.success(response.data.message || "AI Normalization successful!");
-        // Refresh users to show updated marks
-        await refreshUsers();
+        toast.success(response.data.message || "AI Normalization successful!", {
+          icon: <FaCheckCircle className="text-green-500" />
+        });
+        // Refresh users with advertisementId to show updated marks/rank
+        await refreshUsers(adId);
       }
     } catch (err) {
       console.error('AI Normalization error:', err);
-      toast.error(err.response?.data?.message || "AI Normalization failed. Check server logs.");
+      toast.error(err.response?.data?.message || "AI Normalization failed. Check server logs.", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     } finally {
       setIsNormalizing(false);
+    }
+  };
+
+  const handleGenerateMeritlist = async () => {
+    const adId = meritFilters.advertisement;
+    if (!adId) {
+      toast.error("Please select an advertisement first.", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
+      return;
+    }
+
+    const adCandidates = meritListData.filter(row =>
+      (row.currentAdvertisement?._id || row.currentAdvertisement)?.toString() === adId.toString()
+    );
+
+    if (adCandidates.length === 0) {
+      toast("Not required type", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
+      return;
+    }
+
+    // If all candidates already have a rank, no need to generate again
+    /*
+    const allHaveRank = adCandidates.every(row => row.rank !== undefined && row.rank !== null);
+    if (allHaveRank) {
+      toast("Not required type", { icon: <FaInfoCircle className="text-blue-500" /> });
+      return;
+    }
+    */
+
+
+    // Validation for "N/A", "0", or incomplete data
+    const hasInvalidMarks = filteredUsers.some(user => {
+      const adMark = user.advertisementMarks?.find(am =>
+        (am.advertisementId?._id || am.advertisementId)?.toString() === adId.toString()
+      );
+      return !adMark || !adMark.marks || adMark.marks === 0 || adMark.marks === 'N/A';
+    });
+
+    if (hasInvalidMarks) {
+      toast.error("Generation Restricted: All filtered candidates must have assigned marks (non-zero/assigned).", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
+      return;
+    }
+
+    if (filteredUsers.length <= 1) {
+      toast.error("Generation Restricted: At least 2 candidates are required for Supreme Merit processing.", {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
+      return;
+    }
+
+    try {
+      setIsGeneratingMerit(true);
+      const res = await normalizationAPI.generateMeritlist(adId);
+
+      if (res.data.success) {
+        toast.success(res.data.message || "Supreme Merit List generated!", {
+          icon: <FaTrophy className="text-amber-500" />
+        });
+        setMeritSortBy('rank-asc');
+        // Refresh users with advertisementId to show the new merit/rank data in the grid
+        await refreshUsers(adId);
+      } else {
+        toast.error(res.data.message || "Failed to generate merit list.", {
+          icon: <FaTimesCircle className="text-red-500" />
+        });
+      }
+    } catch (err) {
+      console.error("Merit generation failed:", err);
+      toast.error(err.response?.data?.message || "Evolution Engine connectivity error.", {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
+    } finally {
+      setIsGeneratingMerit(false);
     }
   };
 
@@ -1712,7 +2017,9 @@ const UserGrid = () => {
     const userIds = targetIds || selectedUsers;
 
     if (!userIds || userIds.length === 0) {
-      toast.error('No users selected for deletion');
+      toast.error('No users selected for deletion', {
+        icon: <FaInfoCircle className="text-blue-500" />
+      });
       return;
     }
 
@@ -1724,13 +2031,17 @@ const UserGrid = () => {
       setLoading(true);
       const response = await userAPI.bulkDeleteUsers(userIds);
       if (response.data.success) {
-        toast.success(`${response.data.deletedCount} users permanently deleted`);
+        toast.success(`${response.data.deletedCount} users permanently deleted`, {
+          icon: <FaTrashAlt className="text-red-500" />
+        });
         setUsers(prev => prev.filter(user => !userIds.includes(user._id)));
         setSelectedUsers([]);
       }
     } catch (err) {
       console.error('Bulk delete error:', err);
-      toast.error(err.response?.data?.message || 'Failed to bulk delete users');
+      toast.error(err.response?.data?.message || 'Failed to bulk delete users', {
+        icon: <FaTimesCircle className="text-red-500" />
+      });
     } finally {
       setLoading(false);
     }
@@ -1801,1973 +2112,1954 @@ const UserGrid = () => {
   }, [users, filteredUsers]);
 
   return (
-    <div className={`min-h-screen py-8 px-4 animate-fade-in transition-all duration-500 ${isNormalizing ? 'vats-processing-blur' : ''}`}>
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-10 animate-slide-down">
-          <h1 className="text-4xl md:text-5xl font-normal text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
-            {isMeritMode ? "Merit list and individual fitness generation" : isInterviewMode ? "Interview Scheduling for Eligible Candidates" : "Application screening for eligibility"}
-          </h1>
-          {/* <p className="text-gray-600 text-lg">Application screening for eligibility</p> */}
-        </div>
+    <>
+      {/* Backgound Blur Overlay for Bulk Upload - Blurs everything behind the button */}
+      {isUploadingBulk && (
+        <div className="fixed inset-0 bg-white/10 backdrop-blur-[2px] z-[40] animate-fade-in transition-all duration-500" />
+      )}
 
-        <div className="bg-white rounded-2xl shadow-xl p-6">
-          {!isInterviewMode && (
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search users..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64 md:w-80 font-normal"
-                  />
-                  {searchTerm && (
+      <div className={`min-h-screen py-8 px-4 animate-fade-in transition-all duration-500 ${isNormalizing ? 'vats-processing-blur' : ''}`}>
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-10 animate-slide-down">
+            <h1 className="text-4xl md:text-5xl font-normal text-gray-800 mb-4 bg-gradient-to-r from-primary-600 to-secondary-600 bg-clip-text text-transparent">
+              {isMeritMode ? "Merit list and individual fitness generation" : isInterviewMode ? "Interview Scheduling for Eligible Candidates" : "Application screening for eligibility"}
+            </h1>
+            {/* <p className="text-gray-600 text-lg">Application screening for eligibility</p> */}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl p-6">
+            {!isInterviewMode && (
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 p-4 bg-gradient-to-r from-primary-50 to-secondary-50 rounded-xl">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search users..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64 md:w-80 font-normal"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={() => handleClearFilters('')}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <FaTimes />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleRefresh}
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-normal"
+                    title="Refresh user list"
+                  >
+                    <FaRedo className="text-primary-600" />
+                    Refresh
+                  </button>
+
+                  {/* --- BULK UPLOAD BUTTON --- */}
+                  {isAdmin && (
+                    <div className={`relative transition-all duration-300 ${isUploadingBulk ? 'z-[50] scale-105' : 'z-10'}`}>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept=".xlsx, .xls, .csv"
+                        onChange={handleBulkUpload}
+                      />
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingBulk}
+                        className={`
+                        relative group flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm border border-transparent h-[42px] overflow-hidden
+                        ${!isUploadingBulk
+                            ? 'cursor-pointer active:scale-95 bg-gradient-to-r from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d]'
+                            : 'cursor-not-allowed opacity-90 bg-gray-800'
+                          }
+                        focus:outline-none focus:ring-2 focus:ring-[#8b0000]/50 focus:border-[#8b0000]
+                      `}
+                        title={
+                          isUploadingBulk
+                            ? "vatsAi is processing and validating the uploaded Excel file..."
+                            : "Upload an Excel file (.xlsx) to bulk-register users with strict validation"
+                        }
+                      >
+                        {/* Hover Overlay — swaps back to light ash on hover */}
+                        {!isUploadingBulk && (
+                          <div className="absolute inset-0 bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"></div>
+                        )}
+
+                        <div className="relative z-10 flex items-center gap-2">
+                          <div className="flex justify-center">
+                            {isUploadingBulk ? (
+                              <FaFileExcel className="text-[#fdbb2d] text-base vats-robot-slide" />
+                            ) : (
+                              <FaFileExcel className={`text-base transition-all duration-300 group-hover:scale-110 text-gray-100 group-hover:text-[#b21f1f]`} />
+                            )}
+                          </div>
+
+                          <div className="relative">
+                            <span className={`transition-all duration-300 text-gray-100 ${!isUploadingBulk
+                              ? 'group-hover:opacity-0'
+                              : ''
+                              }`}>
+                              {isUploadingBulk ? "Processing..." : "Bulk Upload"}
+                            </span>
+
+                            {!isUploadingBulk && (
+                              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#1a2a6c] via-[#b21f1f] to-[#fdbb2d] whitespace-nowrap">
+                                Bulk Upload
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
+                  {isAdmin && (
                     <button
-                      onClick={() => handleClearFilters('')}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      onClick={() => setManageAdModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-normal"
+                      title="Manage Advertisements"
                     >
-                      <FaTimes />
+                      <FaFileAlt />
+                      Advertisements
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setLogoutModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-normal"
+                    title="Logout from application"
+                  >
+                    <FaPowerOff />
+                    Logout
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!isInterviewMode && (
+              <div className="flex justify-end mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 font-normal">Rows per page:</span>
+                  <select
+                    value={rowsPerPage}
+                    onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                    className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-normal"
+                  >
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {!isInterviewMode && (
+              <div className="mb-4 p-4 bg-gradient-to-r from-slate-50 via-white to-slate-50 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <FaFilter className="text-primary-500" />
+                    <span className="font-normal text-gray-800 text-base">
+                      {stats.filtered}
+                    </span>
+                    <span className="text-gray-500 font-normal">filtered from</span>
+                    <span className="font-normal text-gray-800 text-base">
+                      {stats.total}
+                    </span>
+                    <span className="text-gray-500 font-normal">total</span>
+                  </div>
+
+                  <div className="hidden sm:block w-px h-6 bg-gray-300" />
+
+                  {[
+                    { key: 'eligible', label: 'Eligible', color: 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' },
+                    { key: 'approved', label: 'Approved', color: 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' },
+                    { key: 'pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' },
+                    { key: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' },
+                  ].map(({ key, label, color }) => (
+                    <button
+                      key={key}
+                      onClick={() => handleClearFilters(key)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-normal border transition-all active:scale-95 ${color}`}
+                      title={`View all ${label} users`}
+                    >
+                      {label}
+                      <span className="font-normal">{stats.filteredByStatus[key]}</span>
+                      <span className="text-[10px] font-normal opacity-70">/ {stats.totalByStatus[key]}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!isInterviewMode && (
+              <FilterPanel
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                onClearFilters={handleClearFilters}
+                onSortChange={handleSortChange}
+                sortBy={sortBy}
+                users={users}
+                filteredUsers={filteredUsers}
+                qualificationMatchedUsers={qualificationMatchedUsers}
+                onBulkReject={handleBulkReject}
+                onBulkEligible={handleBulkEligible}
+                onBulkPending={handleBulkPending}
+                onBulkDelete={handleBulkDelete}
+                selectedUsers={selectedUsers}
+                onSelectAllFiltered={selectAllFiltered}
+                onClearSelection={() => setSelectedUsers([])}
+                onTogglePageSelection={togglePageSelection}
+                totalPages={totalPages}
+                rowsPerPage={rowsPerPage}
+                filterCounts={filterCounts}
+                degreeOptions={degreeOptions}
+                degreeSpecMap={degreeSpecMap}
+                advertisements={advertisements}
+                onManageDegrees={() => setManageDegreeModal(true)}
+                isAdmin={isAdmin}
+                availableSkills={availableSkills}
+              />
+            )}
+
+            {isInterviewMode && (
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 shadow-sm animate-slide-down">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      if (isMeritMode) {
+                        setIsMeritMode(false);
+                      } else {
+                        setIsInterviewMode(false);
+                        setIsGridCollapsed(false);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-200 font-normal text-sm shadow-md focus:outline-none focus:ring-4 focus:ring-red-500/20 active:scale-95 border-2 border-transparent select-none cursor-pointer"
+                    style={{
+                      backgroundColor: '#8b0000',
+                      color: '#ffffff'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#ff0000';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = '#8b0000';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = '#ff0000';
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = 'transparent';
+                    }}
+                  >
+                    <FaArrowRight className="rotate-180" />
+                    {isMeritMode ? "Return" : "Return"}
+                  </button>
+
+                  <div className="h-8 w-px bg-blue-200 hidden md:block"></div>
+                  <div className="flex items-center gap-2 text-sm text-blue-800 font-normal">
+                    {isMeritMode ? (
+                      <>
+                        <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 font-bold">
+                          {meritStats.sent}
+                        </span>
+                        <span className="font-normal opacity-70">Candidates based on email</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="px-2 py-1 bg-blue-100 rounded-md border border-blue-200 font-normal">
+                          {stats.totalByStatus.eligible} Eligible
+                        </span>
+                        <span className="font-normal opacity-70">from</span>
+                        <span className="px-2 py-1 bg-white rounded-md border border-blue-100 font-normal">
+                          {stats.total} Total
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {!isMeritMode && (
+                    <>
+                      <button
+                        onClick={() => setManagePanelModal(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-normal text-sm border-2 border-transparent shadow-md active:scale-95 cursor-pointer"
+                        title="Manage Interview Panels"
+                      >
+                        <FaUsers />
+                        Panels
+                      </button>
+
+                      {/* View Mode Toggle */}
+                      <div className="flex items-center bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+                        {[
+                          { key: 'grid', icon: FaThList, label: 'Grid' },
+                          { key: 'calendar', icon: FaCalendar, label: 'Calendar' },
+                          { key: 'timeline', icon: FaChartLine, label: 'Timeline' },
+                        ].map(({ key, icon: Icon, label }) => (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setInterviewViewMode(key);
+                              if (key !== 'grid') setIsGridCollapsed(false);
+                            }}
+                            title={`Switch to ${label} view`}
+                            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all cursor-pointer ${interviewViewMode === key
+                              ? 'bg-indigo-600 text-white shadow-inner'
+                              : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700'
+                              }`}
+                          >
+                            <Icon className="text-xs" />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Admin-only AI Normalization Button for Merit Mode */}
+                  {isMeritMode && isAdmin && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleAiNormalization}
+                        disabled={isNormalizing || isGeneratingMerit || !meritFilters.advertisement}
+                        className={`
+                        relative group flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm border border-transparent h-[42px] overflow-hidden
+                        bg-gray-800
+                        ${meritFilters.advertisement && !isNormalizing && !isGeneratingMerit
+                            ? 'cursor-pointer active:scale-95 group-hover:border-gray-400/30'
+                            : 'cursor-not-allowed opacity-80'
+                          }
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500/50
+                      `}
+                        title={
+                          !meritFilters.advertisement
+                            ? "Please select an advertisement to enable AI Normalization"
+                            : isNormalizing
+                              ? "vatsAi is currently analyzing candidate data and calculating features..."
+                              : "Run vatsAi: Impute missing marks and normalize merit rankings"
+                        }
+                      >
+                        {/* Hover Background Overlay */}
+                        {meritFilters.advertisement && !isNormalizing && !isGeneratingMerit && (
+                          <div className="absolute inset-0 bg-gradient-to-r from-[#b8cbb8] via-[#b8cbb8] to-[#b465da] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"></div>
+                        )}
+
+                        <div className="relative z-10 flex items-center gap-2">
+                          {isNormalizing ? (
+                            <FaRobot className="text-[#b465da] text-base vats-robot-slide" />
+                          ) : (
+                            <FaRobot className={`text-base transition-all duration-300 group-hover:scale-110 ${meritFilters.advertisement
+                              ? 'text-[#b465da] group-hover:text-gray-800'
+                              : 'text-gray-500/60'
+                              }`} />
+                          )}
+
+                          <div className="relative">
+                            <span className={`transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#b8cbb8] to-[#b465da] ${meritFilters.advertisement && !isNormalizing && !isGeneratingMerit
+                              ? 'group-hover:opacity-0'
+                              : 'opacity-50'
+                              }`}>
+                              {isNormalizing ? "Processing..." : "Normalization with AI"}
+                            </span>
+
+                            {meritFilters.advertisement && !isNormalizing && !isGeneratingMerit && (
+                              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 text-gray-800 whitespace-nowrap">
+                                Normalization with AI
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* NEW: Generate Meritlist Button */}
+                      <button
+                        onClick={handleGenerateMeritlist}
+                        disabled={isGeneratingMerit || isNormalizing || !meritFilters.advertisement}
+                        className={`
+                        relative group flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm border h-[42px] overflow-hidden
+                        ${meritFilters.advertisement && !isGeneratingMerit && !isNormalizing
+                            ? 'cursor-pointer active:scale-95 bg-gradient-to-r from-[#7742B2] via-[#F180FF] to-[#FD8BD9] border-transparent'
+                            : 'cursor-not-allowed opacity-80 bg-gray-600'
+                          }
+                        focus:outline-none focus:ring-2 focus:ring-[#F180FF]/50
+                      `}
+                        title={
+                          !meritFilters.advertisement
+                            ? "Please select an advertisement to enable Merit Generation"
+                            : isGeneratingMerit
+                              ? "Evolution Engine is calculating Supreme Merit scores..."
+                              : "Generate Supreme Merit List: Geometric & Neural dual-engine processing"
+                        }
+                      >
+                        {/* Hover Background Overlay (Light Pink Inversion) */}
+                        {meritFilters.advertisement && !isGeneratingMerit && !isNormalizing && (
+                          <div className="absolute inset-0 bg-[#fdf2f8] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"></div>
+                        )}
+
+                        <div className="relative z-10 flex items-center gap-2">
+                          {isGeneratingMerit ? (
+                            <FaAward className="text-gray-800 text-base vats-robot-slide" />
+                          ) : (
+                            <FaAward className={`text-base transition-all duration-300 group-hover:scale-110 ${meritFilters.advertisement
+                              ? 'text-gray-800 group-hover:text-[#F180FF]'
+                              : 'text-gray-400'
+                              }`} />
+                          )}
+
+                          <div className="relative">
+                            <span className={`transition-all duration-300 font-semibold text-gray-800 ${meritFilters.advertisement && !isGeneratingMerit && !isNormalizing
+                              ? 'group-hover:opacity-0'
+                              : 'opacity-100'
+                              }`}>
+                              {isGeneratingMerit ? "Generating..." : "Generate Meritlist"}
+                            </span>
+
+                            {meritFilters.advertisement && !isGeneratingMerit && !isNormalizing && (
+                              <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#7742B2] via-[#F180FF] to-[#FD8BD9] whitespace-nowrap font-medium">
+                                Generate Meritlist
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+
+                  {interviewViewMode === 'grid' && (
+                    <button
+                      onClick={() => setIsGridCollapsed(!isGridCollapsed)}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary-700 rounded-lg hover:bg-primary-50 transition-all font-normal text-sm border border-primary-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
+                    >
+                      {isGridCollapsed ? <FaChevronDown /> : <FaChevronUp />}
+                      {isGridCollapsed ? "Expand List" : "Collapse List"}
                     </button>
                   )}
                 </div>
               </div>
+            )}
 
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={handleRefresh}
-                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-normal"
-                  title="Refresh user list"
-                >
-                  <FaRedo className="text-primary-600" />
-                  Refresh
-                </button>
+            {isInterviewMode && !isMeritMode && interviewViewMode === 'grid' && (
+              <PanelDisplay panels={panels} loading={loadingPanels} />
+            )}
 
-                {isAdmin && (
-                  <button
-                    onClick={() => setManageAdModal(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-normal"
-                    title="Manage Advertisements"
-                  >
-                    <FaFileAlt />
-                    Advertisements
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setLogoutModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-normal"
-                  title="Logout from application"
-                >
-                  <FaPowerOff />
-                  Logout
-                </button>
+            {/* Merit Mode Stats Bar */}
+            {isMeritMode && (
+              <div className="mb-4 p-4 bg-gradient-to-r from-indigo-50 via-white to-indigo-50 rounded-xl border border-indigo-100 shadow-sm animate-fade-in flex items-center justify-between">
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                  <div className="flex items-center gap-2 text-sm text-indigo-700">
+                    <FaFilter className="text-indigo-500" />
+                    <span className="font-medium text-sm">
+                      {filteredUsers.length}
+                    </span>
+                    <span className="opacity-70">candidates filtered from</span>
+                    <span className="font-medium text-sm">
+                      {meritStats.total}
+                    </span>
+                    <span className="opacity-70">eligible total</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {!isInterviewMode && (
-            <div className="flex justify-end mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 font-normal">Rows per page:</span>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                  className="border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-normal"
-                >
-                  <option value="5">5</option>
-                  <option value="10">10</option>
-                  <option value="20">20</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                </select>
-              </div>
-            </div>
-          )}
+            {/* Merit Mode Filter Panel */}
+            {isMeritMode && (
+              <MeritFilterPanel
+                meritFilters={meritFilters}
+                onMeritFilterChange={(filterKey, value) => setMeritFilters(prev => ({ ...prev, [filterKey]: value }))}
+                onMeritFiltersUpdate={(newFilters) => setMeritFilters(newFilters)}
+                onClearMeritFilters={() => setMeritFilters({
+                  advertisement: '',
+                  tenth: { min: '', max: '' },
+                  twelfth: { min: '', max: '' },
+                  graduation: { min: '', max: '' },
+                  graduationCpi: { min: '', max: '' },
+                  pg: { min: '', max: '' },
+                  pgCpi: { min: '', max: '' },
+                  assignedMarks: { min: '', max: '' },
+                  age: { min: '', max: '' },
+                  degree: [],
+                  specialization: [],
+                  experience: { min: '', max: '' }
+                })}
+                onMeritSortChange={(newSort) => setMeritSortBy(newSort)}
+                meritSortBy={meritSortBy}
+                meritFilterCounts={meritFilterCounts}
+                advertisements={advertisements}
+                degreeOptions={degreeOptions}
+                degreeSpecMap={degreeSpecMap}
+                filteredUsers={filteredUsers}
+              />
+            )}
 
-          {!isInterviewMode && (
-            <div className="mb-4 p-4 bg-gradient-to-r from-slate-50 via-white to-slate-50 rounded-xl border border-gray-200 shadow-sm">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <FaFilter className="text-primary-500" />
-                  <span className="font-normal text-gray-800 text-base">
-                    {stats.filtered}
-                  </span>
-                  <span className="text-gray-500 font-normal">filtered from</span>
-                  <span className="font-normal text-gray-800 text-base">
-                    {stats.total}
-                  </span>
-                  <span className="text-gray-500 font-normal">total</span>
+            {isInterviewMode && interviewViewMode === 'calendar' && (
+              <InterviewCalendarView
+                filteredUsers={filteredUsers}
+                searchTerm={searchTerm}
+                panels={panels}
+                onViewUser={(user) => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+              />
+            )}
+
+            {isInterviewMode && interviewViewMode === 'timeline' && (
+              <InterviewTimelineView
+                filteredUsers={filteredUsers}
+                searchTerm={searchTerm}
+                panels={panels}
+                onViewUser={(user) => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+              />
+            )}
+
+            {(!isInterviewMode || interviewViewMode === 'grid') && !isGridCollapsed && (
+              <>
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="w-full">
+                    <thead className="bg-gradient-to-r from-primary-100 to-secondary-100">
+                      <tr>
+                        {isMeritMode ? (
+                          <>
+                            <th className="py-4 px-4 text-center w-12 font-normal">
+                              <input
+                                type="checkbox"
+                                checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
+                                onChange={selectAllVisible}
+                                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                              />
+                            </th>
+                            <th className="py-4 px-6 text-left w-[240px] font-normal text-indigo-800 font-bold">Details</th>
+
+                            {isMeritMode && (
+                              <th className="py-4 px-6 text-left w-[220px] font-normal">Advertisement</th>
+                            )}
+                            <th className="py-4 px-6 text-left font-normal">10th Percentage</th>
+                            <th className="py-4 px-6 text-left w-[120px] font-normal">12th Percentage</th>
+                            <th className="py-4 px-6 text-left w-[180px] font-normal">Graduation Percentage</th>
+                            <th className="py-4 px-6 text-left w-[180px] font-normal">PG Percentage</th>
+                            <th className="py-4 px-6 text-left w-[150px] font-normal">Interview Marks</th>
+                            <th className="py-4 px-6 text-left w-[200px] font-normal">Actions</th>
+                          </>
+                        ) : isInterviewMode ? (
+                          <>
+                            <th className="py-4 px-4 text-center w-12 font-normal">
+                              <input
+                                type="checkbox"
+                                checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
+                                onChange={selectAllVisible}
+                                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                              />
+                            </th>
+                            <th className="py-4 px-6 text-left w-[340px] font-normal">Personal details</th>
+                            <th className="py-4 px-6 text-left w-[240px] font-normal">Education</th>
+                            <th className="py-4 px-6 text-left w-[240px] font-normal">Skillset</th>
+                            <th className="py-4 px-6 text-left w-[240px] font-normal">Advertisement</th>
+                            <th className="py-4 px-6 text-left w-[240px] font-normal">Panels</th>
+                            <th className="py-4 px-6 text-left w-[260px] font-normal">Schedule & Email</th>
+                            <th className="py-4 px-6 text-left w-[240px] font-normal">Actions</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="py-4 px-4 text-center w-12 font-normal">
+                              <input
+                                type="checkbox"
+                                checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
+                                onChange={selectAllVisible}
+                                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                              />
+                            </th>
+                            <th className="py-4 px-6 text-left font-normal">Name & Details</th>
+                            <th className="py-4 px-6 text-left w-48 font-normal">Registration Date</th>
+                            <th className="py-4 px-6 text-left w-32 font-normal">Gender</th>
+                            <th className="py-4 px-6 text-left w-32 font-normal">Profile Image</th>
+                            <th className="py-4 px-6 text-left w-44 font-normal">Education</th>
+                            <th className="py-4 px-6 text-left w-48 font-normal">Skillset</th>
+                            <th className="py-4 px-6 text-left w-40 font-normal">Advertisement</th>
+                            <th className="py-4 px-6 text-left w-32 font-normal">Status</th>
+                            <th className="py-4 px-6 text-left w-80 font-normal">Actions</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={isMeritMode ? 9 : (isInterviewMode ? 8 : 10)} className="py-12 text-center text-gray-500 font-normal">
+                            <div className="flex flex-col items-center justify-center gap-3">
+                              <FaSpinner className="animate-spin text-primary-500 text-2xl" />
+                              <span>Loading users...</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : paginatedUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={isMeritMode ? 9 : (isInterviewMode ? 8 : 10)} className="py-12 text-center text-gray-500 font-normal">
+                            <div className="flex flex-col items-center justify-center gap-3">
+                              <FaUsers className="text-gray-300 text-4xl" />
+                              <p className="text-lg mb-2">No users found</p>
+                              <p>
+                                {searchTerm || Object.values(filters).some(f => f) ?
+                                  "Try adjusting your search or filters" :
+                                  "No users registered yet"}
+                              </p>
+                              {Object.values(filters).some(f => f) && (
+                                <button
+                                  onClick={handleClearFilters}
+                                  className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors cursor-pointer font-normal"
+                                >
+                                  Clear All Filters
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedUsers.map((user, index) => {
+                          const registrationDate = formatDateTime(user.createdAt);
+                          const rowId = user._id || `user-${index}`;
+                          const keyId = isMeritMode ? (user.meritRowId || `${rowId}-merit-${index}`) : rowId;
+                          return (
+                            <tr
+                              key={keyId}
+                              className="border-t border-gray-200 transition-all duration-300 hover:bg-gray-50 font-normal"
+                            >
+                              {/* 1. Checkbox Column */}
+                              <td className="py-4 px-4 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isUserSelected(rowId)}
+                                  onChange={() => toggleUserSelection(rowId)}
+                                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer"
+                                />
+                              </td>
+
+                              {isMeritMode ? (
+                                <>
+                                  {/* 1. Details */}
+                                  <td className="py-4 px-6 min-w-[280px]">
+                                    <div className="flex items-center gap-4">
+                                      <div className="relative group/avatar">
+                                        {user.profileImage ? (
+                                          <div
+                                            onClick={() => openImagePreview(user.profileImage)}
+                                            className="w-12 h-12 rounded-full overflow-hidden border-2 border-indigo-100 cursor-pointer hover:border-indigo-400 transition-all shadow-md group"
+                                          >
+                                            <img
+                                              src={user.profileImage}
+                                              alt="Profile"
+                                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-dashed border-gray-200 flex items-center justify-center shadow-inner">
+                                            <FaUser className="w-5 h-5 text-gray-300" />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <p
+                                          onClick={() => handleViewUser(user._id, user.currentAdvertisement?._id)}
+                                          className="text-gray-900 text-sm font-bold leading-none mb-1 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                                        >
+                                          {user.fullName}
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 truncate font-medium">{user.email}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* 1.5 Advertisement (Merit Mode Only) */}
+                                  {isMeritMode && (
+                                    <td className="py-4 px-6">
+                                      <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-gray-800">
+                                          {user.currentAdvertisement?.title || 'N/A'}
+                                        </span>
+                                        <span className="text-[10px] text-gray-500 font-medium">
+                                          ID: {user.currentAdvertisement?._id?.toString().slice(-6) || 'N/A'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                  )}
+
+                                  {/* 2. 10th % */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-sm font-medium ${user.aiImputations?.includes("10th") ? "text-amber-600 font-bold" : "text-gray-700"}`}>
+                                        {user.education?.tenth?.percentage ? `${user.education.tenth.percentage}%` : 'N/A'}
+                                      </span>
+                                      {user.aiImputations?.includes("10th") && (
+                                        <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.tenth?.percentage || 'N/A'}%)`} />
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 3. 12th % */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-sm font-medium ${user.aiImputations?.includes("12th") ? "text-amber-600 font-bold" : "text-gray-700"}`}>
+                                        {user.education?.twelfth?.percentage ? `${user.education.twelfth.percentage}%` : 'N/A'}
+                                      </span>
+                                      {user.aiImputations?.includes("12th") && (
+                                        <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.twelfth?.percentage || 'N/A'}%)`} />
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 4. Graduation % & CPI */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1">
+                                        <span className={`text-sm font-medium ${user.aiImputations?.includes("Grad") ? "text-amber-600 font-bold" : "text-indigo-700"}`}>
+                                          {user.education?.graduation?.percentage ? `${user.education.graduation.percentage}%` : 'N/A'}
+                                        </span>
+                                        {user.aiImputations?.includes("Grad") && (
+                                          <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.graduation?.percentage || 'N/A'}%)`} />
+                                        )}
+                                      </div>
+                                      {user.education?.graduation?.cgpa && (
+                                        <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.graduation.cgpa}</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 5. PG % & CPI */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1">
+                                        <span className={`text-sm font-medium ${user.aiImputations?.includes("PG") ? "text-amber-600 font-bold" : "text-purple-700"}`}>
+                                          {user.education?.qualifyingDegree?.percentage ? `${user.education.qualifyingDegree.percentage}%` : 'N/A'}
+                                        </span>
+                                        {user.aiImputations?.includes("PG") && (
+                                          <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.qualifyingDegree?.percentage || 'N/A'}%)`} />
+                                        )}
+                                      </div>
+                                      {user.education?.qualifyingDegree?.cgpa && (
+                                        <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.qualifyingDegree.cgpa}</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 6. Interview Marks */}
+                                  <td className="py-4 px-6">
+                                    <div className="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm">
+                                      <span className="text-sm font-bold">
+                                        {user.currentAdMark?.marks !== undefined ? parseFloat(user.currentAdMark.marks).toFixed(2) : (user.interviewMarks !== undefined ? parseFloat(user.interviewMarks).toFixed(2) : "00.00")}
+                                      </span>
+                                      <span className="text-[10px] ml-1 opacity-70">/ 100</span>
+                                    </div>
+                                  </td>
+
+
+
+                                  {/* 7. Actions */}
+                                  <td className="py-4 px-6">
+                                    <div className="grid grid-cols-2 gap-2 min-w-[160px]">
+                                      <button
+                                        onClick={() => handleViewUser(user._id, user.currentAdvertisement?._id)}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
+                                        title="View Details"
+                                      >
+                                        <FaEye className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">View</span>
+                                      </button>
+
+                                      {isMeritMode && isAdmin && (
+                                        <button
+                                          onClick={() => {
+                                            setMarksInput(user.currentAdMark?.interviewMarks || "");
+                                            setAssignMarksModal({
+                                              show: true,
+                                              user: user,
+                                              advertisement: user.currentAdvertisement
+                                            });
+                                          }}
+                                          className="flex flex-col items-center justify-center gap-1 py-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-all border border-pink-200 cursor-pointer shadow-sm group"
+                                          title="Assign Marks"
+                                        >
+                                          <FaClipboardList className="size-3 group-hover:scale-110 transition-transform" />
+                                          <span className="text-[10px] font-semibold tracking-tight">Assign Marks</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </>
+                              ) : isInterviewMode ? (
+                                <>
+                                  {/* 2. Personal Details (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-4">
+                                      <div className="relative flex-shrink-0">
+                                        {user.profileImage ? (
+                                          <div
+                                            onClick={() => openImagePreview(user.profileImage)}
+                                            className="w-14 h-14 rounded-full overflow-hidden border-2 border-primary-100 cursor-pointer hover:border-primary-400 transition-all shadow-md group"
+                                          >
+                                            <img
+                                              src={user.profileImage}
+                                              alt="Profile"
+                                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-50 to-secondary-50 border-2 border-dashed border-gray-200 flex items-center justify-center shadow-inner">
+                                            <FaUser className="w-6 h-6 text-gray-300" />
+                                          </div>
+                                        )}
+                                        <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow-md border border-gray-100">
+                                          {getGenderIcon(user.gender)}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col min-w-0">
+                                        <p
+                                          onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+                                          className="text-gray-900 text-base leading-none mb-1 truncate font-normal cursor-pointer hover:text-indigo-600 transition-colors"
+                                        >
+                                          {user.fullName}
+                                        </p>
+                                        <p className="text-xs text-gray-500 truncate mb-2 font-normal">{user.email}</p>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-medium tracking-tight">
+                                            <FaCalendarAlt className="size-2.5" />
+                                            <span>Reg: {registrationDate.date}</span>
+                                          </div>
+                                          <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                                          <span className="text-[10px] text-gray-400 font-medium">{user.gender}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* 3. Education (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col items-start">
+                                      <div className="inline-flex flex-col items-start min-w-[120px] bg-white p-2.5 rounded-xl border border-blue-100 shadow-sm">
+                                        <span className="text-xs text-primary-700 mb-1.5 tracking-tight font-medium">
+                                          {user.education?.qualifyingDegree?.degree || user.education?.graduation?.degree || 'N/A'}
+                                        </span>
+                                        <div className="w-full h-px bg-blue-50 mb-2"></div>
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-[10px] text-gray-400 font-medium tracking-wide">Class of {user.education?.graduation?.passingYear || user.education?.qualifyingDegree?.passingYear || 'N/A'}</span>
+                                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-xs border border-blue-100 font-normal">
+                                            {user.education?.graduation?.percentage || user.education?.qualifyingDegree?.percentage}%
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* 3b. Skillset (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col gap-2 max-w-[220px] max-h-[140px] overflow-y-auto custom-scrollbar p-1">
+                                      {user.skillSets && (Object.values(user.skillSets).flat().length > 0) ? (
+                                        Object.entries({
+                                          technical: { label: 'Technical', labelColor: 'text-blue-600', color: 'bg-blue-50 text-blue-700 border-blue-100' },
+                                          creative: { label: 'Creative', labelColor: 'text-purple-600', color: 'bg-purple-50 text-purple-700 border-purple-100' },
+                                          cognitive: { label: 'Cognitive', labelColor: 'text-indigo-600', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+                                          tools: { label: 'Tools', labelColor: 'text-amber-600', color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                                          ethics: { label: 'Ethics', labelColor: 'text-emerald-600', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
+                                        }).map(([key, cfg]) => (
+                                          user.skillSets[key]?.length > 0 && (
+                                            <div key={key} className="flex flex-col gap-1">
+                                              <span className={`text-[9px] font-medium tracking-tight text-gray-900`}>{cfg.label}</span>
+                                              <div className="flex flex-wrap gap-1">
+                                                {user.skillSets[key].map((skill, sIdx) => (
+                                                  <span key={`${key}-${sIdx}`} className={`px-1.5 py-0.5 rounded text-[10px] border font-medium whitespace-nowrap ${cfg.color}`}>
+                                                    {skill}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )
+                                        ))
+                                      ) : (
+                                        <span className="text-[10px] text-gray-400 italic">N/A</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 4. Advertisement (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col gap-2.5 max-w-[240px]">
+                                      {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => (
+                                        <div key={ad._id || idx} className="flex items-start justify-between gap-2 p-2.5 rounded-xl border border-gray-100 bg-white">
+                                          <p className="text-[11px] text-gray-700 leading-tight truncate-2-lines flex-1 font-normal" title={ad.title}>
+                                            {ad.title}
+                                          </p>
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              onClick={() => handleViewAd(ad)}
+                                              className="p-1 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors border border-purple-50 cursor-pointer"
+                                              title="View Ad"
+                                            >
+                                              <FaBullhorn size={10} />
+                                            </button>
+                                            {ad.detail && (
+                                              <button
+                                                onClick={() => openDocumentPreview(ad.detail)}
+                                                className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-50 cursor-pointer"
+                                                title="View PDF"
+                                              >
+                                                <FaFilePdf size={10} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
+                                        <div className="text-center py-2 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                                          <span className="text-[10px] text-gray-400 italic font-normal">No ad assigned</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 5. Panels (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col gap-2.5 max-w-[240px]">
+                                      {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => {
+                                        const assignedPanel = user.panelAssignments?.find(pa => pa.advertisementId?.toString() === ad._id?.toString());
+                                        const panelInfo = panels.find(p => p._id === assignedPanel?.panelId);
+
+                                        return (
+                                          <div key={`panel-${ad._id || idx}`} className="flex items-center justify-between p-2.5 rounded-xl border border-gray-100 bg-white min-h-[42px]">
+                                            {panelInfo ? (
+                                              <span className="inline-flex items-center px-1.5 py-1 rounded-md text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase font-medium tracking-tight">
+                                                {panelInfo.name}
+                                              </span>
+                                            ) : (
+                                              <span className="text-[10px] text-orange-400 italic font-medium px-1.5 py-1 bg-orange-50 rounded-md border border-orange-100">
+                                                Pending
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                      {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
+                                        <div className="h-full border border-dashed border-gray-100 rounded-xl bg-gray-50/30"></div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 6. Schedule & Email (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col gap-2.5 max-w-[240px]">
+                                      {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => {
+                                        const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                                        const scheduledDate = adMark?.interviewSchedule?.scheduledDate || user.interviewSchedule?.scheduledDate;
+                                        const emailSent = adMark?.interviewEmailSent?.sent || user.interviewEmailSent?.sent;
+
+                                        return (
+                                          <div key={`status-${ad._id || idx}`} className="flex flex-col gap-1.5 p-2 rounded-xl border border-gray-50 bg-white/50 min-h-[42px]">
+                                            {/* Scheduled Date */}
+                                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all duration-200 ${scheduledDate
+                                              ? 'bg-pink-50 border-pink-100 shadow-sm'
+                                              : 'bg-slate-50 border-slate-200'
+                                              }`}>
+                                              <FaCalendarAlt className={`text-[9px] ${scheduledDate ? 'text-pink-500' : 'text-slate-400'}`} />
+                                              <span className={`text-[9px] font-normal whitespace-nowrap ${scheduledDate ? 'text-pink-600' : 'text-black italic'}`}>
+                                                {scheduledDate
+                                                  ? new Date(scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                  : 'Not Scheduled'
+                                                }
+                                              </span>
+                                            </div>
+                                            {/* Email Status */}
+                                            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all duration-200 ${emailSent
+                                              ? 'bg-emerald-50 border-emerald-100 shadow-sm'
+                                              : 'bg-amber-50 border-amber-100'
+                                              }`}>
+                                              <FaEnvelope className={`text-[9px] ${emailSent ? 'text-emerald-500' : 'text-amber-500'}`} />
+                                              <span className={`text-[9px] font-normal whitespace-nowrap ${emailSent ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                                {emailSent ? 'Email Sent ✓' : 'Email Pending'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                      {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
+                                        <div className="h-full border border-dashed border-gray-100 rounded-xl bg-gray-50/30"></div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 7. Actions (Interview Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="grid grid-cols-2 gap-2 min-w-[180px]">
+                                      <button
+                                        onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
+                                        title="View Details"
+                                      >
+                                        <FaInfoCircle className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">View Details</span>
+                                      </button>
+
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => handleAssignPanelClick(user)}
+                                          disabled={user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent}
+                                          className={`flex flex-col items-center justify-center gap-1 py-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all border border-purple-200 cursor-pointer shadow-sm group ${(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          title={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? "Cannot change panel after all emails sent" : (user.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel")}
+                                        >
+                                          <FaClipboardList className="size-3 group-hover:scale-110 transition-transform" />
+                                          <span className="text-[10px] font-semibold tracking-tight">
+                                            {user.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel"}
+                                          </span>
+                                        </button>
+                                      )}
+
+                                      <button
+                                        onClick={() => {
+                                          setScheduleModal({ show: true, user });
+                                          setScheduleDateInput(user.interviewSchedule?.scheduledDate
+                                            ? new Date(user.interviewSchedule.scheduledDate).toISOString().split('T')[0]
+                                            : ""
+                                          );
+                                          // Auto-select all ads that haven't been scheduled yet, or all ads if none scheduled
+                                          const userAds = user.advertisements || (user.advertisement ? [user.advertisement] : []);
+                                          setSelectedAdsToSchedule(userAds.map(ad => ad._id));
+                                        }}
+                                        disabled={user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent}
+                                        className={`flex flex-col items-center justify-center gap-1 py-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-all border border-pink-200 cursor-pointer shadow-sm group ${(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        title={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? "Cannot reschedule after all emails sent" : (user.interviewSchedule?.scheduledDate ? "Reschedule Interview" : "Schedule Interview")}
+                                      >
+                                        <FaClock className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">
+                                          {user.interviewSchedule?.scheduledDate ? "Reschedule" : "Schedule"}
+                                        </span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          setEmailConfirmModal({ show: true, user });
+                                          const userAds = user.advertisements || (user.advertisement ? [user.advertisement] : []);
+                                          // Auto-select ads that have schedule and panel but email not sent
+                                          const eligibleAds = userAds.filter(ad => {
+                                            const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                                            const hasPanel = user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
+                                            return adMark?.interviewSchedule?.scheduledDate && hasPanel && !adMark?.interviewEmailSent?.sent;
+                                          });
+                                          setSelectedAdsToEmail(eligibleAds.length > 0 ? eligibleAds.map(ad => ad._id) : userAds.map(ad => ad._id));
+                                        }}
+                                        disabled={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) || (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate)) || !user.panelAssignments?.length}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={
+                                          (user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent)
+                                            ? "All emails already sent"
+                                            : (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate) && !user.panelAssignments?.length
+                                              ? "Assign panel and schedule interview first"
+                                              : (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate))
+                                                ? "Schedule interview first"
+                                                : !user.panelAssignments?.length
+                                                  ? "Assign panel first"
+                                                  : "Send Interview Email")
+                                        }
+                                      >
+                                        <FaPaperPlane className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">Send Mail</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  {/* 2. Name & Details */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-full flex items-center justify-center font-normal bg-gradient-to-br from-primary-500 to-secondary-500 text-white">
+                                        {user.fullName?.charAt(0) || "U"}
+                                      </div>
+                                      <div>
+                                        <p
+                                          onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+                                          className="font-normal text-gray-800 cursor-pointer hover:text-primary-600 transition-colors"
+                                        >
+                                          {user.fullName}
+                                        </p>
+                                        <p className="text-sm text-gray-500 font-normal">{user.email}</p>
+                                        <p className="text-xs text-gray-400 mt-1 font-normal">{user.mobile}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* 3. Registration Date */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-2 text-gray-700">
+                                        <FaCalendarAlt className="text-primary-500" />
+                                        <span className="font-normal">{registrationDate.date}</span>
+                                      </div>
+                                      <div className="text-sm text-gray-500 mt-1 font-normal">
+                                        {registrationDate.time}
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  {/* 4. Gender */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-2 font-normal">
+                                      {getGenderIcon(user.gender)}
+                                      {getGenderDisplay(user.gender)}
+                                    </div>
+                                  </td>
+
+                                  {/* 5. Profile Image */}
+                                  <td className="py-4 px-6">
+                                    {user.profileImage ? (
+                                      <div
+                                        onClick={() => openImagePreview(user.profileImage)}
+                                        className="w-12 h-12 rounded-lg overflow-hidden border-2 border-gray-200 cursor-pointer hover:border-primary-400 transition-all shadow-sm"
+                                      >
+                                        <img
+                                          src={user.profileImage}
+                                          alt="Profile"
+                                          className="w-full h-full object-cover"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                                        <FaImage className="w-5 h-5 text-gray-400" />
+                                      </div>
+                                    )}
+                                  </td>
+
+                                  {/* 6. Education */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-normal text-primary-700">
+                                        {user.education?.qualifyingDegree?.degree || user.education?.graduation?.degree || 'N/A'}
+                                      </span>
+                                      {user.education?.graduation?.passingYear && (
+                                        <span className="text-[11px] text-gray-500 font-normal">
+                                          Passout: {user.education.graduation.passingYear}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 6b. Skillset (Normal Mode) */}
+                                  <td className="py-4 px-6">
+                                    <div className="flex flex-col gap-2 max-w-[200px] max-h-[140px] overflow-y-auto custom-scrollbar p-1">
+                                      {user.skillSets && (Object.values(user.skillSets).flat().length > 0) ? (
+                                        Object.entries({
+                                          technical: { label: 'Technical', labelColor: 'text-blue-600', color: 'bg-blue-50 text-blue-700 border-blue-100' },
+                                          creative: { label: 'Creative', labelColor: 'text-purple-600', color: 'bg-purple-50 text-purple-700 border-purple-100' },
+                                          cognitive: { label: 'Cognitive', labelColor: 'text-indigo-600', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+                                          tools: { label: 'Tools', labelColor: 'text-amber-600', color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                                          ethics: { label: 'Ethics', labelColor: 'text-emerald-600', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
+                                        }).map(([key, cfg]) => (
+                                          user.skillSets[key]?.length > 0 && (
+                                            <div key={key} className="flex flex-col gap-1">
+                                              <span className={`text-[9px] font-medium tracking-tight text-gray-900`}>{cfg.label}</span>
+                                              <div className="flex flex-wrap gap-1">
+                                                {user.skillSets[key].map((skill, sIdx) => (
+                                                  <span key={`${key}-${sIdx}`} className={`px-1.5 py-0.5 rounded text-[10px] border font-medium whitespace-nowrap ${cfg.color}`}>
+                                                    {skill}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )
+                                        ))
+                                      ) : (
+                                        <span className="text-xs text-gray-400 italic">No skills</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 7. Advertisement */}
+                                  <td className="py-4 px-6">
+                                    <div className="max-w-[240px] max-h-[120px] overflow-y-auto custom-scrollbar space-y-2">
+                                      {(user.advertisements && user.advertisements.length > 0
+                                        ? user.advertisements
+                                        : (user.advertisement ? [user.advertisement] : [])
+                                      ).map((ad, idx) => (
+                                        <div key={ad._id || idx} className="flex items-center justify-between gap-2 p-1.5 bg-primary-50 rounded-lg border border-primary-100 group">
+                                          <p className="text-[10px] font-bold text-primary-700 truncate flex-1" title={ad.title || 'N/A'}>
+                                            {ad.title || 'N/A'}
+                                          </p>
+                                          <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                              onClick={() => handleViewAd(ad)}
+                                              className="p-1 text-primary-600 hover:bg-white rounded transition-colors shadow-sm"
+                                              title="View Ad Details"
+                                            >
+                                              <FaBullhorn size={10} />
+                                            </button>
+                                            {ad.detail && (
+                                              <button
+                                                onClick={() => openDocumentPreview(ad.detail)}
+                                                className="p-1 text-red-600 hover:bg-white rounded transition-colors shadow-sm"
+                                                title="View Ad PDF"
+                                              >
+                                                <FaFilePdf size={10} />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
+                                        <span className="text-xs text-gray-400 italic">N/A</span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* 8. Status */}
+                                  <td className="py-4 px-6">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-normal border shadow-sm ${getStatusBadge(user.status)}`}>
+                                      {user.status || 'pending'}
+                                    </span>
+                                  </td>
+
+                                  {/* 9. Actions */}
+                                  <td className="py-4 px-6">
+                                    <div className="grid grid-cols-2 gap-2 min-w-[160px]">
+                                      <button
+                                        onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
+                                        title="View Profile"
+                                      >
+                                        <FaEye className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">View</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleMarkEligible(user._id)}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer shadow-sm group"
+                                        title="Mark Eligible"
+                                      >
+                                        <FaCheckCircle className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">Eligible</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleRejectUser(user._id)}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all border border-rose-200 cursor-pointer shadow-sm group"
+                                        title="Reject Candidate"
+                                      >
+                                        <FaTimesCircle className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">Reject</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleDeleteUser(user._id)}
+                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-red-50 text-[#8b0000] rounded-xl hover:bg-red-100 transition-all border border-red-200 cursor-pointer shadow-sm group"
+                                        title="Delete Candidate"
+                                      >
+                                        <FaTrashAlt className="size-3 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-semibold tracking-tight">Delete</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
 
-                <div className="hidden sm:block w-px h-6 bg-gray-300" />
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
+                  totalItems={filteredUsers.length}
+                  rowsPerPage={rowsPerPage}
+                />
+              </>
+            )}
 
-                {[
-                  { key: 'eligible', label: 'Eligible', color: 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' },
-                  { key: 'approved', label: 'Approved', color: 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' },
-                  { key: 'pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-200' },
-                  { key: 'rejected', label: 'Rejected', color: 'bg-red-100 text-red-700 border-red-200 hover:bg-red-200' },
-                ].map(({ key, label, color }) => (
-                  <button
-                    key={key}
-                    onClick={() => handleClearFilters(key)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-normal border transition-all active:scale-95 ${color}`}
-                    title={`View all ${label} users`}
+            {isInterviewMode && !isMeritMode && (
+              <div className="mt-8 flex flex-col items-center gap-4 animate-slide-up">
+                <div className="flex flex-col items-center gap-2">
+                  <div
+                    className="flex items-center gap-2 text-sm text-gray-500 font-normal cursor-help"
+                    title="Based on the email send"
                   >
-                    {label}
-                    <span className="font-normal">{stats.filteredByStatus[key]}</span>
-                    <span className="text-[10px] font-normal opacity-70">/ {stats.totalByStatus[key]}</span>
-                  </button>
-                ))}
+                    <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 font-normal">
+                      {meritStats.sent} Candidates
+                    </span>
+                    <span className="font-normal">from</span>
+                    <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md border border-gray-100 font-normal">
+                      {meritStats.total} Total
+                    </span>
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <div className="mt-4 flex flex-col items-center gap-4">
+
+                    <button
+                      disabled={!meritStats.canProceedToMerit}
+                      onClick={() => {
+                        setIsMeritMode(true);
+                        setIsGridCollapsed(false);
+                      }}
+                      className={`
+                        px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2
+                        ${meritStats.canProceedToMerit
+                          ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-purple-600 hover:to-pink-600 cursor-pointer focus:ring-pink-500'
+                          : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed grayscale'
+                        }
+                      `}
+                      style={{
+                        border: '1px solid transparent'
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#8b0000';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = 'transparent';
+                      }}
+                      title={!meritStats.canProceedToMerit ? 'All eligible candidates must have interview scheduled and email sent for at least one advertisement' : 'Proceed to Merit Procedure'}
+                    >
+                      Merit Procedure
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {!isInterviewMode && (
-            <FilterPanel
-              filters={filters}
-              onFilterChange={handleFilterChange}
-              onClearFilters={handleClearFilters}
-              onSortChange={handleSortChange}
-              sortBy={sortBy}
-              users={users}
-              filteredUsers={filteredUsers}
-              qualificationMatchedUsers={qualificationMatchedUsers}
-              onBulkReject={handleBulkReject}
-              onBulkEligible={handleBulkEligible}
-              onBulkPending={handleBulkPending}
-              onBulkDelete={handleBulkDelete}
-              selectedUsers={selectedUsers}
-              onSelectAllFiltered={selectAllFiltered}
-              onClearSelection={() => setSelectedUsers([])}
-              onTogglePageSelection={togglePageSelection}
-              totalPages={totalPages}
-              rowsPerPage={rowsPerPage}
-              filterCounts={filterCounts}
-              degreeOptions={degreeOptions}
-              degreeSpecMap={degreeSpecMap}
-              advertisements={advertisements}
-              onManageDegrees={() => setManageDegreeModal(true)}
-              isAdmin={isAdmin}
-              availableSkills={availableSkills}
-            />
-          )}
+            {!isInterviewMode && isAdmin && (
+              <div className="mt-8 flex flex-col items-center gap-4">
+                <div className="flex items-center gap-2 text-sm text-gray-500 font-normal">
+                  <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md border border-blue-100 font-normal">
+                    {stats.totalByStatus.eligible} Eligible
+                  </span>
+                  <span className="font-normal">from</span>
+                  <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md border border-gray-100 font-normal">
+                    {stats.total} Total
+                  </span>
+                </div>
 
-          {isInterviewMode && (
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 shadow-sm animate-slide-down">
-              <div className="flex items-center gap-4">
                 <button
                   onClick={() => {
-                    if (isMeritMode) {
-                      setIsMeritMode(false);
+                    if (!isInterviewMode) {
+                      setIsInterviewMode(true);
+                      setIsGridCollapsed(false);
                     } else {
                       setIsInterviewMode(false);
                       setIsGridCollapsed(false);
                     }
                   }}
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-200 font-normal text-sm shadow-md focus:outline-none focus:ring-4 focus:ring-red-500/20 active:scale-95 border-2 border-transparent select-none cursor-pointer"
-                  style={{
-                    backgroundColor: '#8b0000',
-                    color: '#ffffff'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#ff0000';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#8b0000';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#ff0000';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = 'transparent';
-                  }}
-                >
-                  <FaArrowRight className="rotate-180" />
-                  {isMeritMode ? "Return" : "Return"}
-                </button>
-                <div className="h-8 w-px bg-blue-200 hidden md:block"></div>
-                <div className="flex items-center gap-2 text-sm text-blue-800 font-normal">
-                  {isMeritMode ? (
-                    <>
-                      <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 font-bold">
-                        {meritStats.sent}
-                      </span>
-                      <span className="font-normal opacity-70">Candidates based on email</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="px-2 py-1 bg-blue-100 rounded-md border border-blue-200 font-normal">
-                        {stats.totalByStatus.eligible} Eligible
-                      </span>
-                      <span className="font-normal opacity-70">from</span>
-                      <span className="px-2 py-1 bg-white rounded-md border border-blue-100 font-normal">
-                        {stats.total} Total
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {!isMeritMode && (
-                  <>
-                    <button
-                      onClick={() => setManagePanelModal(true)}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-normal text-sm border-2 border-transparent shadow-md active:scale-95 cursor-pointer"
-                      title="Manage Interview Panels"
-                    >
-                      <FaUsers />
-                      Panels
-                    </button>
-
-                    {/* View Mode Toggle */}
-                    <div className="flex items-center bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
-                      {[
-                        { key: 'grid', icon: FaThList, label: 'Grid' },
-                        { key: 'calendar', icon: FaCalendar, label: 'Calendar' },
-                        { key: 'timeline', icon: FaChartLine, label: 'Timeline' },
-                      ].map(({ key, icon: Icon, label }) => (
-                        <button
-                          key={key}
-                          onClick={() => {
-                            setInterviewViewMode(key);
-                            if (key !== 'grid') setIsGridCollapsed(false);
-                          }}
-                          title={`Switch to ${label} view`}
-                          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-all cursor-pointer ${interviewViewMode === key
-                            ? 'bg-indigo-600 text-white shadow-inner'
-                            : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700'
-                            }`}
-                        >
-                          <Icon className="text-xs" />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {/* Admin-only AI Normalization Button for Merit Mode */}
-                {isMeritMode && isAdmin && (
-                  <button
-                    onClick={handleAiNormalization}
-                    disabled={isNormalizing || !meritFilters.advertisement}
-                    className={`
-                      relative group flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 shadow-sm border border-transparent h-[42px] overflow-hidden
-                      bg-gray-800
-                      ${meritFilters.advertisement && !isNormalizing
-                        ? 'cursor-pointer active:scale-95'
-                        : 'cursor-not-allowed opacity-80'
-                      }
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500/50
-                    `}
-                    title={
-                      !meritFilters.advertisement
-                        ? "Please select an advertisement to enable AI Normalization"
-                        : isNormalizing
-                          ? "vatsAi is currently analyzing candidate data and calculating features..."
-                          : "Run vatsAi: Impute missing marks and normalize merit rankings"
-                    }
-                  >
-                    {/* Hover Background Overlay */}
-                    {meritFilters.advertisement && !isNormalizing && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-[#b8cbb8] via-[#b8cbb8] to-[#b465da] opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-0"></div>
-                    )}
-
-                    <div className="relative z-10 flex items-center gap-2">
-                      {isNormalizing ? (
-                        <FaRobot className="text-[#b465da] text-base vats-robot-slide" />
-                      ) : (
-                        <FaRobot className={`text-base transition-all duration-300 group-hover:scale-110 ${meritFilters.advertisement
-                          ? 'text-[#b465da] group-hover:text-gray-800'
-                          : 'text-gray-500/60'
-                          }`} />
-                      )}
-
-                      <div className="relative">
-                        <span className={`transition-all duration-300 text-transparent bg-clip-text bg-gradient-to-r from-[#b8cbb8] to-[#b465da] ${meritFilters.advertisement && !isNormalizing
-                          ? 'group-hover:opacity-0'
-                          : 'opacity-50'
-                          }`}>
-                          {isNormalizing ? "Processing..." : "Normalization with AI"}
-                        </span>
-
-                        {meritFilters.advertisement && !isNormalizing && (
-                          <span className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 text-gray-800 whitespace-nowrap">
-                            Normalization with AI
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                )}
-
-                {interviewViewMode === 'grid' && (
-                  <button
-                    onClick={() => setIsGridCollapsed(!isGridCollapsed)}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary-700 rounded-lg hover:bg-primary-50 transition-all font-normal text-sm border border-primary-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
-                  >
-                    {isGridCollapsed ? <FaChevronDown /> : <FaChevronUp />}
-                    {isGridCollapsed ? "Expand List" : "Collapse List"}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {isInterviewMode && !isMeritMode && interviewViewMode === 'grid' && (
-            <PanelDisplay panels={panels} loading={loadingPanels} />
-          )}
-
-          {/* Merit Mode Stats Bar */}
-          {isMeritMode && (
-            <div className="mb-4 p-4 bg-gradient-to-r from-indigo-50 via-white to-indigo-50 rounded-xl border border-indigo-100 shadow-sm animate-fade-in flex items-center justify-between">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-                <div className="flex items-center gap-2 text-sm text-indigo-700">
-                  <FaFilter className="text-indigo-500" />
-                  <span className="font-medium text-sm">
-                    {filteredUsers.length}
-                  </span>
-                  <span className="opacity-70">candidates filtered from</span>
-                  <span className="font-medium text-sm">
-                    {meritStats.total}
-                  </span>
-                  <span className="opacity-70">eligible total</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Merit Mode Filter Panel */}
-          {isMeritMode && (
-            <MeritFilterPanel
-              meritFilters={meritFilters}
-              onMeritFilterChange={(filterKey, value) => setMeritFilters(prev => ({ ...prev, [filterKey]: value }))}
-              onMeritFiltersUpdate={(newFilters) => setMeritFilters(newFilters)}
-              onClearMeritFilters={() => setMeritFilters({
-                advertisement: '',
-                tenth: { min: '', max: '' },
-                twelfth: { min: '', max: '' },
-                graduation: { min: '', max: '' },
-                graduationCpi: { min: '', max: '' },
-                pg: { min: '', max: '' },
-                pgCpi: { min: '', max: '' },
-                assignedMarks: { min: '', max: '' },
-                age: { min: '', max: '' },
-                degree: [],
-                specialization: [],
-                experience: { min: '', max: '' }
-              })}
-              onMeritSortChange={(newSort) => setMeritSortBy(newSort)}
-              meritSortBy={meritSortBy}
-              meritFilterCounts={meritFilterCounts}
-              advertisements={advertisements}
-              degreeOptions={degreeOptions}
-              degreeSpecMap={degreeSpecMap}
-              filteredUsers={filteredUsers}
-            />
-          )}
-
-          {isInterviewMode && interviewViewMode === 'calendar' && (
-            <InterviewCalendarView
-              filteredUsers={filteredUsers}
-              searchTerm={searchTerm}
-              panels={panels}
-              onViewUser={(user) => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
-            />
-          )}
-
-          {isInterviewMode && interviewViewMode === 'timeline' && (
-            <InterviewTimelineView
-              filteredUsers={filteredUsers}
-              searchTerm={searchTerm}
-              panels={panels}
-              onViewUser={(user) => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
-            />
-          )}
-
-          {(!isInterviewMode || interviewViewMode === 'grid') && !isGridCollapsed && (
-            <>
-              <div className="overflow-x-auto rounded-xl border border-gray-200">
-                <table className="w-full">
-                  <thead className="bg-gradient-to-r from-primary-100 to-secondary-100">
-                    <tr>
-                      {isMeritMode ? (
-                        <>
-                          <th className="py-4 px-4 text-center w-12 font-normal">
-                            <input
-                              type="checkbox"
-                              checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
-                              onChange={selectAllVisible}
-                              className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                            />
-                          </th>
-                          <th className="py-4 px-6 text-left w-[240px] font-normal">Details</th>
-                          {isMeritMode && (
-                            <th className="py-4 px-6 text-left w-[220px] font-normal">Advertisement</th>
-                          )}
-                          <th className="py-4 px-6 text-left font-normal">10th Marks</th>
-                          <th className="py-4 px-6 text-left w-[120px] font-normal">12th %</th>
-                          <th className="py-4 px-6 text-left w-[180px] font-normal">Graduation % & CPI</th>
-                          <th className="py-4 px-6 text-left w-[180px] font-normal">PG % & CPI</th>
-                          <th className="py-4 px-6 text-left w-[150px] font-normal">Interview Marks</th>
-                          <th className="py-4 px-6 text-left w-[200px] font-normal">Actions</th>
-                        </>
-                      ) : isInterviewMode ? (
-                        <>
-                          <th className="py-4 px-4 text-center w-12 font-normal">
-                            <input
-                              type="checkbox"
-                              checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
-                              onChange={selectAllVisible}
-                              className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                            />
-                          </th>
-                          <th className="py-4 px-6 text-left w-[340px] font-normal">Personal details</th>
-                          <th className="py-4 px-6 text-left w-[240px] font-normal">Education</th>
-                          <th className="py-4 px-6 text-left w-[240px] font-normal">Skillset</th>
-                          <th className="py-4 px-6 text-left w-[240px] font-normal">Advertisement</th>
-                          <th className="py-4 px-6 text-left w-[240px] font-normal">Panels</th>
-                          <th className="py-4 px-6 text-left w-[260px] font-normal">Schedule & Email</th>
-                          <th className="py-4 px-6 text-left w-[240px] font-normal">Actions</th>
-                        </>
-                      ) : (
-                        <>
-                          <th className="py-4 px-4 text-center w-12 font-normal">
-                            <input
-                              type="checkbox"
-                              checked={paginatedUsers.length > 0 && paginatedUsers.every(u => isUserSelected(u._id))}
-                              onChange={selectAllVisible}
-                              className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                            />
-                          </th>
-                          <th className="py-4 px-6 text-left font-normal">Name & Details</th>
-                          <th className="py-4 px-6 text-left w-48 font-normal">Registration Date</th>
-                          <th className="py-4 px-6 text-left w-32 font-normal">Gender</th>
-                          <th className="py-4 px-6 text-left w-32 font-normal">Profile Image</th>
-                          <th className="py-4 px-6 text-left w-44 font-normal">Education</th>
-                          <th className="py-4 px-6 text-left w-48 font-normal">Skillset</th>
-                          <th className="py-4 px-6 text-left w-40 font-normal">Advertisement</th>
-                          <th className="py-4 px-6 text-left w-32 font-normal">Status</th>
-                          <th className="py-4 px-6 text-left w-80 font-normal">Actions</th>
-                        </>
-                      )}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td colSpan={isMeritMode ? 8 : (isInterviewMode ? 8 : 10)} className="py-12 text-center text-gray-500 font-normal">
-                          <div className="flex flex-col items-center justify-center gap-3">
-                            <FaSpinner className="animate-spin text-primary-500 text-2xl" />
-                            <span>Loading users...</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : paginatedUsers.length === 0 ? (
-                      <tr>
-                        <td colSpan={isMeritMode ? 8 : (isInterviewMode ? 8 : 10)} className="py-12 text-center text-gray-500 font-normal">
-                          <div className="flex flex-col items-center justify-center gap-3">
-                            <FaUsers className="text-gray-300 text-4xl" />
-                            <p className="text-lg mb-2">No users found</p>
-                            <p>
-                              {searchTerm || Object.values(filters).some(f => f) ?
-                                "Try adjusting your search or filters" :
-                                "No users registered yet"}
-                            </p>
-                            {Object.values(filters).some(f => f) && (
-                              <button
-                                onClick={handleClearFilters}
-                                className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors cursor-pointer font-normal"
-                              >
-                                Clear All Filters
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedUsers.map((user) => {
-                        const registrationDate = formatDateTime(user.createdAt);
-                        const rowId = isMeritMode ? user.meritRowId : user._id;
-                        return (
-                          <tr
-                            key={rowId}
-                            className="border-t border-gray-200 transition-all duration-300 hover:bg-gray-50 font-normal"
-                          >
-                            {/* 1. Checkbox Column */}
-                            <td className="py-4 px-4 text-center">
-                              <input
-                                type="checkbox"
-                                checked={isUserSelected(rowId)}
-                                onChange={() => toggleUserSelection(rowId)}
-                                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 cursor-pointer"
-                              />
-                            </td>
-
-                            {isMeritMode ? (
-                              <>
-                                {/* 1. Details */}
-                                <td className="py-4 px-6 min-w-[280px]">
-                                  <div className="flex items-center gap-4">
-                                    <div className="relative group/avatar">
-                                      {user.profileImage ? (
-                                        <div
-                                          onClick={() => openImagePreview(user.profileImage)}
-                                          className="w-12 h-12 rounded-full overflow-hidden border-2 border-indigo-100 cursor-pointer hover:border-indigo-400 transition-all shadow-md group"
-                                        >
-                                          <img
-                                            src={user.profileImage}
-                                            alt="Profile"
-                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-dashed border-gray-200 flex items-center justify-center shadow-inner">
-                                          <FaUser className="w-5 h-5 text-gray-300" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                      <p
-                                        onClick={() => handleViewUser(user._id, user.currentAdvertisement?._id)}
-                                        className="text-gray-900 text-sm font-bold leading-none mb-1 truncate cursor-pointer hover:text-indigo-600 transition-colors"
-                                      >
-                                        {user.fullName}
-                                      </p>
-                                      <p className="text-[10px] text-gray-500 truncate font-medium">{user.email}</p>
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* 1.5 Advertisement (Merit Mode Only) */}
-                                {isMeritMode && (
-                                  <td className="py-4 px-6">
-                                    <div className="flex flex-col">
-                                      <span className="text-sm font-bold text-gray-800">
-                                        {user.currentAdvertisement?.title || 'N/A'}
-                                      </span>
-                                      <span className="text-[10px] text-gray-500 font-medium">
-                                        ID: {user.currentAdvertisement?._id?.toString().slice(-6) || 'N/A'}
-                                      </span>
-                                    </div>
-                                  </td>
-                                )}
-
-                                {/* 2. 10th % */}
-                                <td className="py-4 px-6">
-                                  <div className="flex items-center gap-1">
-                                    <span className={`text-sm font-medium ${user.aiImputations?.includes("10th") ? "text-amber-600 font-bold" : "text-gray-700"}`}>
-                                      {user.education?.tenth?.percentage ? `${user.education.tenth.percentage}%` : 'N/A'}
-                                    </span>
-                                    {user.aiImputations?.includes("10th") && (
-                                      <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.tenth?.percentage || 'N/A'}%)`} />
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 3. 12th % */}
-                                <td className="py-4 px-6">
-                                  <div className="flex items-center gap-1">
-                                    <span className={`text-sm font-medium ${user.aiImputations?.includes("12th") ? "text-amber-600 font-bold" : "text-gray-700"}`}>
-                                      {user.education?.twelfth?.percentage ? `${user.education.twelfth.percentage}%` : 'N/A'}
-                                    </span>
-                                    {user.aiImputations?.includes("12th") && (
-                                      <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.twelfth?.percentage || 'N/A'}%)`} />
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 4. Graduation % & CPI */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col">
-                                    <div className="flex items-center gap-1">
-                                      <span className={`text-sm font-medium ${user.aiImputations?.includes("Grad") ? "text-amber-600 font-bold" : "text-indigo-700"}`}>
-                                        {user.education?.graduation?.percentage ? `${user.education.graduation.percentage}%` : 'N/A'}
-                                      </span>
-                                      {user.aiImputations?.includes("Grad") && (
-                                        <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.graduation?.percentage || 'N/A'}%)`} />
-                                      )}
-                                    </div>
-                                    {user.education?.graduation?.cgpa && (
-                                      <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.graduation.cgpa}</span>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 5. PG % & CPI */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col">
-                                    <div className="flex items-center gap-1">
-                                      <span className={`text-sm font-medium ${user.aiImputations?.includes("PG") ? "text-amber-600 font-bold" : "text-purple-700"}`}>
-                                        {user.education?.qualifyingDegree?.percentage ? `${user.education.qualifyingDegree.percentage}%` : 'N/A'}
-                                      </span>
-                                      {user.aiImputations?.includes("PG") && (
-                                        <FaRobot className="text-[10px] text-amber-500" title={`AI Imputed (Original: ${user.originalEducation?.qualifyingDegree?.percentage || 'N/A'}%)`} />
-                                      )}
-                                    </div>
-                                    {user.education?.qualifyingDegree?.cgpa && (
-                                      <span className="text-[10px] text-gray-500 font-medium">CPI: {user.education.qualifyingDegree.cgpa}</span>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 6. Interview Marks */}
-                                <td className="py-4 px-6">
-                                  <div className="inline-flex items-center px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm">
-                                    <span className="text-sm font-bold">
-                                      {user.currentAdMark?.marks !== undefined ? parseFloat(user.currentAdMark.marks).toFixed(2) : (user.interviewMarks !== undefined ? parseFloat(user.interviewMarks).toFixed(2) : "00.00")}
-                                    </span>
-                                    <span className="text-[10px] ml-1 opacity-70">/ 100</span>
-                                  </div>
-                                </td>
-
-                                {/* 7. Actions */}
-                                <td className="py-4 px-6">
-                                  <div className="grid grid-cols-2 gap-2 min-w-[160px]">
-                                    <button
-                                      onClick={() => handleViewUser(user._id, user.currentAdvertisement?._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
-                                      title="View Details"
-                                    >
-                                      <FaEye className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">View</span>
-                                    </button>
-
-                                    {isMeritMode && isAdmin && (
-                                      <button
-                                        onClick={() => {
-                                          setMarksInput(user.currentAdMark?.interviewMarks || "");
-                                          setAssignMarksModal({
-                                            show: true,
-                                            user: user,
-                                            advertisement: user.currentAdvertisement
-                                          });
-                                        }}
-                                        className="flex flex-col items-center justify-center gap-1 py-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-all border border-pink-200 cursor-pointer shadow-sm group"
-                                        title="Assign Marks"
-                                      >
-                                        <FaClipboardList className="size-3 group-hover:scale-110 transition-transform" />
-                                        <span className="text-[10px] font-semibold tracking-tight">Assign Marks</span>
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </>
-                            ) : isInterviewMode ? (
-                              <>
-                                {/* 2. Personal Details (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex items-center gap-4">
-                                    <div className="relative flex-shrink-0">
-                                      {user.profileImage ? (
-                                        <div
-                                          onClick={() => openImagePreview(user.profileImage)}
-                                          className="w-14 h-14 rounded-full overflow-hidden border-2 border-primary-100 cursor-pointer hover:border-primary-400 transition-all shadow-md group"
-                                        >
-                                          <img
-                                            src={user.profileImage}
-                                            alt="Profile"
-                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-50 to-secondary-50 border-2 border-dashed border-gray-200 flex items-center justify-center shadow-inner">
-                                          <FaUser className="w-6 h-6 text-gray-300" />
-                                        </div>
-                                      )}
-                                      <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-1 shadow-md border border-gray-100">
-                                        {getGenderIcon(user.gender)}
-                                      </div>
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                      <p
-                                        onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
-                                        className="text-gray-900 text-base leading-none mb-1 truncate font-normal cursor-pointer hover:text-indigo-600 transition-colors"
-                                      >
-                                        {user.fullName}
-                                      </p>
-                                      <p className="text-xs text-gray-500 truncate mb-2 font-normal">{user.email}</p>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-medium tracking-tight">
-                                          <FaCalendarAlt className="size-2.5" />
-                                          <span>Reg: {registrationDate.date}</span>
-                                        </div>
-                                        <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                                        <span className="text-[10px] text-gray-400 font-medium">{user.gender}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* 3. Education (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col items-start">
-                                    <div className="inline-flex flex-col items-start min-w-[120px] bg-white p-2.5 rounded-xl border border-blue-100 shadow-sm">
-                                      <span className="text-xs text-primary-700 mb-1.5 tracking-tight font-medium">
-                                        {user.education?.qualifyingDegree?.degree || user.education?.graduation?.degree || 'N/A'}
-                                      </span>
-                                      <div className="w-full h-px bg-blue-50 mb-2"></div>
-                                      <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] text-gray-400 font-medium tracking-wide">Class of {user.education?.graduation?.passingYear || user.education?.qualifyingDegree?.passingYear || 'N/A'}</span>
-                                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-xs border border-blue-100 font-normal">
-                                          {user.education?.graduation?.percentage || user.education?.qualifyingDegree?.percentage}%
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* 3b. Skillset (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col gap-2 max-w-[220px] max-h-[140px] overflow-y-auto custom-scrollbar p-1">
-                                    {user.skillSets && (Object.values(user.skillSets).flat().length > 0) ? (
-                                      Object.entries({
-                                        technical: { label: 'Technical', labelColor: 'text-blue-600', color: 'bg-blue-50 text-blue-700 border-blue-100' },
-                                        creative: { label: 'Creative', labelColor: 'text-purple-600', color: 'bg-purple-50 text-purple-700 border-purple-100' },
-                                        cognitive: { label: 'Cognitive', labelColor: 'text-indigo-600', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-                                        tools: { label: 'Tools', labelColor: 'text-amber-600', color: 'bg-amber-50 text-amber-700 border-amber-100' },
-                                        ethics: { label: 'Ethics', labelColor: 'text-emerald-600', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
-                                      }).map(([key, cfg]) => (
-                                        user.skillSets[key]?.length > 0 && (
-                                          <div key={key} className="flex flex-col gap-1">
-                                            <span className={`text-[9px] font-medium tracking-tight text-gray-900`}>{cfg.label}</span>
-                                            <div className="flex flex-wrap gap-1">
-                                              {user.skillSets[key].map((skill, sIdx) => (
-                                                <span key={`${key}-${sIdx}`} className={`px-1.5 py-0.5 rounded text-[10px] border font-medium whitespace-nowrap ${cfg.color}`}>
-                                                  {skill}
-                                                </span>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )
-                                      ))
-                                    ) : (
-                                      <span className="text-[10px] text-gray-400 italic">N/A</span>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 4. Advertisement (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col gap-2.5 max-w-[240px]">
-                                    {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => (
-                                      <div key={ad._id || idx} className="flex items-start justify-between gap-2 p-2.5 rounded-xl border border-gray-100 bg-white">
-                                        <p className="text-[11px] text-gray-700 leading-tight truncate-2-lines flex-1 font-normal" title={ad.title}>
-                                          {ad.title}
-                                        </p>
-                                        <div className="flex items-center gap-1">
-                                          <button
-                                            onClick={() => handleViewAd(ad)}
-                                            className="p-1 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors border border-purple-50 cursor-pointer"
-                                            title="View Ad"
-                                          >
-                                            <FaBullhorn size={10} />
-                                          </button>
-                                          {ad.detail && (
-                                            <button
-                                              onClick={() => openDocumentPreview(ad.detail)}
-                                              className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-50 cursor-pointer"
-                                              title="View PDF"
-                                            >
-                                              <FaFilePdf size={10} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ))}
-                                    {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
-                                      <div className="text-center py-2 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-                                        <span className="text-[10px] text-gray-400 italic font-normal">No ad assigned</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 5. Panels (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col gap-2.5 max-w-[240px]">
-                                    {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => {
-                                      const assignedPanel = user.panelAssignments?.find(pa => pa.advertisementId?.toString() === ad._id?.toString());
-                                      const panelInfo = panels.find(p => p._id === assignedPanel?.panelId);
-
-                                      return (
-                                        <div key={`panel-${ad._id || idx}`} className="flex items-center justify-between p-2.5 rounded-xl border border-gray-100 bg-white min-h-[42px]">
-                                          {panelInfo ? (
-                                            <span className="inline-flex items-center px-1.5 py-1 rounded-md text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase font-medium tracking-tight">
-                                              {panelInfo.name}
-                                            </span>
-                                          ) : (
-                                            <span className="text-[10px] text-orange-400 italic font-medium px-1.5 py-1 bg-orange-50 rounded-md border border-orange-100">
-                                              Pending
-                                            </span>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                    {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
-                                      <div className="h-full border border-dashed border-gray-100 rounded-xl bg-gray-50/30"></div>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 6. Schedule & Email (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col gap-2.5 max-w-[240px]">
-                                    {(user.advertisements && user.advertisements.length > 0 ? user.advertisements : (user.advertisement ? [user.advertisement] : [])).map((ad, idx) => {
-                                      const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
-                                      const scheduledDate = adMark?.interviewSchedule?.scheduledDate || user.interviewSchedule?.scheduledDate;
-                                      const emailSent = adMark?.interviewEmailSent?.sent || user.interviewEmailSent?.sent;
-
-                                      return (
-                                        <div key={`status-${ad._id || idx}`} className="flex flex-col gap-1.5 p-2 rounded-xl border border-gray-50 bg-white/50 min-h-[42px]">
-                                          {/* Scheduled Date */}
-                                          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all duration-200 ${scheduledDate
-                                            ? 'bg-pink-50 border-pink-100 shadow-sm'
-                                            : 'bg-slate-50 border-slate-200'
-                                            }`}>
-                                            <FaCalendarAlt className={`text-[9px] ${scheduledDate ? 'text-pink-500' : 'text-slate-400'}`} />
-                                            <span className={`text-[9px] font-normal whitespace-nowrap ${scheduledDate ? 'text-pink-600' : 'text-black italic'}`}>
-                                              {scheduledDate
-                                                ? new Date(scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                : 'Not Scheduled'
-                                              }
-                                            </span>
-                                          </div>
-                                          {/* Email Status */}
-                                          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all duration-200 ${emailSent
-                                            ? 'bg-emerald-50 border-emerald-100 shadow-sm'
-                                            : 'bg-amber-50 border-amber-100'
-                                            }`}>
-                                            <FaEnvelope className={`text-[9px] ${emailSent ? 'text-emerald-500' : 'text-amber-500'}`} />
-                                            <span className={`text-[9px] font-normal whitespace-nowrap ${emailSent ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                              {emailSent ? 'Email Sent ✓' : 'Email Pending'}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
-                                      <div className="h-full border border-dashed border-gray-100 rounded-xl bg-gray-50/30"></div>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 7. Actions (Interview Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="grid grid-cols-2 gap-2 min-w-[180px]">
-                                    <button
-                                      onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
-                                      title="View Details"
-                                    >
-                                      <FaInfoCircle className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">View Details</span>
-                                    </button>
-
-                                    {isAdmin && (
-                                      <button
-                                        onClick={() => handleAssignPanelClick(user)}
-                                        disabled={user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent}
-                                        className={`flex flex-col items-center justify-center gap-1 py-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-all border border-purple-200 cursor-pointer shadow-sm group ${(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        title={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? "Cannot change panel after all emails sent" : (user.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel")}
-                                      >
-                                        <FaClipboardList className="size-3 group-hover:scale-110 transition-transform" />
-                                        <span className="text-[10px] font-semibold tracking-tight">
-                                          {user.panelAssignments?.length > 0 ? "Change Panel" : "Assign Panel"}
-                                        </span>
-                                      </button>
-                                    )}
-
-                                    <button
-                                      onClick={() => {
-                                        setScheduleModal({ show: true, user });
-                                        setScheduleDateInput(user.interviewSchedule?.scheduledDate
-                                          ? new Date(user.interviewSchedule.scheduledDate).toISOString().split('T')[0]
-                                          : ""
-                                        );
-                                        // Auto-select all ads that haven't been scheduled yet, or all ads if none scheduled
-                                        const userAds = user.advertisements || (user.advertisement ? [user.advertisement] : []);
-                                        setSelectedAdsToSchedule(userAds.map(ad => ad._id));
-                                      }}
-                                      disabled={user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent}
-                                      className={`flex flex-col items-center justify-center gap-1 py-2 bg-pink-50 text-pink-600 rounded-xl hover:bg-pink-100 transition-all border border-pink-200 cursor-pointer shadow-sm group ${(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                      title={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) ? "Cannot reschedule after all emails sent" : (user.interviewSchedule?.scheduledDate ? "Reschedule Interview" : "Schedule Interview")}
-                                    >
-                                      <FaClock className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">
-                                        {user.interviewSchedule?.scheduledDate ? "Reschedule" : "Schedule"}
-                                      </span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        setEmailConfirmModal({ show: true, user });
-                                        const userAds = user.advertisements || (user.advertisement ? [user.advertisement] : []);
-                                        // Auto-select ads that have schedule and panel but email not sent
-                                        const eligibleAds = userAds.filter(ad => {
-                                          const adMark = user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
-                                          const hasPanel = user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
-                                          return adMark?.interviewSchedule?.scheduledDate && hasPanel && !adMark?.interviewEmailSent?.sent;
-                                        });
-                                        setSelectedAdsToEmail(eligibleAds.length > 0 ? eligibleAds.map(ad => ad._id) : userAds.map(ad => ad._id));
-                                      }}
-                                      disabled={(user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent) || (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate)) || !user.panelAssignments?.length}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer shadow-sm group disabled:opacity-50 disabled:cursor-not-allowed"
-                                      title={
-                                        (user.advertisements?.every(ad => user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString())?.interviewEmailSent?.sent) || user.interviewEmailSent?.sent)
-                                          ? "All emails already sent"
-                                          : (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate) && !user.panelAssignments?.length
-                                            ? "Assign panel and schedule interview first"
-                                            : (!user.interviewSchedule?.scheduledDate && !user.advertisementMarks?.some(am => am.interviewSchedule?.scheduledDate))
-                                              ? "Schedule interview first"
-                                              : !user.panelAssignments?.length
-                                                ? "Assign panel first"
-                                                : "Send Interview Email")
-                                      }
-                                    >
-                                      <FaPaperPlane className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Send Mail</span>
-                                    </button>
-                                  </div>
-                                </td>
-                              </>
-                            ) : (
-                              <>
-                                {/* 2. Name & Details */}
-                                <td className="py-4 px-6">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-normal bg-gradient-to-br from-primary-500 to-secondary-500 text-white">
-                                      {user.fullName?.charAt(0) || "U"}
-                                    </div>
-                                    <div>
-                                      <p
-                                        onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
-                                        className="font-normal text-gray-800 cursor-pointer hover:text-primary-600 transition-colors"
-                                      >
-                                        {user.fullName}
-                                      </p>
-                                      <p className="text-sm text-gray-500 font-normal">{user.email}</p>
-                                      <p className="text-xs text-gray-400 mt-1 font-normal">{user.mobile}</p>
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* 3. Registration Date */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col">
-                                    <div className="flex items-center gap-2 text-gray-700">
-                                      <FaCalendarAlt className="text-primary-500" />
-                                      <span className="font-normal">{registrationDate.date}</span>
-                                    </div>
-                                    <div className="text-sm text-gray-500 mt-1 font-normal">
-                                      {registrationDate.time}
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* 4. Gender */}
-                                <td className="py-4 px-6">
-                                  <div className="flex items-center gap-2 font-normal">
-                                    {getGenderIcon(user.gender)}
-                                    {getGenderDisplay(user.gender)}
-                                  </div>
-                                </td>
-
-                                {/* 5. Profile Image */}
-                                <td className="py-4 px-6">
-                                  {user.profileImage ? (
-                                    <div
-                                      onClick={() => openImagePreview(user.profileImage)}
-                                      className="w-12 h-12 rounded-lg overflow-hidden border-2 border-gray-200 cursor-pointer hover:border-primary-400 transition-all shadow-sm"
-                                    >
-                                      <img
-                                        src={user.profileImage}
-                                        alt="Profile"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                  ) : (
-                                    <div className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
-                                      <FaImage className="w-5 h-5 text-gray-400" />
-                                    </div>
-                                  )}
-                                </td>
-
-                                {/* 6. Education */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col">
-                                    <span className="text-sm font-normal text-primary-700">
-                                      {user.education?.qualifyingDegree?.degree || user.education?.graduation?.degree || 'N/A'}
-                                    </span>
-                                    {user.education?.graduation?.passingYear && (
-                                      <span className="text-[11px] text-gray-500 font-normal">
-                                        Passout: {user.education.graduation.passingYear}
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 6b. Skillset (Normal Mode) */}
-                                <td className="py-4 px-6">
-                                  <div className="flex flex-col gap-2 max-w-[200px] max-h-[140px] overflow-y-auto custom-scrollbar p-1">
-                                    {user.skillSets && (Object.values(user.skillSets).flat().length > 0) ? (
-                                      Object.entries({
-                                        technical: { label: 'Technical', labelColor: 'text-blue-600', color: 'bg-blue-50 text-blue-700 border-blue-100' },
-                                        creative: { label: 'Creative', labelColor: 'text-purple-600', color: 'bg-purple-50 text-purple-700 border-purple-100' },
-                                        cognitive: { label: 'Cognitive', labelColor: 'text-indigo-600', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-                                        tools: { label: 'Tools', labelColor: 'text-amber-600', color: 'bg-amber-50 text-amber-700 border-amber-100' },
-                                        ethics: { label: 'Ethics', labelColor: 'text-emerald-600', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
-                                      }).map(([key, cfg]) => (
-                                        user.skillSets[key]?.length > 0 && (
-                                          <div key={key} className="flex flex-col gap-1">
-                                            <span className={`text-[9px] font-medium tracking-tight text-gray-900`}>{cfg.label}</span>
-                                            <div className="flex flex-wrap gap-1">
-                                              {user.skillSets[key].map((skill, sIdx) => (
-                                                <span key={`${key}-${sIdx}`} className={`px-1.5 py-0.5 rounded text-[10px] border font-medium whitespace-nowrap ${cfg.color}`}>
-                                                  {skill}
-                                                </span>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )
-                                      ))
-                                    ) : (
-                                      <span className="text-xs text-gray-400 italic">No skills</span>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 7. Advertisement */}
-                                <td className="py-4 px-6">
-                                  <div className="max-w-[240px] max-h-[120px] overflow-y-auto custom-scrollbar space-y-2">
-                                    {(user.advertisements && user.advertisements.length > 0
-                                      ? user.advertisements
-                                      : (user.advertisement ? [user.advertisement] : [])
-                                    ).map((ad, idx) => (
-                                      <div key={ad._id || idx} className="flex items-center justify-between gap-2 p-1.5 bg-primary-50 rounded-lg border border-primary-100 group">
-                                        <p className="text-[10px] font-bold text-primary-700 truncate flex-1" title={ad.title || 'N/A'}>
-                                          {ad.title || 'N/A'}
-                                        </p>
-                                        <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                          <button
-                                            onClick={() => handleViewAd(ad)}
-                                            className="p-1 text-primary-600 hover:bg-white rounded transition-colors shadow-sm"
-                                            title="View Ad Details"
-                                          >
-                                            <FaBullhorn size={10} />
-                                          </button>
-                                          {ad.detail && (
-                                            <button
-                                              onClick={() => openDocumentPreview(ad.detail)}
-                                              className="p-1 text-red-600 hover:bg-white rounded transition-colors shadow-sm"
-                                              title="View Ad PDF"
-                                            >
-                                              <FaFilePdf size={10} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ))}
-                                    {(!user.advertisements || user.advertisements.length === 0) && !user.advertisement && (
-                                      <span className="text-xs text-gray-400 italic">N/A</span>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* 8. Status */}
-                                <td className="py-4 px-6">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-normal border shadow-sm ${getStatusBadge(user.status)}`}>
-                                    {user.status || 'pending'}
-                                  </span>
-                                </td>
-
-                                {/* 9. Actions */}
-                                <td className="py-4 px-6">
-                                  <div className="grid grid-cols-2 gap-2 min-w-[160px]">
-                                    <button
-                                      onClick={() => handleViewUser(user._id, user.advertisements?.[0]?._id || user.advertisement?._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all border border-blue-200 cursor-pointer shadow-sm group"
-                                      title="View Profile"
-                                    >
-                                      <FaEye className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">View</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleMarkEligible(user._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all border border-emerald-200 cursor-pointer shadow-sm group"
-                                      title="Mark Eligible"
-                                    >
-                                      <FaCheckCircle className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Eligible</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleRejectUser(user._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all border border-rose-200 cursor-pointer shadow-sm group"
-                                      title="Reject Candidate"
-                                    >
-                                      <FaTimesCircle className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Reject</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleDeleteUser(user._id)}
-                                      className="flex flex-col items-center justify-center gap-1 py-2 bg-red-50 text-[#8b0000] rounded-xl hover:bg-red-100 transition-all border border-red-200 cursor-pointer shadow-sm group"
-                                      title="Delete Candidate"
-                                    >
-                                      <FaTrashAlt className="size-3 group-hover:scale-110 transition-transform" />
-                                      <span className="text-[10px] font-semibold tracking-tight">Delete</span>
-                                    </button>
-                                  </div>
-                                </td>
-                              </>
-                            )}
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <Pagination
-                currentPage={page}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-                totalItems={filteredUsers.length}
-                rowsPerPage={rowsPerPage}
-              />
-            </>
-          )}
-
-          {isInterviewMode && !isMeritMode && (
-            <div className="mt-8 flex flex-col items-center gap-4 animate-slide-up">
-              <div className="flex flex-col items-center gap-2">
-                <div
-                  className="flex items-center gap-2 text-sm text-gray-500 font-normal cursor-help"
-                  title="Based on the email send"
-                >
-                  <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 font-normal">
-                    {meritStats.sent} Candidates
-                  </span>
-                  <span className="font-normal">from</span>
-                  <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md border border-gray-100 font-normal">
-                    {meritStats.total} Total
-                  </span>
-                </div>
-              </div>
-
-              {isAdmin && (
-                <div className="mt-4 flex flex-col items-center gap-4">
-
-                  <button
-                    disabled={!meritStats.canProceedToMerit}
-                    onClick={() => {
-                      setIsMeritMode(true);
-                      setIsGridCollapsed(false);
-                    }}
-                    className={`
-                        px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2
-                        ${meritStats.canProceedToMerit
-                        ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-purple-600 hover:to-pink-600 cursor-pointer focus:ring-pink-500'
-                        : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed grayscale'
-                      }
-                      `}
-                    style={{
-                      border: '1px solid transparent'
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#8b0000';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = 'transparent';
-                    }}
-                    title={!meritStats.canProceedToMerit ? 'All eligible candidates must have interview scheduled and email sent for at least one advertisement' : 'Proceed to Merit Procedure'}
-                  >
-                    Merit Procedure
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!isInterviewMode && isAdmin && (
-            <div className="mt-8 flex flex-col items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 font-normal">
-                <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md border border-blue-100 font-normal">
-                  {stats.totalByStatus.eligible} Eligible
-                </span>
-                <span className="font-normal">from</span>
-                <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md border border-gray-100 font-normal">
-                  {stats.total} Total
-                </span>
-              </div>
-
-              <button
-                onClick={() => {
-                  if (!isInterviewMode) {
-                    setIsInterviewMode(true);
-                    setIsGridCollapsed(false);
-                  } else {
-                    setIsInterviewMode(false);
-                    setIsGridCollapsed(false);
-                  }
-                }}
-                className={`
+                  className={`
                     px-8 py-3 rounded-xl transition-all duration-300 font-normal shadow-lg hover:shadow-xl active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2
                     ${isInterviewMode
-                    ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-white hover:from-blue-600 hover:to-blue-700 focus:ring-pink-500'
-                    : 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-blue-600 hover:to-blue-700 focus:ring-pink-500'
-                  }
+                      ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-white hover:from-blue-600 hover:to-blue-700 focus:ring-pink-500'
+                      : 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-blue-600 hover:to-blue-700 focus:ring-pink-500'
+                    }
                   `}
-                style={{
-                  border: '1px solid transparent'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#8b0000';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = 'transparent';
-                }}
-              >
-                {isInterviewMode ? "Return to Screening" : "Confirm for Eligibility"}
-              </button>
-            </div>
-          )}
-        </div>
+                  style={{
+                    border: '1px solid transparent'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#8b0000';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'transparent';
+                  }}
+                >
+                  {isInterviewMode ? "Return to Screening" : "Confirm for Eligibility"}
+                </button>
+              </div>
+            )}
+          </div>
 
-        <ConfirmationModal
-          isOpen={deleteModal.show}
-          onClose={() => setDeleteModal({ show: false, userId: null })}
-          onConfirm={handleDeleteConfirm}
-          title="Delete User"
-          message="Are you sure you want to delete this user? This action cannot be undone."
-          confirmText="Delete"
-          cancelText="Cancel"
-          type="danger"
-        />
+          <ConfirmationModal
+            isOpen={deleteModal.show}
+            onClose={() => setDeleteModal({ show: false, userId: null })}
+            onConfirm={handleDeleteConfirm}
+            title="Delete User"
+            message="Are you sure you want to delete this user? This action cannot be undone."
+            confirmText="Delete"
+            cancelText="Cancel"
+            type="danger"
+          />
 
-        <ConfirmationModal
-          isOpen={activationModal.show}
-          onClose={() => setActivationModal({ show: false, userId: null, currentStatus: false })}
-          onConfirm={handleActivationConfirm}
-          title={activationModal.currentStatus ? "Deactivate User" : "Activate User"}
-          message={`Are you sure you want to ${activationModal.currentStatus ? 'deactivate' : 'activate'} ${activationModal.userName || 'this user'}?`}
-          confirmText={activationModal.currentStatus ? "Deactivate" : "Activate"}
-          cancelText="Cancel"
-          type={activationModal.currentStatus ? "warning" : "primary"}
-        />
+          <ConfirmationModal
+            isOpen={activationModal.show}
+            onClose={() => setActivationModal({ show: false, userId: null, currentStatus: false })}
+            onConfirm={handleActivationConfirm}
+            title={activationModal.currentStatus ? "Deactivate User" : "Activate User"}
+            message={`Are you sure you want to ${activationModal.currentStatus ? 'deactivate' : 'activate'} ${activationModal.userName || 'this user'}?`}
+            confirmText={activationModal.currentStatus ? "Deactivate" : "Activate"}
+            cancelText="Cancel"
+            type={activationModal.currentStatus ? "warning" : "primary"}
+          />
 
-        <ConfirmationModal
-          isOpen={logoutModal}
-          onClose={() => setLogoutModal(false)}
-          onConfirm={handleLogout}
-          title="Confirm Logout"
-          message="Are you sure you want to logout? You will need to login again to access the dashboard."
-          confirmText="Logout"
-          cancelText="Cancel"
-          type="danger"
-        />
+          <ConfirmationModal
+            isOpen={logoutModal}
+            onClose={() => setLogoutModal(false)}
+            onConfirm={handleLogout}
+            title="Confirm Logout"
+            message="Are you sure you want to logout? You will need to login again to access the dashboard."
+            confirmText="Logout"
+            cancelText="Cancel"
+            type="danger"
+          />
 
-        <ManagePanelsModal
-          isOpen={managePanelModal}
-          onClose={() => setManagePanelModal(false)}
-          onRefresh={fetchPanels}
-        />
+          <ManagePanelsModal
+            isOpen={managePanelModal}
+            onClose={() => setManagePanelModal(false)}
+            onRefresh={fetchPanels}
+          />
 
-        {
-          previewModal.show && (
-            <PreviewModal
-              preview={previewModal}
-              onClose={() => setPreviewModal({ show: false, src: null, type: null })}
-            />
-          )
-        }
-
-        <ModalContainer
-          isOpen={viewModal.show}
-          onClose={handleViewModalClose}
-          title={isMeritMode ? "Merit Candidate Details" : isInterviewMode ? "Interview Candidate Details" : "User Details"}
-          size="large"
-        >
-          {selectedUserData && (
-            isMeritMode ? (
-              <MeritViewDetails
-                user={selectedUserData}
-                advertisementId={viewModal.advertisementId}
-                onClose={handleViewModalClose}
-                onViewDocument={openDocumentPreview}
-                onViewImage={openImagePreview}
-              />
-            ) : isInterviewMode ? (
-              <InterviewViewDetails
-                user={selectedUserData}
-                advertisementId={viewModal.advertisementId}
-                onClose={handleViewModalClose}
-                onViewDocument={openDocumentPreview}
-                onViewImage={openImagePreview}
-                onAssignPanel={isAdmin ? () => {
-                  handleViewModalClose();
-                  handleAssignPanelClick(selectedUserData);
-                } : null}
-                onSchedule={isAdmin ? () => {
-                  handleViewModalClose();
-                  setScheduleModal({ show: true, user: selectedUserData });
-                  setScheduleDateInput(selectedUserData.interviewSchedule?.scheduledDate
-                    ? new Date(selectedUserData.interviewSchedule.scheduledDate).toISOString().split('T')[0]
-                    : ""
-                  );
-                } : null}
-                isAdmin={isAdmin}
-                panels={panels}
-              />
-            ) : (
-              <ViewUser
-                user={selectedUserData}
-                advertisementId={viewModal.advertisementId}
-                onClose={handleViewModalClose}
-                onApprove={handleApproveUser}
-                onReject={handleRejectUser}
-                onViewDocument={openDocumentPreview}
-                onViewImage={openImagePreview}
-                onAssignPanel={isAdmin ? () => {
-                  handleViewModalClose();
-                  handleAssignPanelClick(selectedUserData);
-                } : null}
+          {
+            previewModal.show && (
+              <PreviewModal
+                preview={previewModal}
+                onClose={() => setPreviewModal({ show: false, src: null, type: null })}
               />
             )
-          )}
-        </ModalContainer>
-
-        <ModalContainer
-          isOpen={editModal.show}
-          onClose={handleEditModalClose}
-          title="Edit User"
-          size="large"
-          footer={null}
-        >
-          {selectedUserData && (
-            <EditUser
-              user={selectedUserData}
-              onClose={handleEditModalClose}
-              onSuccess={handleEditSuccess}
-            />
-          )}
-        </ModalContainer>
-
-        <ModalContainer
-          isOpen={assignPanelModal.show}
-          onClose={() => setAssignPanelModal({ show: false, user: null })}
-          title="Assign Interview Panels"
-          size="large"
-          footer={
-            <div className="flex justify-end gap-3 items-center w-full">
-              <div className="flex-1 hidden md:flex items-center gap-3">
-                {Object.values(assignmentMap).filter(Boolean).length > 0 && (
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-bold shadow-sm shadow-emerald-100">
-                    {Object.values(assignmentMap).filter(Boolean).length}
-                  </div>
-                )}
-                <p className="text-xs text-gray-500 font-medium">
-                  {Object.values(assignmentMap).filter(Boolean).length === (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))
-                    ? "✓ All panels assigned"
-                    : `Assign panels to all ${(assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))} ads.`
-                  }
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleAssignPanel(assignPanelModal.user._id)}
-                  disabled={Object.values(assignmentMap).filter(Boolean).length !== (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))}
-                  className="px-10 py-2.5 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl font-bold hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm shadow-lg shadow-primary-100"
-                >
-                  Assign
-                </button>
-                <button
-                  onClick={() => setAssignPanelModal({ show: false, user: null })}
-                  className="px-8 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer text-sm border-2 border-transparent"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
           }
-        >
-          {assignPanelModal.user && (
-            <div className="p-0 flex flex-col max-h-[85vh]">
-              <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                <div className="flex items-center gap-4">
-                  {assignPanelModal.user.profileImage ? (
-                    <img
-                      src={assignPanelModal.user.profileImage}
-                      alt="Profile"
-                      className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary-100 border-2 border-white"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-primary-100">
-                      {assignPanelModal.user.fullName?.charAt(0)}
+
+          <ModalContainer
+            isOpen={viewModal.show}
+            onClose={handleViewModalClose}
+            title={isMeritMode ? "Merit Candidate Details" : isInterviewMode ? "Interview Candidate Details" : "User Details"}
+            size="large"
+          >
+            {selectedUserData && (
+              isMeritMode ? (
+                <MeritViewDetails
+                  user={selectedUserData}
+                  advertisementId={viewModal.advertisementId}
+                  onClose={handleViewModalClose}
+                  onViewDocument={openDocumentPreview}
+                  onViewImage={openImagePreview}
+                />
+              ) : isInterviewMode ? (
+                <InterviewViewDetails
+                  user={selectedUserData}
+                  advertisementId={viewModal.advertisementId}
+                  onClose={handleViewModalClose}
+                  onViewDocument={openDocumentPreview}
+                  onViewImage={openImagePreview}
+                  onAssignPanel={isAdmin ? () => {
+                    handleViewModalClose();
+                    handleAssignPanelClick(selectedUserData);
+                  } : null}
+                  onSchedule={isAdmin ? () => {
+                    handleViewModalClose();
+                    setScheduleModal({ show: true, user: selectedUserData });
+                    setScheduleDateInput(selectedUserData.interviewSchedule?.scheduledDate
+                      ? new Date(selectedUserData.interviewSchedule.scheduledDate).toISOString().split('T')[0]
+                      : ""
+                    );
+                  } : null}
+                  isAdmin={isAdmin}
+                  panels={panels}
+                />
+              ) : (
+                <ViewUser
+                  user={selectedUserData}
+                  advertisementId={viewModal.advertisementId}
+                  onClose={handleViewModalClose}
+                  onApprove={handleApproveUser}
+                  onReject={handleRejectUser}
+                  onViewDocument={openDocumentPreview}
+                  onViewImage={openImagePreview}
+                  onAssignPanel={isAdmin ? () => {
+                    handleViewModalClose();
+                    handleAssignPanelClick(selectedUserData);
+                  } : null}
+                />
+              )
+            )}
+          </ModalContainer>
+
+          <ModalContainer
+            isOpen={editModal.show}
+            onClose={handleEditModalClose}
+            title="Edit User"
+            size="large"
+            footer={null}
+          >
+            {selectedUserData && (
+              <EditUser
+                user={selectedUserData}
+                onClose={handleEditModalClose}
+                onSuccess={handleEditSuccess}
+              />
+            )}
+          </ModalContainer>
+
+          <BulkUploadCorrectionModal
+            isOpen={isCorrectionModalOpen}
+            onClose={() => setIsCorrectionModalOpen(false)}
+            records={errorRecords}
+            onSubmit={handleBulkRegisterMany}
+            isSubmitting={isSubmittingCorrections}
+          />
+
+
+          <ModalContainer
+            isOpen={assignPanelModal.show}
+            onClose={() => setAssignPanelModal({ show: false, user: null })}
+            title="Assign Interview Panels"
+            size="large"
+            footer={
+              <div className="flex justify-end gap-3 items-center w-full">
+                <div className="flex-1 hidden md:flex items-center gap-3">
+                  {Object.values(assignmentMap).filter(Boolean).length > 0 && (
+                    <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] text-white font-bold shadow-sm shadow-emerald-100">
+                      {Object.values(assignmentMap).filter(Boolean).length}
                     </div>
                   )}
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{assignPanelModal.user.fullName}</h3>
-                    <p className="text-sm text-gray-500 font-medium">{assignPanelModal.user.email}</p>
-                  </div>
+                  <p className="text-xs text-gray-500 font-medium">
+                    {Object.values(assignmentMap).filter(Boolean).length === (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))
+                      ? "✓ All panels assigned"
+                      : `Assign panels to all ${(assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))} ads.`
+                    }
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleAssignPanel(assignPanelModal.user._id)}
+                    disabled={Object.values(assignmentMap).filter(Boolean).length !== (assignPanelModal.user?.advertisements?.length || (assignPanelModal.user?.advertisement ? 1 : 0))}
+                    className="px-10 py-2.5 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl font-bold hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm shadow-lg shadow-primary-100"
+                  >
+                    Assign
+                  </button>
+                  <button
+                    onClick={() => setAssignPanelModal({ show: false, user: null })}
+                    className="px-8 py-2.5 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer text-sm border-2 border-transparent"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
-                    <FaBriefcase className="text-primary-500" />
-                    Advertisements for Selection
-                  </h4>
-                  <span className="px-3 py-1 rounded-full bg-primary-50 text-xs font-bold text-primary-600 border border-primary-100">
-                    {(assignPanelModal.user.advertisements?.length || (assignPanelModal.user.advertisement ? 1 : 0))} Total Ads
-                  </span>
+            }
+          >
+            {assignPanelModal.user && (
+              <div className="p-0 flex flex-col max-h-[85vh]">
+                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                  <div className="flex items-center gap-4">
+                    {assignPanelModal.user.profileImage ? (
+                      <img
+                        src={assignPanelModal.user.profileImage}
+                        alt="Profile"
+                        className="w-14 h-14 rounded-2xl object-cover shadow-lg shadow-primary-100 border-2 border-white"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-2xl bg-primary-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg shadow-primary-100">
+                        {assignPanelModal.user.fullName?.charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{assignPanelModal.user.fullName}</h3>
+                      <p className="text-sm text-gray-500 font-medium">{assignPanelModal.user.email}</p>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6">
-                  {(assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
-                    ? assignPanelModal.user.advertisements
-                    : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : [])
-                  ).map(ad => (
-                    <div
-                      key={ad._id}
-                      className={`group relative flex flex-col md:flex-row gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${assignmentErrors[ad._id]
-                        ? "border-rose-200 bg-rose-50/30 ring-4 ring-rose-50"
-                        : assignmentMap[ad._id]
-                          ? "border-emerald-100 bg-emerald-50/10"
-                          : "border-gray-100 bg-white hover:border-primary-100"
-                        }`}
-                    >
-                      <div className="flex-1 space-y-3">
-                        <div className="flex items-start gap-3">
-                          <FaBullhorn className={`mt-1 flex-shrink-0 ${assignmentErrors[ad._id] ? "text-rose-500" : "text-primary-500"}`} />
-                          <h5 className="font-bold text-gray-800 leading-tight">
-                            {ad.title}
-                          </h5>
-                        </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
+                      <FaBriefcase className="text-primary-500" />
+                      Advertisements for Selection
+                    </h4>
+                    <span className="px-3 py-1 rounded-full bg-primary-50 text-xs font-bold text-primary-600 border border-primary-100">
+                      {(assignPanelModal.user.advertisements?.length || (assignPanelModal.user.advertisement ? 1 : 0))} Total Ads
+                    </span>
+                  </div>
 
-                        <div className="flex flex-wrap items-center gap-4">
-                          <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 uppercase">
-                            <FaCalendarAlt className="text-gray-400" />
-                            Deadline: <span className="text-gray-700">{ad.lastDateToApply ? new Date(ad.lastDateToApply).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                  <div className="grid grid-cols-1 gap-6">
+                    {(assignPanelModal.user.advertisements && assignPanelModal.user.advertisements.length > 0
+                      ? assignPanelModal.user.advertisements
+                      : (assignPanelModal.user.advertisement ? [assignPanelModal.user.advertisement] : [])
+                    ).map(ad => (
+                      <div
+                        key={ad._id}
+                        className={`group relative flex flex-col md:flex-row gap-6 p-5 rounded-2xl border-2 transition-all duration-300 ${assignmentErrors[ad._id]
+                          ? "border-rose-200 bg-rose-50/30 ring-4 ring-rose-50"
+                          : assignmentMap[ad._id]
+                            ? "border-emerald-100 bg-emerald-50/10"
+                            : "border-gray-100 bg-white hover:border-primary-100"
+                          }`}
+                      >
+                        <div className="flex-1 space-y-3">
+                          <div className="flex items-start gap-3">
+                            <FaBullhorn className={`mt-1 flex-shrink-0 ${assignmentErrors[ad._id] ? "text-rose-500" : "text-primary-500"}`} />
+                            <h5 className="font-bold text-gray-800 leading-tight">
+                              {ad.title}
+                            </h5>
                           </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleViewAd(ad); }}
-                              className="text-[10px] px-2 py-1 rounded-md bg-primary-50 text-primary-600 font-bold hover:bg-primary-100 transition-colors flex items-center gap-1"
-                            >
-                              <FaInfoCircle className="size-2.5" /> Details
-                            </button>
-                            {ad.detail && (
+
+                          <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex items-center gap-2 text-[11px] font-bold text-gray-500 uppercase">
+                              <FaCalendarAlt className="text-gray-400" />
+                              Deadline: <span className="text-gray-700">{ad.lastDateToApply ? new Date(ad.lastDateToApply).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                            </div>
+                            <div className="flex gap-2">
                               <button
-                                onClick={(e) => { e.stopPropagation(); openDocumentPreview(ad.detail, 'pdf'); }}
-                                className="text-[10px] px-2 py-1 rounded-md bg-amber-50 text-amber-600 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1"
+                                onClick={(e) => { e.stopPropagation(); handleViewAd(ad); }}
+                                className="text-[10px] px-2 py-1 rounded-md bg-primary-50 text-primary-600 font-bold hover:bg-primary-100 transition-colors flex items-center gap-1"
                               >
-                                <FaFilePdf className="size-2.5" /> PDF
+                                <FaInfoCircle className="size-2.5" /> Details
                               </button>
+                              {ad.detail && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openDocumentPreview(ad.detail, 'pdf'); }}
+                                  className="text-[10px] px-2 py-1 rounded-md bg-amber-50 text-amber-600 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1"
+                                >
+                                  <FaFilePdf className="size-2.5" /> PDF
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 font-bold uppercase">
+                              ID: {ad._id.slice(-6)}
+                            </span>
+                            {ad.department && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold uppercase">
+                                {ad.department}
+                              </span>
                             )}
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 font-bold uppercase">
-                            ID: {ad._id.slice(-6)}
-                          </span>
-                          {ad.department && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-bold uppercase">
-                              {ad.department}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="w-full md:w-[320px] flex flex-col gap-2">
-                        <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide ml-1">
-                          Select Interview Panel
-                        </label>
-                        <div className="relative group/select">
-                          <select
-                            value={assignmentMap[ad._id] || ""}
-                            onChange={(e) => handlePanelChange(ad._id, e.target.value)}
-                            className={`w-full h-12 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium border-2 appearance-none transition-all outline-none cursor-pointer ${assignmentErrors[ad._id]
-                              ? "border-rose-300 bg-white text-rose-600 focus:border-rose-500"
-                              : assignmentMap[ad._id]
-                                ? "border-emerald-200 bg-white text-emerald-700 focus:border-emerald-500"
-                                : "border-gray-200 bg-gray-50/50 text-gray-700 hover:border-primary-300 focus:border-primary-500 focus:bg-white"
-                              }`}
-                          >
-                            <option value="">-- Choose a Panel --</option>
-                            {panels.map((panel) => (
-                              <option key={panel._id} value={panel._id}>
-                                {panel.name} ({panel.experts?.length || 0} Experts)
-                              </option>
-                            ))}
-                          </select>
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/select:text-primary-500 transition-colors">
-                            <FaChevronDown className="size-3" />
-                          </div>
-                        </div>
-                        {assignmentErrors[ad._id] && (
-                          <p className="text-[10px] font-bold text-rose-500 mt-1 flex items-center gap-1.5 ml-1">
-                            <FaTimesCircle className="size-2.5" />
-                            Requires panel assignment
-                          </p>
-                        )}
-
-                        {/* View Experts Toggle */}
-                        {assignmentMap[ad._id] && (
-                          <div className="mt-3 ml-1">
-                            <button
-                              onClick={() => setShowExpertsMap(prev => ({ ...prev, [ad._id]: !prev[ad._id] }))}
-                              className={`flex items-center gap-2 text-[11px] font-medium transition-all outline-none text-pink-500 hover:text-red-600 active:text-emerald-600 focus:text-emerald-600 ${showExpertsMap[ad._id] ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                        <div className="w-full md:w-[320px] flex flex-col gap-2">
+                          <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide ml-1">
+                            Select Interview Panel
+                          </label>
+                          <div className="relative group/select">
+                            <select
+                              value={assignmentMap[ad._id] || ""}
+                              onChange={(e) => handlePanelChange(ad._id, e.target.value)}
+                              className={`w-full h-12 pl-4 pr-10 py-2.5 rounded-xl text-sm font-medium border-2 appearance-none transition-all outline-none cursor-pointer ${assignmentErrors[ad._id]
+                                ? "border-rose-300 bg-white text-rose-600 focus:border-rose-500"
+                                : assignmentMap[ad._id]
+                                  ? "border-emerald-200 bg-white text-emerald-700 focus:border-emerald-500"
+                                  : "border-gray-200 bg-gray-50/50 text-gray-700 hover:border-primary-300 focus:border-primary-500 focus:bg-white"
+                                }`}
                             >
-                              <FaUsers className="size-3" />
-                              {showExpertsMap[ad._id] ? 'Hide expert details' : 'View expert details'}
-                              {showExpertsMap[ad._id] ? <FaChevronUp className="size-2.5" /> : <FaChevronDown className="size-2.5" />}
-                            </button>
+                              <option value="">-- Choose a Panel --</option>
+                              {panels.map((panel) => (
+                                <option key={panel._id} value={panel._id}>
+                                  {panel.name} ({panel.experts?.length || 0} Experts)
+                                </option>
+                              ))}
+                            </select>
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/select:text-primary-500 transition-colors">
+                              <FaChevronDown className="size-3" />
+                            </div>
+                          </div>
+                          {assignmentErrors[ad._id] && (
+                            <p className="text-[10px] font-bold text-rose-500 mt-1 flex items-center gap-1.5 ml-1">
+                              <FaTimesCircle className="size-2.5" />
+                              Requires panel assignment
+                            </p>
+                          )}
 
-                            {/* Expert Info Display */}
-                            {showExpertsMap[ad._id] && (() => {
-                              const selectedPanel = panels.find(p => p._id === assignmentMap[ad._id]);
-                              if (!selectedPanel) return null;
+                          {/* View Experts Toggle */}
+                          {assignmentMap[ad._id] && (
+                            <div className="mt-3 ml-1">
+                              <button
+                                onClick={() => setShowExpertsMap(prev => ({ ...prev, [ad._id]: !prev[ad._id] }))}
+                                className={`flex items-center gap-2 text-[11px] font-medium transition-all outline-none text-pink-500 hover:text-red-600 active:text-emerald-600 focus:text-emerald-600 ${showExpertsMap[ad._id] ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+                              >
+                                <FaUsers className="size-3" />
+                                {showExpertsMap[ad._id] ? 'Hide expert details' : 'View expert details'}
+                                {showExpertsMap[ad._id] ? <FaChevronUp className="size-2.5" /> : <FaChevronDown className="size-2.5" />}
+                              </button>
 
-                              return (
-                                <div className="mt-3 space-y-3 animate-slide-down">
-                                  <div className="grid grid-cols-1 gap-2.5">
-                                    {selectedPanel.experts?.map((expert, eIdx) => (
-                                      <div key={eIdx} className="bg-gray-50/50 rounded-xl p-3.5 border border-gray-100 flex items-start gap-3.5 hover:bg-white hover:shadow-md hover:border-primary-100 transition-all duration-300 group/expert">
-                                        <div className="w-9 h-9 rounded-xl bg-white border border-primary-50 flex items-center justify-center text-primary-500 shrink-0 shadow-sm group-hover/expert:bg-primary-500 group-hover/expert:text-white transition-all duration-300">
-                                          <FaUserTie className="size-4.5" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex justify-between items-center mb-1">
-                                            <p className="text-[13px] font-semibold text-gray-800 truncate">{expert.name}</p>
-                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium whitespace-nowrap border border-primary-100">
-                                              {expert.seniority} years experience
-                                            </span>
+                              {/* Expert Info Display */}
+                              {showExpertsMap[ad._id] && (() => {
+                                const selectedPanel = panels.find(p => p._id === assignmentMap[ad._id]);
+                                if (!selectedPanel) return null;
+
+                                return (
+                                  <div className="mt-3 space-y-3 animate-slide-down">
+                                    <div className="grid grid-cols-1 gap-2.5">
+                                      {selectedPanel.experts?.map((expert, eIdx) => (
+                                        <div key={eIdx} className="bg-gray-50/50 rounded-xl p-3.5 border border-gray-100 flex items-start gap-3.5 hover:bg-white hover:shadow-md hover:border-primary-100 transition-all duration-300 group/expert">
+                                          <div className="w-9 h-9 rounded-xl bg-white border border-primary-50 flex items-center justify-center text-primary-500 shrink-0 shadow-sm group-hover/expert:bg-primary-500 group-hover/expert:text-white transition-all duration-300">
+                                            <FaUserTie className="size-4.5" />
                                           </div>
-                                          <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                            <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                              <FaBriefcase className="size-3 text-gray-400" />
-                                              {expert.role || 'N/A'}
-                                            </span>
-                                            <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                              <FaBuilding className="size-3 text-gray-400" />
-                                              {expert.department?.name || expert.department || 'N/A'}
-                                            </span>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-center mb-1">
+                                              <p className="text-[13px] font-semibold text-gray-800 truncate">{expert.name}</p>
+                                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary-50 text-primary-600 font-medium whitespace-nowrap border border-primary-100">
+                                                {expert.seniority} years experience
+                                              </span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                              <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                                <FaBriefcase className="size-3 text-gray-400" />
+                                                {expert.role || 'N/A'}
+                                              </span>
+                                              <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                                <FaBuilding className="size-3 text-gray-400" />
+                                                {expert.department?.name || expert.department || 'N/A'}
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </ModalContainer>
-
-        <ManageDegreesModal
-          isOpen={manageDegreeModal}
-          onClose={() => setManageDegreeModal(false)}
-          onRefresh={fetchDegreeOptions}
-        />
-
-        <ManageAdvertisementsModal
-          isOpen={manageAdModal}
-          onClose={() => setManageAdModal(false)}
-        />
-
-        <AdDetailsModal
-          isOpen={adViewModal.show}
-          onClose={() => setAdViewModal({ show: false, ad: null })}
-          advertisement={adViewModal.ad}
-          onViewDocument={openDocumentPreview}
-        />
-
-        {/* Assign Marks Modal */}
-        {assignMarksModal.show && (
-          <ModalContainer
-            isOpen={assignMarksModal.show}
-            onClose={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
-            title="Assign Interview Marks"
-            size="medium"
-            footer={
-              assignMarksModal.user && (
-                <div className="flex gap-3 w-full">
-                  <button
-                    onClick={() => handleAssignMarks(assignMarksModal.user._id, assignMarksModal.advertisement?._id, marksInput)}
-                    disabled={isSubmittingMarks || marksInput === "" || isNaN(parseFloat(marksInput))}
-                    className="flex-1 py-3 bg-gradient-to-r from-pink-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    {isSubmittingMarks ? <FaSpinner className="animate-spin inline mr-2" /> : <FaClipboardList className="inline mr-2" />}
-                    Save Marks
-                  </button>
-                  <button
-                    onClick={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
-                    className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )
-            }
-          >
-            {assignMarksModal.user && (
-              <div className="p-6">
-                <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                  {assignMarksModal.user.profileImage ? (
-                    <img
-                      src={assignMarksModal.user.profileImage}
-                      alt="Profile"
-                      className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
-                      {assignMarksModal.user.fullName?.charAt(0)}
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="font-bold text-gray-900">{assignMarksModal.user.fullName}</h3>
-                    <p className="text-sm text-gray-500">{assignMarksModal.user.email}</p>
-                    {assignMarksModal.advertisement && (
-                      <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
-                        {assignMarksModal.advertisement.title || assignMarksModal.advertisement.advtNo}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Interview Marks (0-100)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={marksInput}
-                        onChange={(e) => setMarksInput(e.target.value)}
-                        placeholder="Enter marks"
-                        className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all font-bold text-lg text-primary-900"
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
-                        / 100
-                      </div>
-                    </div>
-                    <p className="mt-2 text-xs text-gray-500 italic">
-                      * Marks will be assigned specifically for the {assignMarksModal.advertisement?.title || 'selected'} advertisement.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </ModalContainer>
-        )}
-
-
-
-        {/* Schedule Interview Modal */}
-        {scheduleModal.show && (
-          <ModalContainer
-            isOpen={scheduleModal.show}
-            onClose={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
-            title="Schedule Interview"
-            size="medium"
-            footer={
-              scheduleModal.user && (
-                <div className="flex gap-3 w-full">
-                  <button
-                    onClick={() => handleScheduleInterview(scheduleModal.user._id, scheduleDateInput, selectedAdsToSchedule)}
-                    disabled={!scheduleDateInput || selectedAdsToSchedule.length === 0}
-                    className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    {scheduleModal.user.interviewSchedule?.scheduledDate ? "Update Schedule" : "Confirm Schedule"}
-                  </button>
-                  <button
-                    onClick={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
-                    className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )
-            }
-          >
-            {scheduleModal.user && (
-              <div className="p-6">
-                <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                  {scheduleModal.user.profileImage ? (
-                    <img
-                      src={scheduleModal.user.profileImage}
-                      alt="Profile"
-                      className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
-                      {scheduleModal.user.fullName?.charAt(0)}
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="font-bold text-gray-900">{scheduleModal.user.fullName}</h3>
-                    <p className="text-sm text-gray-500">{scheduleModal.user.email}</p>
-                  </div>
-                </div>
-
-                {(() => {
-                  const ads = scheduleModal.user.advertisements || [];
-                  if (ads.length > 0) {
-                    const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
-                    return (
-                      <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                        <p className="text-xs text-amber-700">
-                          <strong>Note:</strong> Interview date must be at least 5 days after the last advertisement deadline:
-                          <span className="font-bold ml-1">{latestDeadline.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                        </p>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Select Interview Date</label>
-                    <input
-                      type="date"
-                      value={scheduleDateInput}
-                      onChange={(e) => setScheduleDateInput(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
-                      min={(() => {
-                        const ads = scheduleModal.user.advertisements || [];
-                        if (ads.length > 0) {
-                          const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
-                          const minDate = new Date(latestDeadline);
-                          minDate.setDate(minDate.getDate() + 5); // Minimum 5 days after deadline
-                          return minDate.toISOString().split('T')[0];
-                        }
-                        return new Date().toISOString().split('T')[0];
-                      })()}
-                    />
-                  </div>
-
-                  {/* Advertisement Selection */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
-                      <span>Select Advertisements to Schedule</span>
-                      <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">Required</span>
-                    </label>
-                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto p-1 custom-scrollbar">
-                      {(scheduleModal.user.advertisements || (scheduleModal.user.advertisement ? [scheduleModal.user.advertisement] : [])).map((ad) => {
-                        const isSelected = selectedAdsToSchedule.includes(ad._id);
-                        const adMark = scheduleModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
-                        const currentSchedule = adMark?.interviewSchedule?.scheduledDate;
-
-                        return (
-                          <div
-                            key={ad._id}
-                            onClick={() => {
-                              setSelectedAdsToSchedule(prev =>
-                                prev.includes(ad._id)
-                                  ? prev.filter(id => id !== ad._id)
-                                  : [...prev, ad._id]
-                              );
-                            }}
-                            className={`group flex items-center gap-4 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
-                              ? 'bg-indigo-50/50 border-indigo-200'
-                              : 'bg-white border-gray-100 hover:border-indigo-100 shadow-sm'
-                              }`}
-                          >
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
-                              ? 'bg-indigo-600 border-indigo-600'
-                              : 'border-gray-200 group-hover:border-indigo-300'
-                              }`}>
-                              {isSelected && <FaCheckCircle className="text-white text-[10px]" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[13px] font-bold text-gray-800 truncate leading-snug group-hover:text-indigo-600 transition-colors">{ad.title}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{ad.advtNo}</span>
-                                {currentSchedule && (
-                                  <>
-                                    <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
-                                    <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
-                                      Scheduled: {new Date(currentSchedule).toLocaleDateString('en-IN')}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </ModalContainer>
-        )}
-
-        {/* Send Email Confirmation Modal */}
-        {emailConfirmModal.show && (
-          <ModalContainer
-            isOpen={emailConfirmModal.show}
-            onClose={() => {
-              setEmailConfirmModal({ show: false, user: null });
-              setEmailForm({ location: '', helpline: '' });
-              setEmailFormErrors({ location: '', helpline: '' });
-            }}
-            title="Send Interview Invitation Email"
-            size="large"
-            footer={
-              emailConfirmModal.user && (
-                <div className="flex gap-4 justify-end px-8 py-6 bg-white border-t border-indigo-50">
-                  <button
-                    onClick={() => {
-                      setEmailConfirmModal({ show: false, user: null });
-                      setEmailForm({ location: '', helpline: '' });
-                      setEmailFormErrors({ location: '', helpline: '' });
-                    }}
-                    className="px-6 py-3 bg-slate-50 text-slate-500 rounded-2xl font-bold border border-slate-100 hover:bg-slate-100 transition-all cursor-pointer shadow-sm active:scale-95 text-sm"
-                  >
-                    Cancel Draft
-                  </button>
-                  <button
-                    onClick={() => handleSendInterviewEmail(emailConfirmModal.user._id, emailForm.location, emailForm.helpline, selectedAdsToEmail)}
-                    disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0}
-                    className="px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm"
-                  >
-                    <FaPaperPlane className="text-[11px]" /> Dispatch Invitation
-                  </button>
-                </div>
-              )
-            }
-          >
-            {emailConfirmModal.user && (
-              <div className="flex flex-col lg:flex-row h-full overflow-hidden min-h-[550px] bg-white">
-                {/* Left Column: Form Section */}
-                <div className="lg:w-1/2 p-0 lg:border-r border-indigo-50 overflow-y-auto bg-white/50 backdrop-blur-sm scrollbar-thin scrollbar-thumb-indigo-100">
-                  <div className="p-10 space-y-10">
-                    {/* Refined Candidate Profile Card */}
-                    <div className="relative p-8 bg-gradient-to-br from-indigo-500/10 via-white to-indigo-50/30 rounded-[2.5rem] border border-indigo-100 shadow-sm overflow-hidden group">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform duration-700"></div>
-
-                      <div className="flex items-center gap-8 relative z-10">
-                        <div className="relative shrink-0">
-                          {emailConfirmModal.user.profileImage ? (
-                            <img
-                              src={emailConfirmModal.user.profileImage.startsWith('http') ? emailConfirmModal.user.profileImage : `http://localhost:5000${emailConfirmModal.user.profileImage}`}
-                              alt={emailConfirmModal.user.fullName}
-                              className="w-20 h-20 rounded-[1.8rem] border-4 border-white object-cover shadow-xl group-hover:rotate-3 transition-all duration-500 shadow-indigo-100"
-                            />
-                          ) : (
-                            <div className="w-20 h-20 rounded-[1.8rem] bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold text-3xl border-4 border-white shadow-xl">
-                              {emailConfirmModal.user.fullName?.charAt(0)}
+                                );
+                              })()}
                             </div>
                           )}
-                          <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg border border-indigo-50">
-                            <FaCheckCircle className="text-emerald-500 text-lg" />
-                          </div>
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1.5">
-                            <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-indigo-50 rounded-lg shadow-sm">
-                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                              <span className="text-[9px] text-slate-500 font-bold tracking-wider">Interview Status</span>
-                            </div>
-                          </div>
-                          <h3 className="text-2xl font-black text-slate-900 tracking-tight truncate leading-tight mb-1">{emailConfirmModal.user.fullName}</h3>
-                          <div className="flex items-center gap-2 text-slate-500 font-bold text-[13px] opacity-80 overflow-hidden">
-                            <FaEnvelope className="text-indigo-400 shrink-0 text-xs" />
-                            <span className="truncate">{emailConfirmModal.user.email}</span>
-                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </ModalContainer>
+
+          <ManageDegreesModal
+            isOpen={manageDegreeModal}
+            onClose={() => setManageDegreeModal(false)}
+            onRefresh={fetchDegreeOptions}
+          />
+
+          <ManageAdvertisementsModal
+            isOpen={manageAdModal}
+            onClose={() => setManageAdModal(false)}
+          />
+
+          <AdDetailsModal
+            isOpen={adViewModal.show}
+            onClose={() => setAdViewModal({ show: false, ad: null })}
+            advertisement={adViewModal.ad}
+            onViewDocument={openDocumentPreview}
+          />
+
+          {/* Assign Marks Modal */}
+          {assignMarksModal.show && (
+            <ModalContainer
+              isOpen={assignMarksModal.show}
+              onClose={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
+              title="Assign Interview Marks"
+              size="medium"
+              footer={
+                assignMarksModal.user && (
+                  <div className="flex gap-3 w-full">
+                    <button
+                      onClick={() => handleAssignMarks(assignMarksModal.user._id, assignMarksModal.advertisement?._id, marksInput)}
+                      disabled={isSubmittingMarks || marksInput === "" || isNaN(parseFloat(marksInput))}
+                      className="flex-1 py-3 bg-gradient-to-r from-pink-600 to-indigo-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {isSubmittingMarks ? <FaSpinner className="animate-spin inline mr-2" /> : <FaClipboardList className="inline mr-2" />}
+                      Save Marks
+                    </button>
+                    <button
+                      onClick={() => { setAssignMarksModal({ show: false, user: null, advertisement: null }); setMarksInput(""); }}
+                      className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )
+              }
+            >
+              {assignMarksModal.user && (
+                <div className="p-6">
+                  <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                    {assignMarksModal.user.profileImage ? (
+                      <img
+                        src={assignMarksModal.user.profileImage}
+                        alt="Profile"
+                        className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                        {assignMarksModal.user.fullName?.charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-gray-900">{assignMarksModal.user.fullName}</h3>
+                      <p className="text-sm text-gray-500">{assignMarksModal.user.email}</p>
+                      {assignMarksModal.advertisement && (
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded">
+                          {assignMarksModal.advertisement.title || assignMarksModal.advertisement.advtNo}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Interview Marks (0-100)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={marksInput}
+                          onChange={(e) => setMarksInput(e.target.value)}
+                          placeholder="Enter marks"
+                          className="w-full pl-4 pr-12 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition-all font-bold text-lg text-primary-900"
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
+                          / 100
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500 italic">
+                        * Marks will be assigned specifically for the {assignMarksModal.advertisement?.title || 'selected'} advertisement.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </ModalContainer>
+          )}
+
+
+
+          {/* Schedule Interview Modal */}
+          {scheduleModal.show && (
+            <ModalContainer
+              isOpen={scheduleModal.show}
+              onClose={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
+              title="Schedule Interview"
+              size="medium"
+              footer={
+                scheduleModal.user && (
+                  <div className="flex gap-3 w-full">
+                    <button
+                      onClick={() => handleScheduleInterview(scheduleModal.user._id, scheduleDateInput, selectedAdsToSchedule)}
+                      disabled={!scheduleDateInput || selectedAdsToSchedule.length === 0}
+                      className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {scheduleModal.user.interviewSchedule?.scheduledDate ? "Update Schedule" : "Confirm Schedule"}
+                    </button>
+                    <button
+                      onClick={() => { setScheduleModal({ show: false, user: null }); setScheduleDateInput(""); }}
+                      className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )
+              }
+            >
+              {scheduleModal.user && (
+                <div className="p-6">
+                  <div className="mb-6 flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                    {scheduleModal.user.profileImage ? (
+                      <img
+                        src={scheduleModal.user.profileImage}
+                        alt="Profile"
+                        className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                        {scheduleModal.user.fullName?.charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-gray-900">{scheduleModal.user.fullName}</h3>
+                      <p className="text-sm text-gray-500">{scheduleModal.user.email}</p>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const ads = scheduleModal.user.advertisements || [];
+                    if (ads.length > 0) {
+                      const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
+                      return (
+                        <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                          <p className="text-xs text-amber-700">
+                            <strong>Note:</strong> Interview date must be at least 5 days after the last advertisement deadline:
+                            <span className="font-bold ml-1">{latestDeadline.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Select Interview Date</label>
+                      <input
+                        type="date"
+                        value={scheduleDateInput}
+                        onChange={(e) => setScheduleDateInput(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                        min={(() => {
+                          const ads = scheduleModal.user.advertisements || [];
+                          if (ads.length > 0) {
+                            const latestDeadline = new Date(Math.max(...ads.map(ad => new Date(ad.lastDateToApply).getTime())));
+                            const minDate = new Date(latestDeadline);
+                            minDate.setDate(minDate.getDate() + 5); // Minimum 5 days after deadline
+                            return minDate.toISOString().split('T')[0];
+                          }
+                          return new Date().toISOString().split('T')[0];
+                        })()}
+                      />
                     </div>
 
-                    {/* Advertisement Selection for Email */}
+                    {/* Advertisement Selection */}
                     <div>
-                      <label className="flex items-center justify-between mb-4">
-                        <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Target Advertisements
-                        </span>
-                        <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
-                          Select for Mailing
-                        </span>
+                      <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center justify-between">
+                        <span>Select Advertisements to Schedule</span>
+                        <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full font-medium">Required</span>
                       </label>
-                      <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                        {(emailConfirmModal.user.advertisements || (emailConfirmModal.user.advertisement ? [emailConfirmModal.user.advertisement] : [])).map((ad) => {
-                          const isSelected = selectedAdsToEmail.includes(ad._id);
-                          const adMark = emailConfirmModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
-                          const hasSchedule = !!adMark?.interviewSchedule?.scheduledDate;
-                          const hasPanel = emailConfirmModal.user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
-                          const emailSent = !!adMark?.interviewEmailSent?.sent;
-                          const isEligible = hasSchedule && hasPanel;
+                      <div className="space-y-2.5 max-h-[220px] overflow-y-auto p-1 custom-scrollbar">
+                        {(scheduleModal.user.advertisements || (scheduleModal.user.advertisement ? [scheduleModal.user.advertisement] : [])).map((ad) => {
+                          const isSelected = selectedAdsToSchedule.includes(ad._id);
+                          const adMark = scheduleModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                          const currentSchedule = adMark?.interviewSchedule?.scheduledDate;
 
                           return (
                             <div
                               key={ad._id}
                               onClick={() => {
-                                if (!isEligible) return;
-                                setSelectedAdsToEmail(prev =>
+                                setSelectedAdsToSchedule(prev =>
                                   prev.includes(ad._id)
                                     ? prev.filter(id => id !== ad._id)
                                     : [...prev, ad._id]
                                 );
                               }}
-                              className={`group relative p-4 rounded-[2rem] border-2 transition-all duration-300 ${isEligible
-                                ? (isSelected ? 'bg-indigo-50/30 border-indigo-200 shadow-md' : 'bg-white border-slate-50 hover:border-indigo-100 cursor-pointer shadow-sm')
-                                : 'bg-slate-50/50 border-slate-100 opacity-60 cursor-not-allowed'
+                              className={`group flex items-center gap-4 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${isSelected
+                                ? 'bg-indigo-50/50 border-indigo-200'
+                                : 'bg-white border-gray-100 hover:border-indigo-100 shadow-sm'
                                 }`}
                             >
-                              <div className="flex items-center gap-4">
-                                <div className={`w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${isSelected
-                                  ? 'bg-indigo-600 border-indigo-600'
-                                  : 'bg-white border-slate-200 group-hover:border-indigo-300'
-                                  }`}>
-                                  {isSelected && <FaCheckCircle className="text-white text-xs" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <p className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{ad.title}</p>
-                                    {emailSent && (
-                                      <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg border border-emerald-200">SENT</span>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                    {!hasSchedule && (
-                                      <span className="text-[9px] text-rose-500 font-bold flex items-center gap-1"><FaClock className="text-[8px]" /> Missing Schedule</span>
-                                    )}
-                                    {!hasPanel && (
-                                      <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><FaUsers className="text-[8px]" /> Panel Pending</span>
-                                    )}
-                                    {hasSchedule && (
-                                      <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1">
-                                        <FaCalendarAlt className="text-[8px]" /> {new Date(adMark.interviewSchedule.scheduledDate).toLocaleDateString('en-IN')}
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                                ? 'bg-indigo-600 border-indigo-600'
+                                : 'border-gray-200 group-hover:border-indigo-300'
+                                }`}>
+                                {isSelected && <FaCheckCircle className="text-white text-[10px]" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-bold text-gray-800 truncate leading-snug group-hover:text-indigo-600 transition-colors">{ad.title}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{ad.advtNo}</span>
+                                  {currentSchedule && (
+                                    <>
+                                      <span className="w-1 h-1 bg-gray-200 rounded-full"></span>
+                                      <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 px-2 py-0.5 rounded-md">
+                                        Scheduled: {new Date(currentSchedule).toLocaleDateString('en-IN')}
                                       </span>
-                                    )}
-                                  </div>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -3775,117 +4067,270 @@ const UserGrid = () => {
                         })}
                       </div>
                     </div>
-
-                    {/* Interview Location */}
-                    <div>
-                      <label className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Interview Location / Venue
-                        </span>
-                        {emailForm.location && !emailFormErrors.location && (
-                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
-                            <FaCheckCircle className="text-[9px]" /> India Standard Address
-                          </span>
-                        )}
-                      </label>
-                      <div className="relative group">
-                        <textarea
-                          placeholder="Enter precise office/venue address including 6-digit PIN code..."
-                          value={emailForm.location}
-                          onChange={(e) => setEmailForm(prev => ({ ...prev, location: e.target.value }))}
-                          className={`w-full px-5 py-5 rounded-3xl border-2 transition-all duration-300 outline-none text-[15px] min-h-[140px] resize-none leading-relaxed shadow-sm ${emailFormErrors.location && emailForm.location ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
-                            }`}
-                        />
-                        <div className="absolute right-5 top-5 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
-                          <FaBuilding className="text-lg" />
-                        </div>
-                      </div>
-                      {emailFormErrors.location && emailForm.location ? (
-                        <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
-                          {emailFormErrors.location}
-                        </p>
-                      ) : (
-                        <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
-                          <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
-                          <p>Please specify Floor No. and Building properly. Example: Sector 2, Gandhinagar 382010</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Support Helpline */}
-                    <div>
-                      <label className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
-                          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Support Helpline Number
-                        </span>
-                        {emailForm.helpline && !emailFormErrors.helpline && (
-                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
-                            <FaCheckCircle className="text-[9px]" /> Verified Format
-                          </span>
-                        )}
-                      </label>
-                      <div className="relative group">
-                        <input
-                          type="text"
-                          placeholder="9XXXXXXXXX (10 Digit Mobile)"
-                          value={emailForm.helpline}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                            setEmailForm(prev => ({ ...prev, helpline: val }));
-                          }}
-                          className={`w-full px-5 py-5 rounded-full border-2 transition-all duration-300 outline-none text-[15px] shadow-sm ${emailFormErrors.helpline && emailForm.helpline ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
-                            }`}
-                        />
-                        <div className="absolute right-6 top-1/2 -translate-y-1/2 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
-                          <FaPhone />
-                        </div>
-                      </div>
-                      {!emailForm.helpline && (
-                        <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
-                          <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
-                          <p>Enter a 10-digit Indian number. It will be displayed as the primary support line.</p>
-                        </div>
-                      )}
-                      {emailFormErrors.helpline && emailForm.helpline && (
-                        <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
-                          {emailFormErrors.helpline}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Resend Warning */}
-                    {emailConfirmModal.user.interviewEmailSent?.sent && (
-                      <div className="p-5 bg-amber-50 rounded-[1.5rem] border border-amber-200 shadow-sm relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-8 -mt-8"></div>
-                        <div className="flex items-center gap-4 relative">
-                          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center border border-amber-200 shadow-sm">
-                            <FaInfoCircle className="text-amber-600 text-lg" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-amber-900 font-bold">Resending Invitation</p>
-                            <p className="text-[11px] text-amber-700/80 font-bold mt-0.5">
-                              Last transmission detected: {new Date(emailConfirmModal.user.interviewEmailSent.at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
+              )}
+            </ModalContainer>
+          )}
 
-                {/* Right Column: Live Preview Section */}
-                <div className="lg:w-1/2 p-8 bg-slate-50/50 overflow-y-auto max-h-[750px] scrollbar-none">
-                  <EmailDraftPreview user={emailConfirmModal.user} form={emailForm} selectedAdIds={selectedAdsToEmail} />
+          {/* Send Email Confirmation Modal */}
+          {emailConfirmModal.show && (
+            <ModalContainer
+              isOpen={emailConfirmModal.show}
+              onClose={() => {
+                setEmailConfirmModal({ show: false, user: null });
+                setEmailForm({ location: '', helpline: '' });
+                setEmailFormErrors({ location: '', helpline: '' });
+              }}
+              title="Send Interview Invitation Email"
+              size="large"
+              footer={
+                emailConfirmModal.user && (
+                  <div className="flex gap-4 justify-end px-8 py-6 bg-white border-t border-indigo-50">
+                    <button
+                      onClick={() => {
+                        setEmailConfirmModal({ show: false, user: null });
+                        setEmailForm({ location: '', helpline: '' });
+                        setEmailFormErrors({ location: '', helpline: '' });
+                      }}
+                      className="px-6 py-3 bg-slate-50 text-slate-500 rounded-2xl font-bold border border-slate-100 hover:bg-slate-100 transition-all cursor-pointer shadow-sm active:scale-95 text-sm"
+                    >
+                      Cancel Draft
+                    </button>
+                    <button
+                      onClick={() => handleSendInterviewEmail(emailConfirmModal.user._id, emailForm.location, emailForm.helpline, selectedAdsToEmail)}
+                      disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0}
+                      className="px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm"
+                    >
+                      <FaPaperPlane className="text-[11px]" /> Dispatch Invitation
+                    </button>
+                  </div>
+                )
+              }
+            >
+              {emailConfirmModal.user && (
+                <div className="flex flex-col lg:flex-row h-full overflow-hidden min-h-[550px] bg-white">
+                  {/* Left Column: Form Section */}
+                  <div className="lg:w-1/2 p-0 lg:border-r border-indigo-50 overflow-y-auto bg-white/50 backdrop-blur-sm scrollbar-thin scrollbar-thumb-indigo-100">
+                    <div className="p-10 space-y-10">
+                      {/* Refined Candidate Profile Card */}
+                      <div className="relative p-8 bg-gradient-to-br from-indigo-500/10 via-white to-indigo-50/30 rounded-[2.5rem] border border-indigo-100 shadow-sm overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform duration-700"></div>
+
+                        <div className="flex items-center gap-8 relative z-10">
+                          <div className="relative shrink-0">
+                            {emailConfirmModal.user.profileImage ? (
+                              <img
+                                src={emailConfirmModal.user.profileImage.startsWith('http') ? emailConfirmModal.user.profileImage : `http://localhost:5000${emailConfirmModal.user.profileImage}`}
+                                alt={emailConfirmModal.user.fullName}
+                                className="w-20 h-20 rounded-[1.8rem] border-4 border-white object-cover shadow-xl group-hover:rotate-3 transition-all duration-500 shadow-indigo-100"
+                              />
+                            ) : (
+                              <div className="w-20 h-20 rounded-[1.8rem] bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white font-bold text-3xl border-4 border-white shadow-xl">
+                                {emailConfirmModal.user.fullName?.charAt(0)}
+                              </div>
+                            )}
+                            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg border border-indigo-50">
+                              <FaCheckCircle className="text-emerald-500 text-lg" />
+                            </div>
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-1.5">
+                              <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-indigo-50 rounded-lg shadow-sm">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="text-[9px] text-slate-500 font-bold tracking-wider">Interview Status</span>
+                              </div>
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-900 tracking-tight truncate leading-tight mb-1">{emailConfirmModal.user.fullName}</h3>
+                            <div className="flex items-center gap-2 text-slate-500 font-bold text-[13px] opacity-80 overflow-hidden">
+                              <FaEnvelope className="text-indigo-400 shrink-0 text-xs" />
+                              <span className="truncate">{emailConfirmModal.user.email}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Advertisement Selection for Email */}
+                      <div>
+                        <label className="flex items-center justify-between mb-4">
+                          <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Target Advertisements
+                          </span>
+                          <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+                            Select for Mailing
+                          </span>
+                        </label>
+                        <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                          {(emailConfirmModal.user.advertisements || (emailConfirmModal.user.advertisement ? [emailConfirmModal.user.advertisement] : [])).map((ad) => {
+                            const isSelected = selectedAdsToEmail.includes(ad._id);
+                            const adMark = emailConfirmModal.user.advertisementMarks?.find(am => am.advertisementId?.toString() === ad._id?.toString());
+                            const hasSchedule = !!adMark?.interviewSchedule?.scheduledDate;
+                            const hasPanel = emailConfirmModal.user.panelAssignments?.some(pa => pa.advertisementId?.toString() === ad._id?.toString());
+                            const emailSent = !!adMark?.interviewEmailSent?.sent;
+                            const isEligible = hasSchedule && hasPanel;
+
+                            return (
+                              <div
+                                key={ad._id}
+                                onClick={() => {
+                                  if (!isEligible) return;
+                                  setSelectedAdsToEmail(prev =>
+                                    prev.includes(ad._id)
+                                      ? prev.filter(id => id !== ad._id)
+                                      : [...prev, ad._id]
+                                  );
+                                }}
+                                className={`group relative p-4 rounded-[2rem] border-2 transition-all duration-300 ${isEligible
+                                  ? (isSelected ? 'bg-indigo-50/30 border-indigo-200 shadow-md' : 'bg-white border-slate-50 hover:border-indigo-100 cursor-pointer shadow-sm')
+                                  : 'bg-slate-50/50 border-slate-100 opacity-60 cursor-not-allowed'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-6 h-6 rounded-xl border-2 flex items-center justify-center transition-all ${isSelected
+                                    ? 'bg-indigo-600 border-indigo-600'
+                                    : 'bg-white border-slate-200 group-hover:border-indigo-300'
+                                    }`}>
+                                    {isSelected && <FaCheckCircle className="text-white text-xs" />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <p className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'}`}>{ad.title}</p>
+                                      {emailSent && (
+                                        <span className="shrink-0 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-black rounded-lg border border-emerald-200">SENT</span>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                      {!hasSchedule && (
+                                        <span className="text-[9px] text-rose-500 font-bold flex items-center gap-1"><FaClock className="text-[8px]" /> Missing Schedule</span>
+                                      )}
+                                      {!hasPanel && (
+                                        <span className="text-[9px] text-amber-500 font-bold flex items-center gap-1"><FaUsers className="text-[8px]" /> Panel Pending</span>
+                                      )}
+                                      {hasSchedule && (
+                                        <span className="text-[9px] text-indigo-500 font-bold flex items-center gap-1">
+                                          <FaCalendarAlt className="text-[8px]" /> {new Date(adMark.interviewSchedule.scheduledDate).toLocaleDateString('en-IN')}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Interview Location */}
+                      <div>
+                        <label className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Interview Location / Venue
+                          </span>
+                          {emailForm.location && !emailFormErrors.location && (
+                            <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
+                              <FaCheckCircle className="text-[9px]" /> India Standard Address
+                            </span>
+                          )}
+                        </label>
+                        <div className="relative group">
+                          <textarea
+                            placeholder="Enter precise office/venue address including 6-digit PIN code..."
+                            value={emailForm.location}
+                            onChange={(e) => setEmailForm(prev => ({ ...prev, location: e.target.value }))}
+                            className={`w-full px-5 py-5 rounded-3xl border-2 transition-all duration-300 outline-none text-[15px] min-h-[140px] resize-none leading-relaxed shadow-sm ${emailFormErrors.location && emailForm.location ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
+                              }`}
+                          />
+                          <div className="absolute right-5 top-5 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
+                            <FaBuilding className="text-lg" />
+                          </div>
+                        </div>
+                        {emailFormErrors.location && emailForm.location ? (
+                          <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
+                            {emailFormErrors.location}
+                          </p>
+                        ) : (
+                          <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                            <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
+                            <p>Please specify Floor No. and Building properly. Example: Sector 2, Gandhinagar 382010</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Support Helpline */}
+                      <div>
+                        <label className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-bold text-slate-700 tracking-wide flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Support Helpline Number
+                          </span>
+                          {emailForm.helpline && !emailFormErrors.helpline && (
+                            <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/50 px-3 py-1 rounded-full flex items-center gap-1 border border-emerald-100 shadow-sm">
+                              <FaCheckCircle className="text-[9px]" /> Verified Format
+                            </span>
+                          )}
+                        </label>
+                        <div className="relative group">
+                          <input
+                            type="text"
+                            placeholder="9XXXXXXXXX (10 Digit Mobile)"
+                            value={emailForm.helpline}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                              setEmailForm(prev => ({ ...prev, helpline: val }));
+                            }}
+                            className={`w-full px-5 py-5 rounded-full border-2 transition-all duration-300 outline-none text-[15px] shadow-sm ${emailFormErrors.helpline && emailForm.helpline ? 'border-rose-100 bg-rose-50/20 focus:border-rose-500' : 'border-indigo-50 bg-indigo-50/10 focus:border-indigo-500 focus:bg-white focus:shadow-indigo-100/50'
+                              }`}
+                          />
+                          <div className="absolute right-6 top-1/2 -translate-y-1/2 text-indigo-200 group-focus-within:text-indigo-500 transition-colors">
+                            <FaPhone />
+                          </div>
+                        </div>
+                        {!emailForm.helpline && (
+                          <div className="mt-3 flex items-start gap-2 text-[10px] text-slate-400 font-medium bg-slate-50/50 p-2 rounded-xl border border-slate-100">
+                            <FaInfoCircle className="text-indigo-300 text-xs mt-0.5 shrink-0" />
+                            <p>Enter a 10-digit Indian number. It will be displayed as the primary support line.</p>
+                          </div>
+                        )}
+                        {emailFormErrors.helpline && emailForm.helpline && (
+                          <p className="mt-3 text-[11px] text-rose-500 font-bold border-l-2 border-rose-500 pl-3 animate-shake">
+                            {emailFormErrors.helpline}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Resend Warning */}
+                      {emailConfirmModal.user.interviewEmailSent?.sent && (
+                        <div className="p-5 bg-amber-50 rounded-[1.5rem] border border-amber-200 shadow-sm relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-8 -mt-8"></div>
+                          <div className="flex items-center gap-4 relative">
+                            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center border border-amber-200 shadow-sm">
+                              <FaInfoCircle className="text-amber-600 text-lg" />
+                            </div>
+                            <div>
+                              <p className="text-sm text-amber-900 font-bold">Resending Invitation</p>
+                              <p className="text-[11px] text-amber-700/80 font-bold mt-0.5">
+                                Last transmission detected: {new Date(emailConfirmModal.user.interviewEmailSent.at).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live Preview Section */}
+                  <div className="lg:w-1/2 p-8 bg-slate-50/50 overflow-y-auto max-h-[750px] scrollbar-none">
+                    <EmailDraftPreview user={emailConfirmModal.user} form={emailForm} selectedAdIds={selectedAdsToEmail} />
+                  </div>
                 </div>
-              </div>
-            )}
-          </ModalContainer>
-        )}
+              )}
+            </ModalContainer>
+          )}
 
+        </div>
       </div>
-
-    </div>
-  )
+    </>
+  );
 };
 
 export default UserGrid;

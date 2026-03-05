@@ -17,7 +17,9 @@ import {
     FaInfoCircle,
     FaChevronDown,
     FaChevronUp,
-    FaMagic
+    FaMagic,
+    FaAward,
+    FaTrophy
 } from "react-icons/fa";
 
 const MeritFilterPanel = ({
@@ -44,6 +46,7 @@ const MeritFilterPanel = ({
     }, [meritFilters.advertisement]);
 
     const sortOptions = [
+        { value: 'rank-asc', label: 'Rank-wise', icon: <FaTrophy className="text-amber-500" /> },
         { value: 'latest', label: 'Latest first', icon: <FaSortAmountDown /> },
         { value: 'oldest', label: 'Oldest first', icon: <FaSortAmountUp /> },
         { value: 'name-asc', label: 'Name A-Z', icon: <FaSortAlphaDown /> },

@@ -313,7 +313,15 @@ export const userAPI = {
 
   // Assign interview marks for a specific advertisement (admin only)
   assignMarks: (id, data) =>
-    api.put(`/users/admin/users/${id}/assign-marks`, data)
+    api.put(`/users/admin/users/${id}/assign-marks`, data),
+
+  // Bulk upload users from Excel file (admin only)
+  bulkUpload: (formData) =>
+    api.post('/users/bulk-upload', formData, { timeout: 120000 }),
+
+  // Bulk register multiple users (fixed after validation)
+  bulkRegisterMany: (records) =>
+    api.post('/users/bulk-register-many', { records })
 };
 
 // ==================== DEPARTMENT API CALLS ====================
@@ -377,7 +385,8 @@ export const panelAPI = {
 
 // ==================== NORMALIZATION API CALLS ====================
 export const normalizationAPI = {
-  meritMode: (advertisementId) => api.post('/normalization/merit-mode', { advertisementId })
+  meritMode: (advertisementId) => api.post('/normalization/merit-mode', { advertisementId }),
+  generateMeritlist: (advertisementId) => api.post('/normalization/generate-meritlist', { advertisementId })
 };
 
 export default api;

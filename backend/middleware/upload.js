@@ -101,10 +101,10 @@ const storage = multer.diskStorage({
       cb(null, 'uploads/resumes');
     } else if (file.fieldname.includes('marksheet') || file.fieldname.includes('Marksheet')) {
       cb(null, 'uploads/marksheets');
-    } else if (file.fieldname === 'document' || file.fieldname === 'identityProof') {
+    } else if (file.fieldname === 'document' || file.fieldname === 'identityProof' || file.fieldname === 'file') {
       cb(null, 'uploads/documents');
     } else {
-      cb(new Error('Invalid field name'));
+      cb(new Error(`Invalid field name: ${file.fieldname}`));
     }
   },
   filename: (req, file, cb) => {
@@ -126,6 +126,11 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
   const allowedDocTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  const allowedSpreadsheetTypes = [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'text/csv'
+  ];
 
   if (file.fieldname === 'profileImage') {
     if (allowedImageTypes.includes(file.mimetype)) {
@@ -148,8 +153,17 @@ const fileFilter = (req, file, cb) => {
       cb(new Error('Only PDF, DOC, DOCX files allowed'));
     }
   }
+  else if (file.fieldname === 'file') {
+    // Check extension as well since browser mimetypes for excel can be weird
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedSpreadsheetTypes.includes(file.mimetype) || ['.xlsx', '.xls', '.csv'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only Excel (.xlsx, .xls) and CSV files allowed'));
+    }
+  }
   else {
-    cb(new Error('Invalid file type'));
+    cb(new Error(`Invalid file type for field: ${file.fieldname}`));
   }
 };
 

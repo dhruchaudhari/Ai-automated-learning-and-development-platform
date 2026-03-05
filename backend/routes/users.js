@@ -10,6 +10,300 @@ const emailService = require('../utils/emailService');
 
 const { auth: authMiddleware, admin: adminMiddleware } = require('../middleware/auth');
 const AiAuditRecord = require('../models/AiAuditRecord');
+const FinalMerit = require('../models/FinalMerit');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+// ==================== BULK UPLOAD ====================
+
+router.post('/bulk-upload', authMiddleware, adminMiddleware, upload.single('file'), handleUploadError, async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'No file uploaded' });
+        }
+
+        const filePath = path.resolve(req.file.path);
+
+        // Ensure file is Excel or CSV
+        const validMimes = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'];
+        if (!validMimes.includes(req.file.mimetype) && !req.file.originalname.match(/\.(xlsx|xls|csv)$/i)) {
+            fs.unlinkSync(filePath); // Cleanup
+            return res.status(400).json({ success: false, message: 'Invalid file format. Please upload an Excel or CSV file.' });
+        }
+
+        const pythonScriptPath = path.join(__dirname, '../../vatsAi/bulkusers.upload/main.py');
+        const debugLogPath = path.join(__dirname, '../../debug_bulk_upload.log');
+        fs.writeFileSync(debugLogPath, `[${new Date().toISOString()}] Starting bulk upload for file: ${req.file.originalname}\n`);
+
+        const pythonProcess = spawn('py', [pythonScriptPath, filePath], {
+            cwd: path.dirname(pythonScriptPath)
+        });
+
+        // CRITICAL: Handle spawn errors (e.g., 'py' not found)
+        pythonProcess.on('error', (err) => {
+            console.error('Failed to start Python process:', err);
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to initiate AI processing. Ensure Python (py) is installed.',
+                    error: err.message
+                });
+            }
+        });
+
+        let outputData = '';
+        let errorData = '';
+
+        pythonProcess.stdout.on('data', (data) => {
+            outputData += data.toString();
+        });
+
+        pythonProcess.stderr.on('data', (data) => {
+            errorData += data.toString();
+        });
+
+        pythonProcess.on('close', async (code) => {
+            // Clean up the uploaded file after python script finishes reading it
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            } catch (unlinkErr) {
+                console.warn('Failed to delete temp file:', unlinkErr.message);
+            }
+
+            fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Python process closed with code ${code}\n`);
+            if (errorData) fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Python Stderr: ${errorData}\n`);
+
+            if (code !== 0) {
+                console.error(`Python bulk upload process exited with code ${code}. Error: ${errorData}`);
+                fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] FAIL: Python process exited with code ${code}\n`);
+                return res.status(500).json({
+                    success: false,
+                    message: 'AI bulk processing failed',
+                    error: errorData || `Process exited with code ${code}`
+                });
+            }
+
+            console.log('Bulk Upload AI Output:', outputData);
+            if (errorData) console.warn('Bulk Upload Python Warnings/Stderr:', errorData);
+
+            try {
+                // Find where the JSON starts in case there are python warnings printed
+                const jsonStartIndex = outputData.indexOf('{');
+                if (jsonStartIndex === -1) {
+                    fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] FAIL: Could not find JSON in output: ${outputData}\n`);
+                    return res.status(500).json({ success: false, message: 'Invalid response from AI processor', raw: outputData });
+                }
+                const cleanJsonStr = outputData.substring(jsonStartIndex);
+                fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Raw Python Result: ${cleanJsonStr.substring(0, 500)}...\n`);
+                const result = JSON.parse(cleanJsonStr);
+                fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Parsed Python result successful. validCount: ${result.validCount}, errorCount: ${result.errorCount}, validRecords length: ${result.validRecords?.length}\n`);
+
+                if (!result.success) {
+                    return res.status(400).json({
+                        success: false,
+                        message: result.message || 'AI processing reported failure',
+                        error: result.errors
+                    });
+                }
+
+                if (!result.validRecords || result.validRecords.length === 0) {
+                    // If we have errors, we still return 200 so the frontend can show the correction modal
+                    if (result.errors && result.errors.length > 0) {
+                        return res.json({
+                            success: true,
+                            message: 'No valid records found, but errors detected.',
+                            stats: {
+                                total: result.validCount + result.errorCount,
+                                inserted: 0,
+                                duplicates: 0,
+                                pythonErrors: result.errorCount
+                            },
+                            errorRecords: result.errors
+                        });
+                    }
+
+                    return res.status(400).json({
+                        success: false,
+                        message: 'No valid records found to import and no errors reported.',
+                        errors: result.errors
+                    });
+                }
+
+                // Prepare records for insertion
+                let insertedCount = 0;
+                let DuplicateCount = 0;
+                const insertErrors = [];
+
+                // Fetch all active ads for resolution
+                const activeAds = await Advertisement.find({ status: 'active' });
+
+                for (const rawRecord of result.validRecords) {
+                    try {
+                        fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Attempting to insert user: ${rawRecord.email}\n`);
+                        // Check uniqueness (Mobile or Email)
+                        const existingUser = await User.findOne({
+                            $or: [
+                                { email: rawRecord.email.toLowerCase() },
+                                { mobile: rawRecord.mobile }
+                            ]
+                        });
+
+                        if (existingUser) {
+                            DuplicateCount++;
+                            insertErrors.push({ email: rawRecord.email, message: "Email or Mobile already exists" });
+                            fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Duplicate skipped: ${rawRecord.email}\n`);
+                            continue;
+                        }
+
+                        // Resolve advertisement names to IDs
+                        const resolvedAds = [];
+                        if (rawRecord.advertisements && Array.isArray(rawRecord.advertisements)) {
+                            for (const adName of rawRecord.advertisements) {
+                                const foundAd = activeAds.find(a =>
+                                    a.title.toLowerCase().includes(adName.toLowerCase()) ||
+                                    adName.toLowerCase().includes(a.title.toLowerCase())
+                                );
+                                if (foundAd) {
+                                    resolvedAds.push(foundAd._id);
+                                }
+                            }
+                        }
+
+                        // Create user
+                        const newUser = new User({
+                            ...rawRecord,
+                            role: 'user',
+                            status: 'pending',
+                            email: rawRecord.email.toLowerCase(),
+                            advertisements: resolvedAds
+                        });
+
+                        await newUser.save();
+                        insertedCount++;
+                        fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Successfully inserted: ${rawRecord.email}\n`);
+                    } catch (dbError) {
+                        fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] DB insertion FAILED for ${rawRecord.email}: ${dbError.message}\n`);
+                        insertErrors.push({ email: rawRecord.email, message: dbError.message });
+                    }
+                }
+
+                res.json({
+                    success: true,
+                    message: `Bulk setup analyzed. Valid: ${result.validCount}, Errors: ${result.errorCount}, Duplicates: ${DuplicateCount}`,
+                    stats: {
+                        inserted: insertedCount,
+                        duplicates: DuplicateCount,
+                        pythonErrors: result.errorCount,
+                        dbErrors: insertErrors.length,
+                        mapping: result.mapping
+                    },
+                    validRecords: result.validRecords, // Optional: frontend might need these anyway
+                    errorRecords: result.errors // This now contains fieldErrors and originalData
+                });
+
+            } catch (err) {
+                console.error('Failed to parse Bulk Upload AI output or insert users:', err);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to process bulk upload results',
+                    error: err.message
+                });
+            }
+        });
+
+    } catch (err) {
+        console.error('Bulk upload high-level try-block error:', err);
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error during bulk upload initiation',
+                error: err.message
+            });
+        }
+    }
+});
+// Batch Register Fixed Records
+router.post('/bulk-register-many', authMiddleware, adminMiddleware, async (req, res) => {
+    try {
+        const { records } = req.body;
+        if (!records || !Array.isArray(records)) {
+            return res.status(400).json({ success: false, message: 'Invalid records provided' });
+        }
+
+        let insertedCount = 0;
+        let duplicateCount = 0;
+        const insertErrors = [];
+
+        // Fetch all active ads for resolution
+        const activeAds = await Advertisement.find({ status: 'active' });
+
+        for (const rawRecord of records) {
+            try {
+                const existingUser = await User.findOne({
+                    $or: [
+                        { email: rawRecord.email.toLowerCase() },
+                        { mobile: rawRecord.mobile }
+                    ]
+                });
+
+                if (existingUser) {
+                    duplicateCount++;
+                    insertErrors.push({ email: rawRecord.email, message: "Email or Mobile already exists" });
+                    continue;
+                }
+
+                // Resolve advertisement names to IDs if they are still strings
+                const resolvedAds = [];
+                if (rawRecord.advertisements && Array.isArray(rawRecord.advertisements)) {
+                    for (const adValue of rawRecord.advertisements) {
+                        // Check if it's already an ID
+                        if (mongoose.Types.ObjectId.isValid(adValue)) {
+                            resolvedAds.push(adValue);
+                        } else {
+                            // Try to find by name
+                            const foundAd = activeAds.find(a =>
+                                a.title.toLowerCase().includes(adValue.toLowerCase()) ||
+                                adValue.toLowerCase().includes(a.title.toLowerCase())
+                            );
+                            if (foundAd) {
+                                resolvedAds.push(foundAd._id);
+                            }
+                        }
+                    }
+                }
+
+                const newUser = new User({
+                    ...rawRecord,
+                    role: 'user',
+                    status: 'pending',
+                    email: rawRecord.email.toLowerCase(),
+                    advertisements: resolvedAds
+                });
+
+                await newUser.save();
+                insertedCount++;
+            } catch (dbError) {
+                insertErrors.push({ email: rawRecord.email, message: dbError.message });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Batch registration completed. Inserted: ${insertedCount}, Duplicates: ${duplicateCount}, Errors: ${insertErrors.length}`,
+            stats: {
+                inserted: insertedCount,
+                duplicates: duplicateCount,
+                errors: insertErrors
+            }
+        });
+    } catch (err) {
+        console.error('Batch registration error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error during batch registration' });
+    }
+});
 
 // ==================== USER PROFILE ====================
 
@@ -1260,6 +1554,28 @@ router.get('/admin/users', adminMiddleware, async (req, res) => {
                         };
                     }
                     return { ...user, isNormalized: false };
+                });
+            }
+
+            // Also look for FinalMerit records to get ranks/SFMC
+            const finalMerit = await FinalMerit.findOne({ advertisementId });
+            if (finalMerit && finalMerit.results) {
+                const meritMap = new Map(
+                    finalMerit.results.map(r => [r.userId.toString(), r])
+                );
+
+                processedUsers = processedUsers.map(user => {
+                    const meritData = meritMap.get(user._id.toString());
+                    if (meritData) {
+                        return {
+                            ...user,
+                            rank: meritData.rank,
+                            sfmc: meritData.sfmc,
+                            imbalanceRatio: meritData.imbalanceRatio,
+                            forces: meritData.forces
+                        };
+                    }
+                    return user;
                 });
             }
         }
