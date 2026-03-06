@@ -118,14 +118,11 @@ export const UserContextProvider = ({ children }) => {
     }
   }, []);
 
+  // Background refresh removed as per user request to avoid overwriting merit data
   useEffect(() => {
     const token = getToken();
     if (token) {
-      const interval = setInterval(() => {
-        refreshUsers(null, true); // Background poll — silent, suppresses error toasts
-      }, 30000);
-
-      return () => clearInterval(interval);
+      // Periodic refresh removed
     }
   }, []);
 

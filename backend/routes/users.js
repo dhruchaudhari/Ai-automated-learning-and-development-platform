@@ -132,18 +132,48 @@ router.post('/bulk-upload', authMiddleware, adminMiddleware, upload.single('file
                     });
                 }
 
-                // Prepare records for insertion
+                const activeAds = await Advertisement.find({ isActive: true });
+                const finalErrorRecords = [...(result.errors || [])];
+                const finalValidRecords = [];
                 let insertedCount = 0;
                 let DuplicateCount = 0;
-                const insertErrors = [];
-
-                // Fetch all active ads for resolution
-                const activeAds = await Advertisement.find({ status: 'active' });
 
                 for (const rawRecord of result.validRecords) {
                     try {
-                        fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Attempting to insert user: ${rawRecord.email}\n`);
-                        // Check uniqueness (Mobile or Email)
+                        const rowNum = rawRecord.row || (rawRecord.originalData && rawRecord.originalData.row) || "N/A";
+                        // 1. Resolve advertisement names to IDs
+                        const resolvedAds = [];
+                        const unresolvableAds = [];
+                        if (rawRecord.advertisements && Array.isArray(rawRecord.advertisements)) {
+                            for (const adName of rawRecord.advertisements) {
+                                const foundAd = activeAds.find(a =>
+                                    a.title.toLowerCase().includes(adName.toLowerCase()) ||
+                                    adName.toLowerCase().includes(a.title.toLowerCase())
+                                );
+                                if (foundAd) {
+                                    resolvedAds.push(foundAd._id);
+                                } else {
+                                    unresolvableAds.push(adName);
+                                }
+                            }
+                        }
+
+                        // If any ad is unresolvable, it's an error
+                        if (unresolvableAds.length > 0) {
+                            finalErrorRecords.push({
+                                row: rowNum,
+                                name: rawRecord.fullName || "N/A",
+                                email: rawRecord.email || "N/A",
+                                fieldErrors: {
+                                    advertisements: `Invalid advertisement(s): ${unresolvableAds.join(', ')}`
+                                },
+                                originalData: rawRecord.originalData || rawRecord
+                            });
+                            continue;
+                        }
+
+                        // 2. Check uniqueness (Mobile or Email)
+                        // ... (existing code for uniqueness)
                         const existingUser = await User.findOne({
                             $or: [
                                 { email: rawRecord.email.toLowerCase() },
@@ -153,55 +183,90 @@ router.post('/bulk-upload', authMiddleware, adminMiddleware, upload.single('file
 
                         if (existingUser) {
                             DuplicateCount++;
-                            insertErrors.push({ email: rawRecord.email, message: "Email or Mobile already exists" });
-                            fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Duplicate skipped: ${rawRecord.email}\n`);
+                            finalErrorRecords.push({
+                                row: rowNum,
+                                name: rawRecord.fullName || "N/A",
+                                email: rawRecord.email || "N/A",
+                                fieldErrors: {
+                                    email: existingUser.email === rawRecord.email.toLowerCase() ? "Email already registered" : null,
+                                    mobile: existingUser.mobile === rawRecord.mobile ? "Mobile already registered" : null
+                                },
+                                originalData: rawRecord.originalData || rawRecord
+                            });
                             continue;
                         }
 
-                        // Resolve advertisement names to IDs
-                        const resolvedAds = [];
-                        if (rawRecord.advertisements && Array.isArray(rawRecord.advertisements)) {
-                            for (const adName of rawRecord.advertisements) {
-                                const foundAd = activeAds.find(a =>
-                                    a.title.toLowerCase().includes(adName.toLowerCase()) ||
-                                    adName.toLowerCase().includes(a.title.toLowerCase())
-                                );
-                                if (foundAd) {
-                                    resolvedAds.push(foundAd._id);
-                                }
-                            }
-                        }
+                        // 3. Create and Save User
+                        const { row: _row, originalData: _origData, advertisements: _ads, ...userFields } = rawRecord;
 
-                        // Create user
+                        // Ensure password exists (from Python or default)
+                        const passwordToUse = userFields.password || 'User@123';
+
                         const newUser = new User({
-                            ...rawRecord,
+                            ...userFields,
+                            password: passwordToUse,
                             role: 'user',
                             status: 'pending',
                             email: rawRecord.email.toLowerCase(),
-                            advertisements: resolvedAds
+                            advertisements: resolvedAds,
+                            dummyuser: true,
+                            isEmailVerified: true // Mandatory for dummy users
                         });
 
                         await newUser.save();
                         insertedCount++;
-                        fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] Successfully inserted: ${rawRecord.email}\n`);
+                        finalValidRecords.push(newUser);
                     } catch (dbError) {
-                        fs.appendFileSync(debugLogPath, `[${new Date().toISOString()}] DB insertion FAILED for ${rawRecord.email}: ${dbError.message}\n`);
-                        insertErrors.push({ email: rawRecord.email, message: dbError.message });
+                        const rowNum = rawRecord.row || (rawRecord.originalData && rawRecord.originalData.row) || "N/A";
+                        let specificErrors = {};
+                        if (dbError.name === 'ValidationError') {
+                            for (const field in dbError.errors) {
+                                let mappedField = field;
+                                if (field === 'education.tenth.board') mappedField = 'tenthBoard';
+                                else if (field === 'education.tenth.passingYear') mappedField = 'tenthPassingYear';
+                                else if (field === 'education.tenth.percentage') mappedField = 'tenthPercentage';
+                                else if (field === 'education.twelfth.board') mappedField = 'twelfthBoard';
+                                else if (field === 'education.twelfth.passingYear') mappedField = 'twelfthPassingYear';
+                                else if (field === 'education.twelfth.percentage') mappedField = 'twelfthPercentage';
+                                else if (field === 'education.graduation.degree') mappedField = 'graduationDegree';
+                                else if (field === 'education.graduation.specialization') mappedField = 'graduationSpecialization';
+                                else if (field === 'education.graduation.passingYear') mappedField = 'graduationPassingYear';
+                                else if (field === 'education.graduation.percentage') mappedField = 'graduationPercentage';
+                                else if (field === 'education.graduation.cgpa') mappedField = 'graduationCGPA';
+                                else if (field === 'education.qualifyingDegree.degree') mappedField = 'qualifyingDegree';
+                                else if (field === 'education.qualifyingDegree.percentage') mappedField = 'qualifyingPercentage';
+                                else if (field === 'resumeUrl') mappedField = 'resume';
+                                else if (field === 'identityProofUrl') mappedField = 'identityProof';
+
+                                specificErrors[mappedField] = dbError.errors[field].message;
+                            }
+                        }
+
+                        if (Object.keys(specificErrors).length === 0) {
+                            specificErrors.generic = dbError.message;
+                        }
+
+                        finalErrorRecords.push({
+                            row: rowNum,
+                            name: rawRecord.fullName || "N/A",
+                            email: rawRecord.email || "N/A",
+                            fieldErrors: specificErrors,
+                            originalData: rawRecord.originalData || rawRecord
+                        });
                     }
                 }
 
                 res.json({
                     success: true,
-                    message: `Bulk setup analyzed. Valid: ${result.validCount}, Errors: ${result.errorCount}, Duplicates: ${DuplicateCount}`,
+                    message: `Bulk setup analyzed. Inserted: ${insertedCount}, Errors to fix: ${finalErrorRecords.length}`,
                     stats: {
                         inserted: insertedCount,
                         duplicates: DuplicateCount,
                         pythonErrors: result.errorCount,
-                        dbErrors: insertErrors.length,
+                        totalErrors: finalErrorRecords.length,
                         mapping: result.mapping
                     },
-                    validRecords: result.validRecords, // Optional: frontend might need these anyway
-                    errorRecords: result.errors // This now contains fieldErrors and originalData
+                    errorRecords: finalErrorRecords
                 });
 
             } catch (err) {
@@ -238,25 +303,14 @@ router.post('/bulk-register-many', authMiddleware, adminMiddleware, async (req, 
         const insertErrors = [];
 
         // Fetch all active ads for resolution
-        const activeAds = await Advertisement.find({ status: 'active' });
+        const activeAds = await Advertisement.find({ isActive: true });
 
         for (const rawRecord of records) {
             try {
-                const existingUser = await User.findOne({
-                    $or: [
-                        { email: rawRecord.email.toLowerCase() },
-                        { mobile: rawRecord.mobile }
-                    ]
-                });
-
-                if (existingUser) {
-                    duplicateCount++;
-                    insertErrors.push({ email: rawRecord.email, message: "Email or Mobile already exists" });
-                    continue;
-                }
-
-                // Resolve advertisement names to IDs if they are still strings
+                const rowNum = rawRecord.row || (rawRecord.originalData && rawRecord.originalData.row) || "N/A";
+                // 1. Resolve advertisement names to IDs
                 const resolvedAds = [];
+                const unresolvableAds = [];
                 if (rawRecord.advertisements && Array.isArray(rawRecord.advertisements)) {
                     for (const adValue of rawRecord.advertisements) {
                         // Check if it's already an ID
@@ -270,35 +324,122 @@ router.post('/bulk-register-many', authMiddleware, adminMiddleware, async (req, 
                             );
                             if (foundAd) {
                                 resolvedAds.push(foundAd._id);
+                            } else {
+                                unresolvableAds.push(adValue);
                             }
                         }
                     }
                 }
 
+                // If any ad is unresolvable, it's an error
+                if (unresolvableAds.length > 0) {
+                    insertErrors.push({
+                        row: rowNum,
+                        name: rawRecord.fullName || "N/A",
+                        email: rawRecord.email || "N/A",
+                        fieldErrors: {
+                            advertisements: `Invalid advertisement(s): ${unresolvableAds.join(', ')}`
+                        },
+                        originalData: rawRecord.originalData || rawRecord
+                    });
+                    continue;
+                }
+
+                const existingUser = await User.findOne({
+                    $or: [
+                        { email: rawRecord.email.toLowerCase() },
+                        { mobile: rawRecord.mobile }
+                    ]
+                });
+
+                if (existingUser) {
+                    duplicateCount++;
+                    insertErrors.push({
+                        row: rowNum,
+                        name: rawRecord.fullName || "N/A",
+                        email: rawRecord.email || "N/A",
+                        fieldErrors: {
+                            email: existingUser.email === rawRecord.email.toLowerCase() ? "Email already registered" : null,
+                            mobile: existingUser.mobile === rawRecord.mobile ? "Mobile already registered" : null
+                        },
+                        originalData: rawRecord.originalData || rawRecord
+                    });
+                    continue;
+                }
+
+                // Destructure only User-schema fields, excluding metadata like row/originalData
+                const { row: _row, originalData: _origData, advertisements: _ads, ...userFields } = rawRecord;
+
+                // Ensure password exists
+                const passwordToUse = userFields.password || 'User@123';
+
                 const newUser = new User({
-                    ...rawRecord,
+                    ...userFields,
+                    password: passwordToUse,
                     role: 'user',
                     status: 'pending',
                     email: rawRecord.email.toLowerCase(),
-                    advertisements: resolvedAds
+                    advertisements: resolvedAds,
+                    dummyuser: true,
+                    isEmailVerified: true // Mandatory for dummy users
                 });
 
                 await newUser.save();
                 insertedCount++;
             } catch (dbError) {
-                insertErrors.push({ email: rawRecord.email, message: dbError.message });
+                const rowNum = rawRecord.row || (rawRecord.originalData && rawRecord.originalData.row) || "N/A";
+                let specificErrors = {};
+                if (dbError.name === 'ValidationError') {
+                    for (const field in dbError.errors) {
+                        let mappedField = field;
+                        if (field === 'education.tenth.board') mappedField = 'tenthBoard';
+                        else if (field === 'education.tenth.passingYear') mappedField = 'tenthPassingYear';
+                        else if (field === 'education.tenth.percentage') mappedField = 'tenthPercentage';
+                        else if (field === 'education.twelfth.board') mappedField = 'twelfthBoard';
+                        else if (field === 'education.twelfth.passingYear') mappedField = 'twelfthPassingYear';
+                        else if (field === 'education.twelfth.percentage') mappedField = 'twelfthPercentage';
+                        else if (field === 'education.graduation.degree') mappedField = 'graduationDegree';
+                        else if (field === 'education.graduation.specialization') mappedField = 'graduationSpecialization';
+                        else if (field === 'education.graduation.passingYear') mappedField = 'graduationPassingYear';
+                        else if (field === 'education.graduation.percentage') mappedField = 'graduationPercentage';
+                        else if (field === 'education.graduation.cgpa') mappedField = 'graduationCGPA';
+                        else if (field === 'education.qualifyingDegree.degree') mappedField = 'qualifyingDegree';
+                        else if (field === 'education.qualifyingDegree.specialization') mappedField = 'qualifyingSpecialization';
+                        else if (field === 'education.qualifyingDegree.percentage') mappedField = 'qualifyingPercentage';
+                        else if (field === 'resumeUrl') mappedField = 'resume';
+                        else if (field === 'identityProofUrl') mappedField = 'identityProof';
+
+                        specificErrors[mappedField] = dbError.errors[field].message;
+                    }
+                }
+
+                if (Object.keys(specificErrors).length === 0) {
+                    specificErrors.generic = dbError.message;
+                }
+
+                insertErrors.push({
+                    row: rowNum,
+                    name: rawRecord.fullName || "N/A",
+                    email: rawRecord.email || "N/A",
+                    fieldErrors: specificErrors,
+                    originalData: rawRecord.originalData || rawRecord
+                });
             }
         }
 
         res.json({
-            success: true,
-            message: `Batch registration completed. Inserted: ${insertedCount}, Duplicates: ${duplicateCount}, Errors: ${insertErrors.length}`,
+            success: insertErrors.length === 0,
+            message: insertErrors.length === 0 ?
+                `Successfully registered ${insertedCount} users.` :
+                `Registered ${insertedCount} users. ${insertErrors.length} records still have errors.`,
             stats: {
                 inserted: insertedCount,
                 duplicates: duplicateCount,
-                errors: insertErrors
-            }
+                errors: insertErrors.length
+            },
+            errorRecords: insertErrors
         });
+        console.log("Bulk Register Many - Insert Errors:", JSON.stringify(insertErrors, null, 2));
     } catch (err) {
         console.error('Batch registration error:', err);
         res.status(500).json({ success: false, message: 'Internal server error during batch registration' });

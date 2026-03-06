@@ -529,7 +529,9 @@ const UserGrid = () => {
   const [meritSortBy, setMeritSortBy] = useState('rank-asc');
   const [meritListData, setMeritListData] = useState([]);
   const [isUploadingBulk, setIsUploadingBulk] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState("");
   const [errorRecords, setErrorRecords] = useState([]);
+  const [columnMapping, setColumnMapping] = useState({});
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
   const [isSubmittingCorrections, setIsSubmittingCorrections] = useState(false);
   const [isNormalizing, setIsNormalizing] = useState(false);
@@ -633,14 +635,15 @@ const UserGrid = () => {
     fetchAdvertisements();
   }, []);
 
-  // Refresh users when advertisement filter changes to get AI normalization results overlay
+  // Refresh users when advertisement filter changes to get Merit data (Rank/SFMC)
+  // This is required because merit data is merged by the backend only when an adId is provided.
   useEffect(() => {
-    if (isMeritMode && filters.advertisement && filters.advertisement !== 'all') {
-      refreshUsers(filters.advertisement);
-    } else if (isMeritMode && (!filters.advertisement || filters.advertisement === 'all')) {
-      refreshUsers();
+    if (isMeritMode && meritFilters.advertisement && meritFilters.advertisement !== 'all') {
+      refreshUsers(meritFilters.advertisement);
     }
-  }, [filters.advertisement, isMeritMode]);
+  }, [meritFilters.advertisement, isMeritMode]);
+
+  // Scroll to top when mode changes
 
   useEffect(() => {
     if (isInterviewMode) {
@@ -794,15 +797,27 @@ const UserGrid = () => {
     return result;
   };
 
+  // Helper to determine if an eligible candidate is ready for Merit Mode (scheduled & mailed)
+  const isMeritSatisfied = (user) => {
+    const adMarks = user.advertisementMarks || [];
+    // Either the user has at least one ad-specific schedule/mail satisfaction
+    // OR the global user-level schedule/mail satisfaction
+    return adMarks.some(am =>
+      am.interviewSchedule?.scheduledDate && am.interviewEmailSent?.sent
+    ) || (
+        user.interviewSchedule?.scheduledDate && user.interviewEmailSent?.sent
+      );
+  };
+
   // Apply filters and sorting
   useEffect(() => {
     let result = applyFilters(users, searchTerm, filters);
 
     if (isMeritMode) {
-      // Flatten eligible users into multiple rows — one row per advertisement
+      // Flatten only satisfied eligible users into multiple rows — one row per advertisement
       const flattenedResult = [];
       result.forEach(user => {
-        if (user.status === 'eligible') {
+        if (user.status === 'eligible' && isMeritSatisfied(user)) {
           const userAds = user.advertisements || [];
           if (userAds.length > 0) {
             userAds.forEach(ad => {
@@ -828,6 +843,10 @@ const UserGrid = () => {
           }
         }
       });
+
+      // Update merit list base data for validation logic (Normalization/Merit buttons)
+      setMeritListData(flattenedResult);
+
       // Apply merit-specific filters
       result = applyMeritFilters(flattenedResult, meritFilters);
 
@@ -1046,11 +1065,11 @@ const UserGrid = () => {
   const meritFilterCounts = useMemo(() => {
     if (!isMeritMode) return {};
 
-    // Build the unfiltered merit list (all eligible user-ad rows)
+    // Build the unfiltered merit list (all eligible user-ad rows that are satisfied)
     const baseUsers = applyFilters(users, searchTerm, filters);
     const allMeritRows = [];
     baseUsers.forEach(user => {
-      if (user.status === 'eligible') {
+      if (user.status === 'eligible' && isMeritSatisfied(user)) {
         const userAds = user.advertisements || [];
         if (userAds.length > 0) {
           userAds.forEach(ad => {
@@ -1363,6 +1382,7 @@ const UserGrid = () => {
 
     try {
       setIsUploadingBulk(true);
+      setUploadedFileName(file.name);
       const formData = new FormData();
       formData.append('file', file);
 
@@ -1394,6 +1414,7 @@ const UserGrid = () => {
         // Trigger interactive correction if there are Python errors
         if (response.data.errorRecords && response.data.errorRecords.length > 0) {
           setErrorRecords(response.data.errorRecords);
+          setColumnMapping(response.data.mapping || {});
           setIsCorrectionModalOpen(true);
           toast("Please fix the validation errors in the correction modal.", {
             icon: <FaClipboardList className="text-amber-500" />,
@@ -1436,6 +1457,20 @@ const UserGrid = () => {
         setIsCorrectionModalOpen(false);
         setErrorRecords([]);
         await refreshUsers();
+      } else if (response.data.errorRecords) {
+        // Partial success or remaining errors
+        setErrorRecords(response.data.errorRecords);
+        const inserted = response.data.stats?.inserted || 0;
+        if (inserted > 0) {
+          toast.success(`Registered ${inserted} users. Some records still have errors.`, {
+            icon: <FaClipboardList className="text-amber-500" />
+          });
+          await refreshUsers();
+        } else {
+          toast.error("Records still have errors. Please fix them.", {
+            icon: <FaTimesCircle className="text-red-500" />
+          });
+        }
       }
     } catch (err) {
       console.error("Batch registration failed:", err);
@@ -1445,6 +1480,22 @@ const UserGrid = () => {
     } finally {
       setIsSubmittingCorrections(false);
     }
+  };
+
+  const handleRecordUpdate = (index, field, value, errors) => {
+    setErrorRecords(prev => {
+      const newRecords = [...prev];
+      if (!newRecords[index]) return prev;
+
+      const record = { ...newRecords[index] };
+      // Map logical field back to original header if needed
+      const originalHeader = Object.entries(columnMapping).find(([logical, original]) => logical === field)?.[1] || field;
+
+      record.originalData = { ...record.originalData, [originalHeader]: value };
+      record.fieldErrors = errors;
+      newRecords[index] = record;
+      return newRecords;
+    });
   };
 
   const handleLogout = async () => {
@@ -2101,13 +2152,16 @@ const UserGrid = () => {
     // Note: in isInterviewMode, filteredUsers ONLY contains eligible users already
     const satisfiedInGrid = filteredUsers.filter(u => isSatisfied(u)).length;
 
-    // Check if ALL eligible users in the system are ready (not just filtered ones)
-    const allReady = eligibleUsers.length > 0 && eligibleUsers.every(user => isSatisfied(user));
+    // Count how many eligible users in the system are ready (panels assigned, scheduled, and mailed)
+    const satisfiedCount = eligibleUsers.filter(user => isSatisfied(user)).length;
+    // At least 2 users must be ready (not required for ALL to be ready)
+    const enoughReady = satisfiedCount >= 2;
 
     return {
       sent: satisfiedInGrid,
       total: filteredUsers.length,
-      canProceedToMerit: allReady
+      satisfiedCount,
+      canProceedToMerit: enoughReady
     };
   }, [users, filteredUsers]);
 
@@ -2638,6 +2692,7 @@ const UserGrid = () => {
                                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                               />
                             </th>
+                            <th className="py-4 px-6 text-left w-[120px] font-normal text-indigo-800 font-bold">Merit</th>
                             <th className="py-4 px-6 text-left w-[240px] font-normal text-indigo-800 font-bold">Details</th>
 
                             {isMeritMode && (
@@ -2746,6 +2801,44 @@ const UserGrid = () => {
 
                               {isMeritMode ? (
                                 <>
+                                  {/* 0. Merit Rank & SFMC */}
+                                  <td className="py-4 px-6" title="candidates should have same advt to display merit">
+                                    <div className="flex flex-col gap-1.5">
+                                      {(() => {
+                                        const rowAdId = (user.currentAdvertisement?._id || user.currentAdvertisement || '').toString();
+                                        const selectedAdId = (meritFilters.advertisement || '').toString();
+
+                                        if (selectedAdId && rowAdId === selectedAdId) {
+                                          return (
+                                            <>
+                                              {user.rank ? (
+                                                <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 text-amber-700 rounded-md border border-amber-100 w-fit">
+                                                  <FaTrophy className="size-3" />
+                                                  <span className="text-xs font-bold leading-tight">Rank: {user.rank}</span>
+                                                </div>
+                                              ) : (
+                                                <span className="text-xs text-gray-400 font-medium italic">Unranked</span>
+                                              )}
+                                              {user.sfmc !== undefined ? (
+                                                <div className="flex items-center gap-2 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 w-fit">
+                                                  <FaAward className="size-3" />
+                                                  <span className="text-[10px] font-bold leading-tight">SFMC: {user.sfmc}</span>
+                                                </div>
+                                              ) : (
+                                                <span className="text-[10px] text-gray-400">No score</span>
+                                              )}
+                                            </>
+                                          );
+                                        }
+                                        return (
+                                          <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] text-gray-400 font-medium italic">Different Ad</span>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  </td>
+
                                   {/* 1. Details */}
                                   <td className="py-4 px-6 min-w-[280px]">
                                     <div className="flex items-center gap-4">
@@ -3425,7 +3518,7 @@ const UserGrid = () => {
                       onBlur={(e) => {
                         e.target.style.borderColor = 'transparent';
                       }}
-                      title={!meritStats.canProceedToMerit ? 'All eligible candidates must have interview scheduled and email sent for at least one advertisement' : 'Proceed to Merit Procedure'}
+                      title={!meritStats.canProceedToMerit ? `At least 2 eligible candidates must have interview scheduled and email sent (currently ${meritStats.satisfiedCount || 0} ready)` : 'Proceed to Merit Procedure'}
                     >
                       Merit Procedure
                     </button>
@@ -3602,6 +3695,9 @@ const UserGrid = () => {
             isOpen={isCorrectionModalOpen}
             onClose={() => setIsCorrectionModalOpen(false)}
             records={errorRecords}
+            mapping={columnMapping}
+            uploadedFileName={uploadedFileName}
+            onRecordUpdate={handleRecordUpdate}
             onSubmit={handleBulkRegisterMany}
             isSubmitting={isSubmittingCorrections}
           />

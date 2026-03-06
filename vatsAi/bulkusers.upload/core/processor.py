@@ -52,15 +52,14 @@ def validate_and_build_record(row, mapping, row_number):
     """
     field_errors = {}
     
-    # Get all raw data for the modal
+    # Get all raw data for the modal (preserve all original columns)
     original_data = {}
-    for key, col in mapping.items():
+    for col in row.index:
         val = row.get(col)
-        # Using a check that doesn't strictly require pandas at this line for linter happiness
         if val is None or (isinstance(val, float) and math.isnan(val)):
-            original_data[key] = ""
+            original_data[str(col)] = ""
         else:
-            original_data[key] = str(val).strip()
+            original_data[str(col)] = str(val).strip()
 
     # --- REQUIRED PERSONAL FIELDS ---
     def check(key, validator, label=None):
@@ -191,7 +190,9 @@ def validate_and_build_record(row, mapping, row_number):
                 "percentage": safe_float(get_cell(row, mapping, 'qualifyingPercentage')),
                 "marksheetUrl": clean_str(get_cell(row, mapping, 'qualifyingMarksheet'))
             }
-        }
+        },
+        "row": row_number,
+        "originalData": original_data
     }
 
     return record, {}, original_data

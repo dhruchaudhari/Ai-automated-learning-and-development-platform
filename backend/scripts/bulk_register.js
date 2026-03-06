@@ -137,7 +137,8 @@ async function bulkRegister() {
                 },
                 profileImage: ASSET_PATHS.photo,
                 identityProofUrl: ASSET_PATHS.id,
-                resumeUrl: resumeTargetRel
+                resumeUrl: resumeTargetRel,
+                dummyuser: true
             };
 
             // Conditionally add qualifying degree

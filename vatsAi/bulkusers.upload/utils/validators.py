@@ -43,25 +43,25 @@ def safe_int(val):
 def validate_full_name(val):
     s = clean_str(val)
     if not s:
-        return "Full Name is required"
+        return "Full name is required"
     if len(s) < 3:
-        return "Full Name must be at least 3 characters"
+        return "Full name must be at least 3 characters"
     if len(s) > 100:
-        return "Full Name is too long (max 100 characters)"
+        return "Full name is too long (max 100 characters)"
     if not re.match(r'^[A-Za-z\s.]+$', s):
-        return "Full Name should contain only letters, spaces, and dots"
+        return "Full name should contain only letters, spaces, and dots"
     return ""
 
 def validate_fathers_name(val):
     s = clean_str(val)
     if not s:
-        return "Father's Name is required"
+        return "Father's name is required"
     if len(s) < 3:
-        return "Father's Name must be at least 3 characters"
+        return "Father's name must be at least 3 characters"
     if len(s) > 100:
-        return "Father's Name is too long (max 100 characters)"
+        return "Father's name is too long (max 100 characters)"
     if not re.match(r'^[A-Za-z\s.]+$', s):
-        return "Father's Name should contain only letters, spaces, and dots"
+        return "Father's name should contain only letters, spaces, and dots"
     return ""
 
 def validate_email(val):
@@ -83,13 +83,15 @@ def validate_mobile(val):
     if not s:
         return "Mobile number is required"
     clean_phone = re.sub(r'\D', '', s)
-    if len(clean_phone) == 0:
-        return "Please enter a valid mobile number"
+    
+    # Handle optional +91 or 91 prefix
+    if len(clean_phone) == 12 and clean_phone.startswith('91'):
+        clean_phone = clean_phone[2:]
+        
     if len(clean_phone) != 10:
         return "India phone numbers must have 10 digits"
-    full_number = '+91' + clean_phone
-    if not re.match(r'^\+?[1-9]\d{1,14}$', full_number):
-        return "Please enter a valid mobile number"
+    if not re.match(r'^[6-9]\d{9}$', clean_phone):
+        return "Invalid India number. Must start with 6, 7, 8, or 9"
     return ""
 
 def validate_gender(val):
@@ -113,7 +115,7 @@ def validate_dob(val):
     try:
         if isinstance(val, datetime):
             if val > datetime.now():
-                return "Date of Birth cannot be in the future"
+                return "Date of birth cannot be in the future"
             return ""
         
         # Safe pandas check
@@ -128,10 +130,10 @@ def validate_dob(val):
                 parsed = val # Hope for the best
                 
         if parsed > datetime.now():
-            return "Date of Birth cannot be in the future"
+            return "Date of birth cannot be in the future"
         return ""
     except Exception:
-        return "Please enter a valid Date of Birth"
+        return "Please enter a valid date of birth"
 
 def parse_dob(val):
     try:
@@ -154,7 +156,7 @@ def validate_password(val):
 def validate_address(val):
     s = clean_str(val)
     if not s:
-        return "Permanent Address is required"
+        return "Permanent address is required"
     if len(s) < 10:
         return "Address must be at least 10 characters long"
     if len(s) > 500:
@@ -207,10 +209,10 @@ def validate_cgpa_optional(val):
     try:
         cgpa = float(s)
         if cgpa < 0 or cgpa > 10:
-            return "Graduation CGPA: CGPA must be between 0 and 10"
+            return "CGPA must be between 0 and 10"
         return ""
     except Exception:
-        return "Graduation CGPA: Please enter a valid CGPA"
+        return "Please enter a valid CGPA"
 
 def validate_qualifying_degree(val):
     # Optional field

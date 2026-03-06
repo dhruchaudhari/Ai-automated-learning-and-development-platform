@@ -437,6 +437,12 @@ const userSchema = new mongoose.Schema({
     ethics: [{ type: String, trim: true }]
   },
 
+  // ============ BULK UPLOAD IDENTIFICATION ============
+  dummyuser: {
+    type: Boolean,
+    default: false
+  },
+
   // ============ TIMESTAMPS ============
   createdAt: {
     type: Date,
