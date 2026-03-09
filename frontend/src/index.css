@@ -174,3 +174,39 @@
   backdrop-filter: blur(3px);
   background-color: rgba(255, 255, 255, 0.4);
 }
+
+/* Premium Merit Shimmer Effect */
+.merit-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.merit-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -200%;
+  width: 200%;
+  height: 100%;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0) 30%,
+      rgba(255, 255, 255, 0.4) 50%,
+      rgba(255, 255, 255, 0) 70%,
+      transparent 100%);
+  animation: merit-sweep 5s infinite;
+}
+
+@keyframes merit-sweep {
+  0% {
+    left: -200%;
+  }
+
+  20% {
+    left: 100%;
+  }
+
+  100% {
+    left: 100%;
+  }
+}

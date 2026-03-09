@@ -51,6 +51,9 @@ import {
   FaRobot,
   FaAward,
   FaTrophy,
+  FaCrown,
+  FaMedal,
+  FaHashtag,
   FaFileExcel
 } from "react-icons/fa";
 import { format, parseISO, isWithinInterval } from "date-fns";
@@ -510,6 +513,7 @@ const UserGrid = () => {
   const [interviewViewMode, setInterviewViewMode] = useState('grid'); // 'grid' | 'calendar' | 'timeline'
   const [selectedAdsToSchedule, setSelectedAdsToSchedule] = useState([]);
   const [selectedAdsToEmail, setSelectedAdsToEmail] = useState([]);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Merit mode filter state
   const [meritFilters, setMeritFilters] = useState({
@@ -1762,6 +1766,7 @@ const UserGrid = () => {
   // Send interview email
   const handleSendInterviewEmail = async (userId, location, helpline, advertisementIds = []) => {
     try {
+      setIsSendingEmail(true);
       const response = await userAPI.sendInterviewEmail(userId, {
         location,
         helpline,
@@ -1787,6 +1792,8 @@ const UserGrid = () => {
       toast.error(err.response?.data?.message || 'Failed to send interview email', {
         icon: <FaTimesCircle className="text-red-500" />
       });
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -2809,29 +2816,36 @@ const UserGrid = () => {
                                         const selectedAdId = (meritFilters.advertisement || '').toString();
 
                                         if (selectedAdId && rowAdId === selectedAdId) {
+                                          const getRankIcon = (rank) => {
+                                            if (rank === 1) return <FaCrown className="size-4 text-yellow-600" />;
+                                            if (rank === 2) return <FaAward className="size-4 text-gray-600" />;
+                                            if (rank === 3) return <FaMedal className="size-4 text-amber-700" />;
+                                            return <FaHashtag className="size-3 text-gray-500" />;
+                                          };
+
                                           return (
-                                            <>
+                                            <div className="flex flex-col items-center gap-1">
                                               {user.rank ? (
-                                                <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 text-amber-700 rounded-md border border-amber-100 w-fit">
-                                                  <FaTrophy className="size-3" />
-                                                  <span className="text-xs font-bold leading-tight">Rank: {user.rank}</span>
+                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-[#f7f0ac] via-[#acf7f0] to-[#f0acf7] text-gray-800 rounded-lg shadow-sm w-fit transition-transform hover:scale-105 duration-300 merit-shimmer">
+                                                  {getRankIcon(user.rank)}
+                                                  <span className="text-lg font-black tracking-tighter leading-none">{user.rank}</span>
                                                 </div>
                                               ) : (
                                                 <span className="text-xs text-gray-400 font-medium italic">Unranked</span>
                                               )}
+
                                               {user.sfmc !== undefined ? (
-                                                <div className="flex items-center gap-2 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 w-fit">
-                                                  <FaAward className="size-3" />
-                                                  <span className="text-[10px] font-bold leading-tight">SFMC: {user.sfmc}</span>
+                                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-gradient-to-r from-[#152331] to-[#000000] text-white rounded-md shadow-inner w-fit">
+                                                  <span className="text-[9px] font-bold tracking-widest">{user.sfmc}</span>
                                                 </div>
                                               ) : (
                                                 <span className="text-[10px] text-gray-400">No score</span>
                                               )}
-                                            </>
+                                            </div>
                                           );
                                         }
                                         return (
-                                          <div className="flex flex-col gap-1">
+                                          <div className="flex flex-col items-center justify-center">
                                             <span className="text-[10px] text-gray-400 font-medium italic">Different Ad</span>
                                           </div>
                                         );
@@ -4195,10 +4209,23 @@ const UserGrid = () => {
                     </button>
                     <button
                       onClick={() => handleSendInterviewEmail(emailConfirmModal.user._id, emailForm.location, emailForm.helpline, selectedAdsToEmail)}
-                      disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0}
-                      className="px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm"
+                      disabled={emailFormErrors.location || emailFormErrors.helpline || !emailForm.location || !emailForm.helpline || selectedAdsToEmail.length === 0 || isSendingEmail}
+                      className="relative group px-8 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-2xl font-bold hover:shadow-[0_10px_30px_rgba(79,70,229,0.3)] hover:-translate-y-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-200/50 text-sm overflow-hidden"
                     >
-                      <FaPaperPlane className="text-[11px]" /> Dispatch Invitation
+                      <div className="relative z-10 flex items-center gap-2">
+                        <div className="flex justify-center">
+                          {isSendingEmail ? (
+                            <FaPaperPlane className="text-white text-[13px] vats-robot-slide" />
+                          ) : (
+                            <FaPaperPlane className="text-[11px] transition-all duration-300 group-hover:scale-110" />
+                          )}
+                        </div>
+                        <div className="relative">
+                          <span className="transition-all duration-300 whitespace-nowrap">
+                            {isSendingEmail ? "Dispatching..." : "Dispatch Invitation"}
+                          </span>
+                        </div>
+                      </div>
                     </button>
                   </div>
                 )

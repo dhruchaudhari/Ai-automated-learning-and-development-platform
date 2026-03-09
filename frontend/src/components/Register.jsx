@@ -2231,7 +2231,7 @@ const Register = () => {
                         onChange={handleChange}
                         onBlur={handleFullNameBlur}
                         className={`form-input w-full ${isFieldInvalid('fullName') ? 'border-red-500 focus:ring-red-500 focus:ring-opacity-50' : isFieldValid('fullName') ? 'border-green-500 focus:ring-green-500 focus:ring-opacity-50' : 'border-gray-300'}`}
-                        placeholder="Dhru Chaudhari"
+                        placeholder="Vatsalraj Solanki"
                         disabled={loading}
                         maxLength={100}
                       />
