@@ -1,0 +1,29 @@
+[
+    {
+        "name": "User_1",
+        "marks": {
+            "10th": 85,
+            "12th": 78,
+            "Grad": 82,
+            "PG": null
+        }
+    },
+    {
+        "name": "User_2",
+        "marks": {
+            "10th": 92,
+            "12th": null,
+            "Grad": 88,
+            "PG": 90
+        }
+    },
+    {
+        "name": "User_3",
+        "marks": {
+            "10th": null,
+            "12th": 65,
+            "Grad": 70,
+            "PG": null
+        }
+    }
+]

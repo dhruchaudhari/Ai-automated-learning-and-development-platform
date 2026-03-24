@@ -1,0 +1,14 @@
+{
+    "resume_paths": [
+        "/fake/path.pdf"
+    ],
+    "jobs": {
+        "1": {
+            "title": "AI Engineer",
+            "description": "Need Python and AWS certification",
+            "requiredSkills": [
+                "Python"
+            ]
+        }
+    }
+}

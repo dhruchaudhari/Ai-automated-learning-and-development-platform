@@ -1,0 +1,50 @@
+{
+  "_id": "69c0d1184b022fa7f0a89134",
+  "resumeFile": "1774243954955_Vatsalraj-mern.pdf",
+  "candidateName": "Vatsalraj Solanki",
+  "extractedData": {
+    "skills": [
+      "AI",
+      "Django",
+      "Express",
+      "GIT",
+      "Mongodb",
+      "Node.Js",
+      "React"
+    ],
+    "education": [],
+    "summary": "MERN Stack Developer | Founder, Lavya Workshop B.Tech in Computer Engineering with strong understanding of the MERN stack (MongoDB, Express, React, Node.js), currently building an AI-driven Learning & Development platform"
+  },
+  "fitnessByJob": {
+    "699feaaedaeee5122193d7c9": {
+      "score": 0.475,
+      "components": {
+        "skillOverlap": 0,
+        "educationMatch": 0.95
+      },
+      "jobCode": "JML-MOD-001",
+      "roleTitle": "Junior ML Engineer",
+      "departmentName": "ML Engineering"
+    },
+    "699feefadaeee5122193d80e": {
+      "score": 0.505,
+      "components": {
+        "skillOverlap": 0.06,
+        "educationMatch": 0.95
+      },
+      "jobCode": "BPD-MICRO-001",
+      "roleTitle": "Backend Python Developer",
+      "departmentName": "Backend Python Development"
+    }
+  },
+  "audit": {
+    "processedAt": "2026-03-23T05:35:20.301Z",
+    "processedBy": null,
+    "engineVersion": "7.1.0-supreme-hybrid",
+    "uploadBatchId": "tfidf_1774244120301_zjlvsy"
+  },
+  "status": "Pending",
+  "createdAt": "2026-03-23T05:35:20.320Z",
+  "updatedAt": "2026-03-23T05:35:20.320Z",
+  "__v": 0
+}
